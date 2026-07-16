@@ -2,8 +2,8 @@
   "format": "cncweb-performance-budgets",
   "version": 1,
   "bundle": {
-    "appJavaScript": { "rawBytes": 544768, "gzipBytes": 194560 },
-    "appCss": { "rawBytes": 27648, "gzipBytes": 6144 },
+    "appJavaScript": { "rawBytes": 549888, "gzipBytes": 194560 },
+    "appCss": { "rawBytes": 29696, "gzipBytes": 6400 },
     "simulationWorker": { "rawBytes": 32768, "gzipBytes": 11264 },
     "engineJavaScript": { "rawBytes": 94208, "gzipBytes": 25600 },
     "engineWasm": { "rawBytes": 1179648, "gzipBytes": 430080 }

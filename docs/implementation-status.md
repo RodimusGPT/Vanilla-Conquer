@@ -131,9 +131,10 @@ east/variation A. Red Alert remains a later, separate engine module.
   Production hold uses Hold / Resume build labels so sim Pause stays unambiguous.
   On fine pointers the bottom command bar is compact and muted so it does not
   compete with keyboard select/order shortcuts.
-- Missions 1–5 have exact, reviewed objective presentations gated to their
+- Missions 1–6 have exact, reviewed objective presentations gated to their
   canonical GDI/SCG01EA, GDI/SCG02EA, GDI/SCG03EA, GDI/SCG04WA,
-  GDI/SCG04WB, GDI/SCG04EA, GDI/SCG05EA, GDI/SCG05WA, and GDI/SCG05WB
+  GDI/SCG04WB, GDI/SCG04EA, GDI/SCG05EA, GDI/SCG05WA, GDI/SCG05WB,
+  and GDI/SCG06EA
   identities. Mission 1 eliminates the Nod force
   while retaining a GDI ground force; Mission 2 eliminates the Nod occupation
   while retaining a GDI force. Mission 3 must destroy every counted Nod unit and
@@ -148,9 +149,13 @@ east/variation A. Red Alert remains a later, separate engine module.
   corresponding protected starting group—field force or base structures—is
   eliminated. Repair remains briefing guidance, not a native completion rule.
   Missions 1–3 and Mission 5 use engine-exported unit/structure totals as
-  progress context; Missions 4 and 5 use cause-neutral state for conditions
+  progress context; Missions 4–6 use cause-neutral state for conditions
   that sidebar totals cannot prove. Only the authoritative game-over result
-  marks objectives complete or failed. Mission 6 and later do not inherit
+  marks objectives complete or failed. Mission 6 requires a surviving Commando
+  and either C4 sabotage of one of seven authored Nod base structure types or
+  the alternate counted-force elimination victory. Its exact presentation
+  calls out the Airstrip sabotage branch that bypasses Mission 7 and the
+  structure type otherwise carried forward. Mission 7 and later do not inherit
   guessed rules.
 - Object snapshots also preserve the engine-authored contextual action for
   every player house. The visible selection model turns the selected MCV's
@@ -287,6 +292,15 @@ ordinary move and Ctrl force-fire orders at authored sites; the verifier does
 not mutate mission state or invoke the debug victory hook. It can be run with
 `corepack pnpm verify:classic-freeware:mission-five`.
 
+The Mission 6 mode destroys both SAM sites, verifies Commando cargo through
+the Chinook's native pip and self-unload actions, follows the infiltration
+route, observes the selected Commando's engine-authored sabotage action, and
+demolishes the Airstrip. It requires a surviving Commando and live Nod forces,
+then verifies Airstrip structure type 11 in both correlated terminal events.
+This proves the canonical Mission 7 bypass through ordinary public-ABI commands
+without invoking the debug victory hook. It can be run with
+`corepack pnpm verify:classic-freeware:mission-six`.
+
 An additional long, opt-in Chromium Playwright acceptance supplies a
 scenario-scripted browser-control victory path. It follows fixed reviewed
 patrol waypoints, finds candidate targets in composited battlefield
@@ -357,8 +371,8 @@ local-only evidence boundary is documented in
    visual interpolation. Extend the automated real-Wasm Chromium baseline with
    memory, package-import, and mission-start budgets on broader representative
    desktop and mobile hardware.
-5. Extend the exact authored Mission 1–5 objectives to reviewed rules for
-   Mission 6 and later, and extend the present mission-information/construction
+5. Extend the exact authored Mission 1–6 objectives to reviewed rules for
+   Mission 7 and later, and extend the present mission-information/construction
    panel and live classic-surface minimap with semantic radar behavior,
    production icon art, and complete gamepad equivalents.
 6. Add semantic screen-reader unit selection/orders, remappable controls,

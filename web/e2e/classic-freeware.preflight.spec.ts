@@ -153,6 +153,75 @@ async function missionFiveVisibleMoveTarget(page: Page): Promise<{ x: number; y:
   throw new Error("Mission 5 East A exposed no visible move target near its starting relief group");
 }
 
+async function selectMissionSixCommando(page: Page): Promise<void> {
+  const battlefield = page.getByLabel("Real-time strategy battlefield");
+  await expect.poll(() => currentTick(page), { timeout: 2 * 60_000 }).toBeGreaterThan(330);
+
+  // Once the landing craft arrives, the Commando stands alone in the lower-
+  // right portion of the tactical view. Box selection is less sensitive than
+  // a point click to small formation and aspect-fit shifts in software WebGL.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const bounds = await battlefield.boundingBox();
+    expect(bounds).not.toBeNull();
+    await page.mouse.move(bounds!.x + bounds!.width * 0.50, bounds!.y + bounds!.height * 0.50);
+    await page.mouse.down();
+    await page.mouse.move(
+      bounds!.x + bounds!.width * 0.70,
+      bounds!.y + bounds!.height * 0.90,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+    await page.waitForTimeout(750);
+
+    const selectionLabels = await page.locator(".selection-status").allTextContents();
+    if (selectionLabels.some((label) => label.includes("Commando selected"))) return;
+  }
+
+  throw new Error("Mission 6's landed Commando could not be box-selected through the battlefield");
+}
+
+async function missionSixVisibleSabotageTarget(page: Page): Promise<{ x: number; y: number }> {
+  const battlefield = page.getByLabel("Real-time strategy battlefield");
+  const bounds = await battlefield.boundingBox();
+  expect(bounds).not.toBeNull();
+  const center = { x: 0.68, y: 0.65 };
+  const candidates = [
+    center,
+    ...Array.from({ length: 20 }, (_, y) => 0.44 + y * 0.02).flatMap((y) => (
+      Array.from({ length: 20 }, (_, x) => ({ x: 0.46 + x * 0.02, y }))
+    )).sort((left, right) => (
+      Math.hypot(left.x - center.x, left.y - center.y)
+      - Math.hypot(right.x - center.x, right.y - center.y)
+    )),
+  ];
+  const resetPoint = { x: bounds!.x + bounds!.width + 4, y: bounds!.y + 4 };
+
+  // The exact screen point shifts as the Commando reveals each cell and the
+  // classic aspect-fit viewport rounds its letterbox. Search only the rendered
+  // battlefield while paused; action 10 still comes from the selected
+  // Commando's public snapshot action, not object/debug state.
+  for (const candidate of candidates) {
+    await page.mouse.move(resetPoint.x, resetPoint.y);
+    await expect.poll(
+      () => battlefield.getAttribute("data-contextual-action"),
+      { timeout: 2_000, intervals: [16, 33, 50] },
+    ).toBeNull();
+    await page.mouse.move(
+      bounds!.x + bounds!.width * candidate.x,
+      bounds!.y + bounds!.height * candidate.y,
+    );
+    await expect.poll(
+      () => battlefield.getAttribute("data-contextual-action"),
+      { timeout: 2_000, intervals: [16, 33, 50] },
+    ).not.toBeNull();
+    if (await battlefield.getAttribute("data-contextual-action") === "10") {
+      return { x: bounds!.width * candidate.x, y: bounds!.height * candidate.y };
+    }
+  }
+
+  throw new Error("Mission 6 exposed no visible structure with the Commando's Sabotage action");
+}
+
 test.describe("real classic-freeware bootstrap", () => {
   test.skip(!enabled, "Set CNCWEB_CLASSIC_FREEWARE_PREFLIGHT=1 after building the real sidecar into web/dist");
   test.setTimeout(8 * 60_000);
@@ -490,6 +559,75 @@ test.describe("real classic-freeware bootstrap", () => {
       await expect(page.locator(".error-banner, .diagnostic-error")).toHaveCount(0);
     }
 
+    expect(pageErrors).toEqual([]);
+  });
+
+  test("shows exact Mission 6 rules and issues a Commando sabotage order", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await waitForFreewareMission(page);
+    await page.locator(".mission-picker select").nth(1).selectOption("gdi-06-east-a");
+    await page.getByRole("button", { name: "Start new mission", exact: true }).click();
+    await waitForFreewareMission(page, "gdi-06-east-a", "GDI Mission 6 (East A)");
+    await expectMissionObjectives(page, [
+      {
+        label: "Sabotage the Nod base",
+        description: "Use the Commando's C4 to demolish the Airstrip, Construction Yard, Hand of Nod, Refinery, Silo, Power Plant, or Communications Center. Destroying every counted Nod unit and structure is an alternate victory. Sabotaging the Airstrip bypasses Mission 7; otherwise the sabotaged structure type is carried into Mission 7.",
+        progress: "C4 sabotage objective active",
+      },
+      {
+        label: "Keep the Commando alive",
+        description: "The operation fails if the Commando is killed. Landing craft and transport aircraft alone do not keep the GDI ground force operational.",
+        progress: "Commando survival condition active",
+      },
+    ]);
+
+    await dismissBattlefieldGuide(page);
+    const battlefield = page.getByLabel("Real-time strategy battlefield");
+    await selectMissionSixCommando(page);
+    await expect(page.locator(".selection-status")).toContainText("Commando selected");
+
+    const bounds = await battlefield.boundingBox();
+    expect(bounds).not.toBeNull();
+    const moveTarget = { x: bounds!.width * 0.66, y: bounds!.height * 0.78 };
+    await battlefield.hover({ position: moveTarget, force: true });
+    await expect(page.locator(".contextual-order-status")).toHaveText("Right-click · Move");
+    await expect(battlefield).toHaveAttribute("data-contextual-action", "1");
+    await battlefield.click({ position: moveTarget, button: "right", force: true });
+    await expect(page.locator(".notice-strip")).toHaveText("Move order issued");
+
+    const moveOrderTick = await currentTick(page);
+    await expect.poll(() => currentTick(page), { timeout: 45_000 }).toBeGreaterThan(moveOrderTick + 190);
+    const exploreTarget = { x: bounds!.width * 0.66, y: bounds!.height * 0.65 };
+    await battlefield.hover({ position: exploreTarget, force: true });
+    await expect(page.locator(".contextual-order-status")).toHaveText("Right-click · Explore");
+    await expect(battlefield).toHaveAttribute("data-contextual-action", "explore");
+    await battlefield.click({ position: exploreTarget, button: "right", force: true });
+    await expect(page.locator(".notice-strip")).toHaveText("Explore order issued");
+
+    const revealProbe = { x: bounds!.width * 0.68, y: bounds!.height * 0.65 };
+    await expect.poll(async () => {
+      await battlefield.hover({ position: revealProbe, force: true });
+      const action = await battlefield.getAttribute("data-contextual-action");
+      return action;
+    }, { timeout: 30_000, intervals: [250, 500] }).toMatch(/^(?:2|10)$/);
+    await expect(page.locator(".selection-status")).toContainText("Commando selected");
+    await pauseAtStableTick(page);
+
+    const sabotageTarget = await missionSixVisibleSabotageTarget(page);
+    await expect(page.locator(".contextual-order-status")).toHaveText("Right-click · Sabotage");
+    await expect(battlefield).toHaveAttribute("data-contextual-cursor", "crosshair");
+    await expect(battlefield).toHaveCSS("cursor", "crosshair");
+    await page.getByRole("button", { name: "Resume", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeEnabled();
+    await battlefield.hover({ position: sabotageTarget, force: true });
+    await expect(battlefield).toHaveAttribute("data-contextual-action", "10");
+    await battlefield.click({ position: sabotageTarget, button: "right", force: true });
+    await expect(page.locator(".notice-strip")).toHaveText("Sabotage order issued");
+
+    await expect(page.locator(".error-banner, .diagnostic-error")).toHaveCount(0);
     expect(pageErrors).toEqual([]);
   });
 

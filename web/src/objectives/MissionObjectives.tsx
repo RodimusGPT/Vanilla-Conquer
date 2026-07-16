@@ -24,14 +24,15 @@ export interface MissionObjectivePresentation {
 
 type MissionFour = "4-west-a" | "4-west-b" | "4-east-a";
 type MissionFive = "5-east-a" | "5-west-a" | "5-west-b";
-type ReviewedGdiMission = 1 | 2 | 3 | MissionFour | MissionFive;
+type ReviewedGdiMission = 1 | 2 | 3 | 6 | MissionFour | MissionFive;
 
 function reviewedGdiMission(mission: RuntimeMissionV1): ReviewedGdiMission | undefined {
   if (mission.faction !== "gdi") return undefined;
   if (mission.direction === 0 && mission.variation === 0) {
-    if (mission.scenarioRoot === "SCG01EA" && mission.scenario === 1) return 1;
-    if (mission.scenarioRoot === "SCG02EA" && mission.scenario === 2) return 2;
-    if (mission.scenarioRoot === "SCG03EA" && mission.scenario === 3) return 3;
+    if (mission.id === "gdi-01-east-a" && mission.scenarioRoot === "SCG01EA" && mission.scenario === 1 && mission.buildLevel === 1) return 1;
+    if (mission.id === "gdi-02-east-a" && mission.scenarioRoot === "SCG02EA" && mission.scenario === 2 && mission.buildLevel === 2) return 2;
+    if (mission.id === "gdi-03-east-a" && mission.scenarioRoot === "SCG03EA" && mission.scenario === 3 && mission.buildLevel === 3) return 3;
+    if (mission.id === "gdi-06-east-a" && mission.scenarioRoot === "SCG06EA" && mission.scenario === 6 && mission.buildLevel === 6) return 6;
   }
   if (
     mission.id === "gdi-04-west-a"
@@ -96,9 +97,13 @@ function destroyedProgress(stats: SnapshotSidebar | undefined, result: MissionOb
   return `${units.toLocaleString()} ${units === 1 ? "unit" : "units"} and ${structures.toLocaleString()} ${structures === 1 ? "structure" : "structures"} destroyed`;
 }
 
-function survivalProgress(stats: SnapshotSidebar | undefined, result: MissionObjectiveResult | undefined): string {
+function survivalProgress(
+  stats: SnapshotSidebar | undefined,
+  result: MissionObjectiveResult | undefined,
+  failed = "All counted GDI ground forces were lost",
+): string {
   if (result?.won) return "GDI force survived";
-  if (result && !result.won) return "All counted GDI ground forces were lost";
+  if (result && !result.won) return failed;
   const losses = (stats?.unitsLost ?? 0) + (stats?.buildingsLost ?? 0);
   return `${losses.toLocaleString()} ${losses === 1 ? "loss" : "losses"} recorded`;
 }
@@ -202,6 +207,32 @@ function missionFivePresentation(
   };
 }
 
+function missionSixPresentation(
+  result: MissionObjectiveResult | undefined,
+): MissionObjectivePresentation {
+  const status = resultStatus(result);
+  return {
+    title: "Operation orders",
+    status,
+    items: [
+      {
+        id: "sabotage-nod",
+        label: "Sabotage the Nod base",
+        description: "Use the Commando's C4 to demolish the Airstrip, Construction Yard, Hand of Nod, Refinery, Silo, Power Plant, or Communications Center. Destroying every counted Nod unit and structure is an alternate victory. Sabotaging the Airstrip bypasses Mission 7; otherwise the sabotaged structure type is carried into Mission 7.",
+        progress: engineRuleProgress(result, "C4 sabotage objective active"),
+        status,
+      },
+      {
+        id: "preserve-commando",
+        label: "Keep the Commando alive",
+        description: "The operation fails if the Commando is killed. Landing craft and transport aircraft alone do not keep the GDI ground force operational.",
+        progress: engineRuleProgress(result, "Commando survival condition active", "Commando survived"),
+        status,
+      },
+    ],
+  };
+}
+
 /**
  * Returns mission rules only when the browser has an exact, reviewed rule set.
  * Final status always comes from the engine result; snapshot statistics are
@@ -219,6 +250,7 @@ export function missionObjectivePresentation(
       ? missionFourPresentation(reviewedMission as MissionFour, result)
       : missionFivePresentation(result, stats);
   }
+  if (reviewedMission === 6) return missionSixPresentation(result);
   const status = resultStatus(result);
   const missionTwo = reviewedMission === 2;
   const missionThree = reviewedMission === 3;
@@ -249,7 +281,13 @@ export function missionObjectivePresentation(
           : missionTwo
             ? "The operation fails if every counted GDI unit and structure is destroyed."
             : "The operation fails if every counted GDI ground force is destroyed.",
-        progress: survivalProgress(stats, result),
+        progress: survivalProgress(
+          stats,
+          result,
+          missionTwo || missionThree
+            ? "All counted GDI units and structures were lost"
+            : "All counted GDI ground forces were lost",
+        ),
         status,
       },
     ],

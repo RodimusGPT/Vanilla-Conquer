@@ -47,6 +47,30 @@ const missions = new Map([
     buildLevel: 3,
     maxTicks: 90_000,
   }],
+  [6, {
+    number: 6,
+    id: "gdi-06-east-a",
+    scenarioRoot: "SCG06EA",
+    scenario: 6,
+    variation: 0,
+    direction: 0,
+    buildLevel: 6,
+    maxTicks: 60_000,
+    samSites: [
+      { typeName: "SAM", cellX: 53, cellY: 40 },
+      { typeName: "SAM", cellX: 38, cellY: 40 },
+    ],
+    transportLanding: { cellX: 32, cellY: 36 },
+    infiltrationRoute: [
+      { cellX: 36, cellY: 32 },
+      { cellX: 49, cellY: 24 },
+      { cellX: 58, cellY: 24 },
+      { cellX: 61, cellY: 22 },
+      { cellX: 61, cellY: 12 },
+      { cellX: 60, cellY: 7 },
+    ],
+    airstrip: { typeName: "AFLD", cellX: 58, cellY: 4 },
+  }],
 ]);
 const missionFourVariants = new Map([
   ["west-a", {
@@ -336,7 +360,7 @@ const mission = missionNumber === 4
 if (!mission) {
   if (missionNumber === 4 || missionNumber === 5) {
     console.error("CNCWEB_VERIFY_MISSION_VARIANT must be west-a, west-b, or east-a");
-  } else console.error("CNCWEB_VERIFY_MISSION must be 1, 2, 3, 4, or 5");
+  } else console.error("CNCWEB_VERIFY_MISSION must be 1, 2, 3, 4, 5, or 6");
   process.exit(2);
 }
 const trace = process.env.CNCWEB_VERIFY_TRACE === "1";
@@ -501,6 +525,10 @@ const INPUT_COMMAND_AT_POSITION = 9;
 const INPUT_SPECIAL_KEYS = 10;
 const UNIT_REQUEST_STOP = 5;
 const UNIT_SCATTER = 1;
+const ACTION_SELF = 4;
+const ACTION_SABOTAGE = 10;
+const STRUCT_AIRSTRIP = 11;
+const PIP_COMMANDO = 7;
 const MODIFIER_CTRL = 1 << 0;
 const MODIFIER_ALT = 1 << 1;
 const SECTION_STATIC_MAP = 1;
@@ -722,8 +750,13 @@ function readSnapshot(handle) {
       cellY: view.getUint16(objectOffset + 168, true),
       owner: view.getUint8(objectOffset + 182),
       subObject: view.getUint8(objectOffset + 184),
+      selectedMask: view.getUint32(objectOffset + 188, true),
       objectFlags: view.getUint32(objectOffset + 204, true),
       canFireMask: view.getUint32(objectOffset + 212, true),
+      actionWithSelected: Array.from(
+        { length: 32 },
+        (_, house) => view.getUint8(objectOffset + 440 + house),
+      ),
       // cnc_web_protocol.h v1: occupy_count u16 @216, pip_count u16 @218,
       // max_pips u16 @220, line_count u16 @222, then pips[18] i32 @296.
       // Note that the transport renderer exports all five slots, including
@@ -1242,6 +1275,18 @@ let missionFiveHuntTriggeredTick;
 const missionFiveKnownHostileStructures = new Map();
 let missionFiveStaticSweepStartedTick;
 let missionFiveStaticSweepForceOrderCycle = -1;
+let missionSixPhase = "opening";
+let missionSixRouteStage = 0;
+const missionSixRouteArrivalTicks = [];
+let missionSixTransportLoadTick;
+let missionSixTransportLandingTick;
+let missionSixTransportUnloadTick;
+let missionSixSabotageActionObserved = false;
+let missionSixSabotageOrderTick;
+let missionSixLastOrderTick = -Infinity;
+let missionSixLastOrderKey;
+let missionSixAirstripSelectionTick;
+const missionSixSamDestroyedTicks = [];
 const missionFourProtectedVillageCells = new Set([
   "18:44",
   "19:46",
@@ -1498,7 +1543,8 @@ try {
       initialProtectedVillageCells.add(`${structure.cellX}:${structure.cellY}`);
     }
   }
-  assert.ok(initialFriendly > 0, `GDI Mission ${mission.number} started with no friendly combatants`);
+  assert.ok(mission.number === 6 || initialFriendly > 0,
+    `GDI Mission ${mission.number} started with no friendly combatants`);
   assert.ok(initialHostiles > 0, `GDI Mission ${mission.number} started with no Nod combatants`);
 
   while (!snapshot.terminal && snapshot.tick < MAX_TICKS) {
@@ -1629,6 +1675,9 @@ try {
     }
     const friendly = rootCombatants(snapshot, HOUSE_GDI);
     const hostiles = rootCombatants(snapshot, HOUSE_NOD);
+    if (mission.number === 6 && initialFriendly === 0 && friendly.length > 0) {
+      initialFriendly = friendly.length;
+    }
     const missionFiveAirstrike = mission.number === 5
       ? snapshot.sidebar.entries.find((entry) => entry.assetName === "SW_AirStrike")
       : undefined;
@@ -4287,7 +4336,248 @@ try {
       missionFiveLastForwardTargetKey = undefined;
       missionFiveLastForwardTargetStrength = undefined;
     }
-    let orderTarget = mission.number === 3
+    const missionSixCommando = mission.number === 6
+      ? friendly.find((object) => object.typeName === "RMBO")
+      : undefined;
+    const missionSixTransport = mission.number === 6
+      ? friendly.find((object) => object.typeName === "TRAN")
+      : undefined;
+    const missionSixAirstrip = mission.number === 6
+      ? hostiles.find((hostile) => (
+        hostile.typeName === mission.airstrip.typeName
+        && hostile.cellX === mission.airstrip.cellX
+        && hostile.cellY === mission.airstrip.cellY
+      ))
+      : undefined;
+    const missionSixDistance = (object, destination) => Math.max(
+      Math.abs(object.cellX - destination.cellX),
+      Math.abs(object.cellY - destination.cellY),
+    );
+    const missionSixQueueContextOrder = (
+      group,
+      destination,
+      orderKey,
+      interval = 90,
+      flags = 0,
+    ) => {
+      if (group.length === 0 || !destination) return false;
+      if (missionSixLastOrderKey === orderKey
+        && snapshot.tick - missionSixLastOrderTick < interval) return false;
+      commands.push({ type: COMMAND_CLEAR_SELECTION, args: [0, 0, 0, 0, 0, 0, 0] });
+      for (const object of group) {
+        commands.push({
+          type: COMMAND_SELECT_OBJECT,
+          args: [object.type, object.id, 0, 0, 0, 0, 0],
+        });
+      }
+      if (flags) {
+        commands.push({
+          type: COMMAND_INPUT,
+          flags,
+          args: [INPUT_SPECIAL_KEYS, 0, 0, 0, 0, 0, 0],
+        });
+      }
+      commands.push({
+        type: COMMAND_INPUT,
+        flags,
+        args: [
+          INPUT_COMMAND_AT_POSITION,
+          destination.cellX * CELL_PIXELS + CELL_PIXELS / 2,
+          destination.cellY * CELL_PIXELS + CELL_PIXELS / 2,
+          0, 0, 0, 0,
+        ],
+      });
+      if (flags) {
+        commands.push({
+          type: COMMAND_INPUT,
+          args: [INPUT_SPECIAL_KEYS, 0, 0, 0, 0, 0, 0],
+        });
+      }
+      selectionCommands += group.length;
+      contextualOrders += 1;
+      retargetCycles += 1;
+      missionSixLastOrderKey = orderKey;
+      missionSixLastOrderTick = snapshot.tick;
+      return true;
+    };
+    if (mission.number === 6) {
+      const liveSamSites = mission.samSites.map((site) => hostiles.find((hostile) => (
+        hostile.typeName === site.typeName
+        && hostile.cellX === site.cellX
+        && hostile.cellY === site.cellY
+      )));
+      while (missionSixSamDestroyedTicks.length < mission.samSites.length
+        && !liveSamSites[missionSixSamDestroyedTicks.length]) {
+        missionSixSamDestroyedTicks.push(snapshot.tick);
+      }
+      const lowerThreat = missionSixCommando
+        ? hostiles.filter((hostile) => (
+          hostile.type !== 4 && hostile.cellY >= 38
+        )).toSorted((left, right) => (
+          missionSixDistance(left, missionSixCommando)
+          - missionSixDistance(right, missionSixCommando)
+          || left.strength - right.strength
+          || left.id - right.id
+        ))[0]
+        : undefined;
+      if (missionSixPhase === "opening"
+        && liveSamSites.every((site) => !site) && !lowerThreat) {
+        missionSixPhase = "loading";
+        missionSixLastOrderKey = undefined;
+      }
+
+      if (missionSixPhase === "opening" && missionSixCommando) {
+        const openingTarget = lowerThreat ?? liveSamSites.find(Boolean);
+        missionSixQueueContextOrder(
+          [missionSixCommando],
+          openingTarget,
+          openingTarget && `opening:${objectKey(openingTarget)}`,
+          30,
+        );
+      }
+
+      if (missionSixPhase === "loading") {
+        if (missionSixTransport?.pips.includes(PIP_COMMANDO) && !missionSixCommando) {
+          missionSixTransportLoadTick = snapshot.tick;
+          missionSixPhase = "flight";
+          missionSixLastOrderKey = undefined;
+        } else if (missionSixCommando && missionSixTransport) {
+          missionSixQueueContextOrder(
+            [missionSixCommando],
+            missionSixTransport,
+            `load:${objectKey(missionSixTransport)}`,
+          );
+        }
+      }
+
+      if (missionSixPhase === "flight" && missionSixTransport) {
+        const atLandingZone = missionSixDistance(missionSixTransport, mission.transportLanding) <= 3;
+        const selectedByGdi = Boolean(missionSixTransport.selectedMask & (1 << HOUSE_GDI));
+        const canUnload = selectedByGdi
+          && missionSixTransport.actionWithSelected[HOUSE_GDI] === ACTION_SELF;
+        if (atLandingZone && canUnload) {
+          missionSixTransportLandingTick = snapshot.tick;
+          missionSixQueueContextOrder(
+            [missionSixTransport],
+            missionSixTransport,
+            `unload:${objectKey(missionSixTransport)}`,
+            30,
+          );
+          missionSixPhase = "unloading";
+        } else if (!atLandingZone) {
+          missionSixQueueContextOrder(
+            [missionSixTransport],
+            mission.transportLanding,
+            "flight:landing-zone",
+          );
+        }
+      }
+
+      if (missionSixPhase === "unloading") {
+        if (missionSixCommando && !missionSixTransport?.pips.includes(PIP_COMMANDO)) {
+          missionSixTransportUnloadTick = snapshot.tick;
+          missionSixPhase = "infiltrate";
+          missionSixLastOrderKey = undefined;
+        } else if (missionSixTransport
+          && missionSixTransport.actionWithSelected[HOUSE_GDI] === ACTION_SELF) {
+          missionSixQueueContextOrder(
+            [missionSixTransport],
+            missionSixTransport,
+            `unload:${objectKey(missionSixTransport)}`,
+            30,
+          );
+        }
+      }
+
+      if (missionSixPhase === "infiltrate" && missionSixCommando) {
+        while (missionSixRouteStage < mission.infiltrationRoute.length
+          && missionSixDistance(
+            missionSixCommando,
+            mission.infiltrationRoute[missionSixRouteStage],
+          ) <= 2) {
+          missionSixRouteArrivalTicks.push(snapshot.tick);
+          missionSixRouteStage += 1;
+          missionSixLastOrderKey = undefined;
+        }
+        const routeTarget = mission.infiltrationRoute[missionSixRouteStage];
+        if (routeTarget) {
+          missionSixQueueContextOrder(
+            [missionSixCommando],
+            routeTarget,
+            `route:${missionSixRouteStage}`,
+            90,
+            MODIFIER_ALT,
+          );
+        } else if (missionSixAirstrip
+          && snapshot.shroud.isVisible(missionSixAirstrip.cellX, missionSixAirstrip.cellY)) {
+          commands.push({ type: COMMAND_CLEAR_SELECTION, args: [0, 0, 0, 0, 0, 0, 0] });
+          commands.push({
+            type: COMMAND_SELECT_OBJECT,
+            args: [missionSixCommando.type, missionSixCommando.id, 0, 0, 0, 0, 0],
+          });
+          selectionCommands += 1;
+          missionSixAirstripSelectionTick = snapshot.tick;
+          missionSixPhase = "sabotage-ready";
+        } else {
+          missionSixQueueContextOrder(
+            [missionSixCommando],
+            { cellX: 54, cellY: 8 },
+            "route:airstrip-approach",
+          );
+        }
+      }
+
+      if (missionSixPhase === "sabotage-ready"
+        && missionSixAirstripSelectionTick !== undefined
+        && snapshot.tick > missionSixAirstripSelectionTick
+        && missionSixCommando && missionSixAirstrip) {
+        const selectedByGdi = Boolean(missionSixCommando.selectedMask & (1 << HOUSE_GDI));
+        if (selectedByGdi
+          && missionSixAirstrip.actionWithSelected[HOUSE_GDI] === ACTION_SABOTAGE) {
+          missionSixSabotageActionObserved = true;
+          if (missionSixQueueContextOrder(
+            [missionSixCommando],
+            missionSixAirstrip,
+            `sabotage:${objectKey(missionSixAirstrip)}`,
+            Infinity,
+          )) {
+            missionSixSabotageOrderTick = snapshot.tick;
+            missionSixPhase = "sabotage";
+          }
+        } else if (missionSixAirstripSelectionTick === undefined
+          || snapshot.tick - missionSixAirstripSelectionTick >= 90) {
+          commands.push({ type: COMMAND_CLEAR_SELECTION, args: [0, 0, 0, 0, 0, 0, 0] });
+          commands.push({
+            type: COMMAND_SELECT_OBJECT,
+            args: [missionSixCommando.type, missionSixCommando.id, 0, 0, 0, 0, 0],
+          });
+          selectionCommands += 1;
+          missionSixAirstripSelectionTick = snapshot.tick;
+        }
+      }
+
+      if (trace && snapshot.tick % 300 === 0) {
+        console.error(JSON.stringify({ missionSix: {
+          phase: missionSixPhase,
+          routeStage: missionSixRouteStage,
+          commando: missionSixCommando && {
+            strength: missionSixCommando.strength,
+            cellX: missionSixCommando.cellX,
+            cellY: missionSixCommando.cellY,
+          },
+          transport: missionSixTransport && {
+            cellX: missionSixTransport.cellX,
+            cellY: missionSixTransport.cellY,
+            pips: missionSixTransport.pips,
+            action: missionSixTransport.actionWithSelected[HOUSE_GDI],
+          },
+          airstripAction: missionSixAirstrip?.actionWithSelected[HOUSE_GDI],
+        } }));
+      }
+    }
+    let orderTarget = mission.number === 6
+      ? undefined
+      : mission.number === 3
       ? assaultReady ? chooseMissionThreeAssaultTarget(hostiles) : chooseMissionThreeDefenseTarget(hostiles)
       : mission.number === 2
         ? assaultReady ? target : chooseMissionTwoDefenseTarget(hostiles)
@@ -5010,6 +5300,57 @@ try {
     assert.ok(peakFriendly > initialFriendly,
       `GDI Mission 5 ${mission.variant} acceptance did not assemble a larger strike force`);
   }
+  if (mission.number === 6) {
+    const survivingCommando = finalSnapshot.objects.find((object) => (
+      object.owner === HOUSE_GDI
+      && object.subObject === 0
+      && object.typeName === "RMBO"
+      && object.strength > 0
+    ));
+    assert.equal(initialFriendly, 2, "GDI Mission 6 initial counted insertion force changed");
+    assert.equal(initialHostiles, 64, "GDI Mission 6 initial counted Nod force changed");
+    assert.equal(missionSixSamDestroyedTicks.length, mission.samSites.length,
+      "GDI Mission 6 did not destroy both authored southern SAM sites");
+    assert.ok(missionSixTransportLoadTick !== undefined,
+      "GDI Mission 6 never confirmed the Commando aboard the Chinook");
+    assert.ok(missionSixTransportLandingTick !== undefined,
+      "GDI Mission 6 never confirmed the loaded Chinook landed across the river");
+    assert.ok(missionSixTransportUnloadTick !== undefined,
+      "GDI Mission 6 never confirmed the Commando left the Chinook");
+    assert.ok(missionSixTransportLoadTick < missionSixTransportLandingTick
+      && missionSixTransportLandingTick <= missionSixTransportUnloadTick,
+    "GDI Mission 6 Chinook load, landing, and unload transitions are out of order");
+    assert.equal(missionSixRouteStage, mission.infiltrationRoute.length,
+      "GDI Mission 6 Commando did not complete the eastern infiltration route");
+    assert.equal(missionSixRouteArrivalTicks.length, mission.infiltrationRoute.length,
+      "GDI Mission 6 did not record every infiltration-route arrival");
+    assert.ok(missionSixAirstripSelectionTick !== undefined,
+      "GDI Mission 6 never selected the Commando for the Airstrip objective");
+    assert.ok(missionSixSabotageActionObserved,
+      "GDI Mission 6 never exposed the public Sabotage action on the Airstrip");
+    assert.ok(missionSixSabotageOrderTick !== undefined
+      && missionSixAirstripSelectionTick < missionSixSabotageOrderTick,
+    "GDI Mission 6 did not issue Airstrip sabotage after observing its public action");
+    assert.equal(missionSixPhase, "sabotage",
+      "GDI Mission 6 reached its terminal state outside the sabotage phase");
+    assert.equal(outcome.args[2], STRUCT_AIRSTRIP,
+      "GDI Mission 6 campaign outcome did not carry the sabotaged Airstrip type");
+    assert.equal(gameOver.args[4], STRUCT_AIRSTRIP,
+      "GDI Mission 6 game-over event did not carry the sabotaged Airstrip type");
+    assert.ok(!remainingHostiles.some((hostile) => (
+      hostile.typeName === mission.airstrip.typeName
+      && hostile.cellX === mission.airstrip.cellX
+      && hostile.cellY === mission.airstrip.cellY
+    )), "GDI Mission 6 won while the target Airstrip remained intact");
+    assert.ok(survivingCommando,
+      "GDI Mission 6 won without the Commando surviving the sabotage");
+    assert.ok(finalHostiles > 0,
+      "GDI Mission 6 acceptance eliminated Nod instead of completing the sabotage objective");
+    assert.ok(stats.unitsKilled < 20,
+      "GDI Mission 6 triggered the authored twenty-kill Nod hunt instead of infiltrating");
+    assert.equal(stats.buildingsKilled, 3,
+      "GDI Mission 6 destroyed structures beyond the two SAM sites and target Airstrip");
+  }
   const commandTypes = mission.number === 3
     ? [
       "sidebar-start-construction",
@@ -5038,7 +5379,9 @@ try {
       ? `four-${mission.variant}`
       : mission.number === 5
         ? `five-${mission.variant}`
-        : ["zero", "one", "two", "three"][mission.number]}-acceptance`,
+        : mission.number === 6
+          ? "six"
+          : ["zero", "one", "two", "three"][mission.number]}-acceptance`,
     version: 1,
     packageId: manifest.package_id,
     packageRevision,
@@ -5109,6 +5452,21 @@ try {
         orders: missionFiveAirstrikeOrders,
         discharges: missionFiveAirstrikeDischarges,
         pending: missionFiveAirstrikePending !== undefined,
+      },
+    } : {}),
+    ...(mission.number === 6 ? {
+      samDestroyedTicks: missionSixSamDestroyedTicks,
+      transport: {
+        loadTick: missionSixTransportLoadTick,
+        landingTick: missionSixTransportLandingTick,
+        unloadTick: missionSixTransportUnloadTick,
+      },
+      routeArrivalTicks: missionSixRouteArrivalTicks,
+      sabotage: {
+        selectionTick: missionSixAirstripSelectionTick,
+        actionObserved: missionSixSabotageActionObserved,
+        orderTick: missionSixSabotageOrderTick,
+        structureType: outcome.args[2],
       },
     } : {}),
     commandTypes,

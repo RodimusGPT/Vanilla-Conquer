@@ -15,8 +15,8 @@ not included.
 
 | Artifact class | Raw limit | Gzip limit | Calibrated value |
 | --- | ---: | ---: | ---: |
-| App JavaScript | 532 KiB | 190 KiB | 531.2 / 182.1 KiB |
-| App CSS | 27 KiB | 6 KiB | 26.9 / 6.0 KiB |
+| App JavaScript | 537 KiB | 190 KiB | 536.2 / 183.7 KiB |
+| App CSS | 29 KiB | 6.25 KiB | 28.1 / 6.1 KiB |
 | Simulation worker | 32 KiB | 11 KiB | 30.1 / 10.0 KiB |
 | Engine JavaScript | 92 KiB | 25 KiB | 73.4 / 19.2 KiB |
 | Engine Wasm | 1,152 KiB | 420 KiB | 975.2 / 349.1 KiB |
@@ -32,8 +32,14 @@ objective state and persistent visible selection feedback; the 6 KiB transfer
 ceiling did not change. The app JavaScript ceiling moved from 525 to 528 KiB
 for strict variable-length occupier parsing and native-style contextual target
 selection. It moved from 528 to 532 KiB when the exact, engine-authoritative
-Mission 4 objective presentations were added for all three canonical variants;
-the measured gzip size remains below the unchanged 190 KiB transfer ceiling.
+Mission 4 objective presentations were added for all three canonical variants.
+On 2026-07-16 the raw ceiling moved from 532 to 537 KiB for the first-run MCV
+deploy/build/place guide, coarse-pointer order coach, and exact Mission 6
+objective/Commando presentation; the measured gzip size remains below the
+unchanged 190 KiB transfer ceiling. The same onboarding work added responsive
+command-bar and touch-coach styling, so the CSS ceilings moved from 27 to 29
+KiB raw and from 6 to 6.25 KiB gzip. The measured integrated artifacts are
+549,047 / 188,072 JavaScript bytes and 28,736 / 6,289 CSS bytes raw/gzip.
 The real-Wasm cadence gate keeps the MCV selected so
 engine contextual-action export and selection presentation remain on its hot
 path. New UI work must justify and record any calibrated

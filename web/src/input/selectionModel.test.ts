@@ -52,6 +52,12 @@ describe("battlefield selection presentation", () => {
     expect(presentation.groups.every((group) => group.count === 0 && !group.active)).toBe(true);
   });
 
+  it("uses the semantic Commando label for the Mission 6 hero", () => {
+    expect(battlefieldSelectionPresentation([
+      object({ assetName: "RMBO", typeName: "Infantry" }),
+    ], 2).label).toBe("Commando selected · 75% health");
+  });
+
   it("returns a safe empty presentation when player identity is absent", () => {
     const presentation = battlefieldSelectionPresentation([object()], undefined);
     expect(presentation.count).toBe(0);

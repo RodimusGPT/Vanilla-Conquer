@@ -91,6 +91,17 @@ const missionFiveWestB: RuntimeMissionV1 = {
   title: "GDI Mission 5 (West B)",
 };
 
+const missionSix: RuntimeMissionV1 = {
+  ...mission,
+  id: "gdi-06-east-a",
+  scenarioRoot: "SCG06EA",
+  scenario: 6,
+  variation: 0,
+  direction: 0,
+  buildLevel: 6,
+  title: "GDI Mission 6 (East A)",
+};
+
 const stats = {
   unitsKilled: 3,
   buildingsKilled: 1,
@@ -172,7 +183,7 @@ describe("Mission 1 objectives", () => {
       expect.objectContaining({ status: "complete", progress: "Engine-confirmed objective complete" }),
     ]));
     expect(missionObjectivePresentation(missionThree, stats, { won: false })?.items).toEqual(expect.arrayContaining([
-      expect.objectContaining({ status: "failed", progress: "All counted GDI ground forces were lost" }),
+      expect.objectContaining({ status: "failed", progress: "All counted GDI units and structures were lost" }),
     ]));
   });
 
@@ -282,7 +293,43 @@ describe("Mission 1 objectives", () => {
     }
   });
 
+  it("presents Mission 6's exact sabotage, campaign consequence, and survival rules", () => {
+    expect(missionObjectivePresentation(missionSix, stats, undefined)?.items).toEqual([
+      {
+        id: "sabotage-nod",
+        label: "Sabotage the Nod base",
+        description: "Use the Commando's C4 to demolish the Airstrip, Construction Yard, Hand of Nod, Refinery, Silo, Power Plant, or Communications Center. Destroying every counted Nod unit and structure is an alternate victory. Sabotaging the Airstrip bypasses Mission 7; otherwise the sabotaged structure type is carried into Mission 7.",
+        progress: "C4 sabotage objective active",
+        status: "active",
+      },
+      {
+        id: "preserve-commando",
+        label: "Keep the Commando alive",
+        description: "The operation fails if the Commando is killed. Landing craft and transport aircraft alone do not keep the GDI ground force operational.",
+        progress: "Commando survival condition active",
+        status: "active",
+      },
+    ]);
+  });
+
+  it("keeps Mission 6 terminal status engine-authoritative and cause-neutral", () => {
+    expect(missionObjectivePresentation(missionSix, stats, { won: true })?.items).toEqual([
+      expect.objectContaining({ status: "complete", progress: "Engine-confirmed objective complete" }),
+      expect.objectContaining({ status: "complete", progress: "Commando survived" }),
+    ]);
+    expect(missionObjectivePresentation(missionSix, stats, { won: false })?.items).toEqual([
+      expect.objectContaining({ status: "failed", progress: "Engine-confirmed operation failed" }),
+      expect.objectContaining({ status: "failed", progress: "Engine-confirmed operation failed" }),
+    ]);
+  });
+
   it("fails closed for missions and variants without a reviewed rule set", () => {
+    expect(missionObjectivePresentation({ ...mission, id: "forged-mission" }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...mission, buildLevel: 2 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionTwo, id: "forged-mission" }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionTwo, buildLevel: 3 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionThree, id: "forged-mission" }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionThree, buildLevel: 4 }, stats, undefined)).toBeUndefined();
     expect(missionObjectivePresentation({ ...missionTwo, variation: 1 }, stats, undefined)).toBeUndefined();
     expect(missionObjectivePresentation({ ...missionTwo, direction: 1 }, stats, undefined)).toBeUndefined();
     expect(missionObjectivePresentation({ ...missionThree, variation: 1 }, stats, undefined)).toBeUndefined();
@@ -304,6 +351,11 @@ describe("Mission 1 objectives", () => {
     expect(missionObjectivePresentation({ ...missionFiveWestB, faction: "nod" }, stats, undefined)).toBeUndefined();
     expect(missionObjectivePresentation({ ...missionFiveWestB, id: "forged-mission" }, stats, undefined)).toBeUndefined();
     expect(missionObjectivePresentation({ ...missionFiveWestB, buildLevel: 4 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionSix, direction: 1 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionSix, variation: 1 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionSix, faction: "nod" }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionSix, id: "forged-mission" }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionSix, buildLevel: 7 }, stats, undefined)).toBeUndefined();
   });
 
   it("renders a semantic objective list and visible state", () => {

@@ -56,7 +56,7 @@ missing; deterministic hashes still cover the complete logical map.
 
 This is a narrow engineering slice, not a finished browser edition. Newly
 composed replacement music, enhanced graphics, reviewed objective rules beyond
-Mission 4, semantic radar, gamepad and screen-reader order parity, broader state
+Mission 6, semantic radar, gamepad and screen-reader order parity, broader state
 deltas, and presentation interpolation remain open. C&amp;C music and movies are
 deliberately excluded from the distributable freeware profile. Source and CI
 remain asset-free; release assets are generated only into ignored or external
@@ -225,22 +225,23 @@ package contents, provenance, and deployment descriptor. Do not commit that
 output. After building the integrated web bundle and placing the sidecar in
 `web/dist`, `cd web && corepack pnpm test:classic-freeware:release` additionally
 proves real Wasm startup, save/load and online/offline recovery, deterministic
-public-ABI victories for Missions 1–5, including all three Mission 4 and Mission
-5 variants,
+public-ABI victories for Missions 1–6, including all three Mission 4 and Mission
+5 variants and Mission 6's Commando sabotage path,
 genuine native terminal events, canonical continuation through Mission 3,
 portrait winter play, single-download behavior, Cache API exclusion, desktop
 Chromium/Firefox coverage, and the real-mission performance budget. Linux
 Playwright WebKit lacks OPFS and verifies the explicit fallback; physical
 Safari remains a device gate.
 
-Run the Mission 3 verifier or the complete Mission 4 and Mission 5 variant
-suites independently with:
+Run the Mission 3 verifier, the complete Mission 4 and Mission 5 variant
+suites, or the Mission 6 sabotage verifier independently with:
 
 ```sh
 cd web
 corepack pnpm verify:classic-freeware:mission-three
 corepack pnpm verify:classic-freeware:mission-four
 corepack pnpm verify:classic-freeware:mission-five
+corepack pnpm verify:classic-freeware:mission-six
 ```
 
 The shared `web/scripts/verify-classic-freeware-mission-one.mjs` verifier selects
@@ -264,6 +265,14 @@ and reaches authoritative victory only after every counted Nod unit and
 structure is gone. Repair and force assembly are playthrough guidance; the
 native terminal rules remain Nod elimination, GDI survival, and the two
 pre-relief special-loss conditions.
+
+The Mission 6 verifier follows the authored Commando operation through normal
+public-ABI commands. It destroys the two SAM sites, boards and unloads from the
+Chinook, infiltrates the Nod base, observes the engine-authored **Sabotage**
+action, and demolishes the Airstrip. Acceptance requires the Commando to
+survive, Nod forces to remain, and Airstrip type 11 to appear in both correlated
+campaign-outcome and game-over events, proving the Mission 7 bypass rather than
+an elimination victory.
 
 A separate Chromium Mission 1 playthrough is deliberately long and opt-in. It
 requires the integrated build and classic-freeware sidecar already present in

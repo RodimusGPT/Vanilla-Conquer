@@ -29,6 +29,7 @@ corepack pnpm test:classic-freeware:deployment-tools
 corepack pnpm verify:classic-freeware:mission-one
 corepack pnpm verify:classic-freeware:mission-two
 corepack pnpm verify:classic-freeware:mission-three
+corepack pnpm verify:classic-freeware:mission-six
 corepack pnpm build
 corepack pnpm check:bundle-budget
 ```
@@ -196,7 +197,7 @@ cannot be preserved, the old build remains available and play resumes.
 - On the first mission launch, the Battlefield basics guide explains shroud
   and the primary controls. Dismissal is remembered, and the compact
   **Controls** button reopens it.
-- Canonical GDI Missions 1–5 show exact reviewed objectives. Mission 1
+- Canonical GDI Missions 1–6 show exact reviewed objectives. Mission 1
   eliminates the Nod force while retaining a GDI ground force; Mission 2
   eliminates the Nod occupation while retaining a GDI force; Mission 3
   eliminates every counted Nod unit and structure while requiring at least one
@@ -211,8 +212,11 @@ cannot be preserved, the old build remains available and play resumes.
   retaining a counted GDI unit or structure. Before the two authored relief
   zones are crossed, it also fails if the last member of either protected
   starting group—the field force or base structures—is destroyed. Repairs are
-  briefing guidance rather than a native completion condition. Mission 6 and
-  later do not receive inferred rules.
+  briefing guidance rather than a native completion condition. Mission 6 uses
+  the Commando's C4 to sabotage one of seven authored Nod base structures while
+  keeping the Commando alive; destroying every counted Nod unit and structure
+  is an alternate victory, and sabotaging the Airstrip bypasses Mission 7.
+  Mission 7 and later do not receive inferred rules.
 - Q selects, E enters contextual order mode, and X or **Stop** stops selected
   units.
 - When one deployable unit is selected, the engine-authored contextual action
@@ -246,7 +250,7 @@ coarse-pointer mobile devices.
   excluded from the distributable freeware profile; any future music must be
   original or independently licensed.
 - Production, placement, repair, sell, targeted superweapons, battle telemetry,
-  control groups, and exact Mission 1–5 objectives are connected. Mission 6 and
+  control groups, and exact Mission 1–6 objectives are connected. Mission 7 and
   later still need reviewed objective rules, and the mission panel's live
   downsampled classic surface is not yet a semantic radar implementation.
 - The engine sends one full indexed-surface bootstrap after start/load, then

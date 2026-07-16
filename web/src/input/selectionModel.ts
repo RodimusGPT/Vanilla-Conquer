@@ -47,6 +47,7 @@ function objectLabel(object: SelectionObjectLike): string {
     JEEP: "Humvee",
     MTNK: "Medium Tank",
     ORCA: "Orca",
+    RMBO: "Commando",
     MCV: "Mobile Construction Vehicle",
     FACT: "Construction Yard",
     FACTMAKE: "Construction Yard",
