@@ -231,7 +231,7 @@ test("launches the explicit asset-free demo through a worker and WebGL2", async 
   await launchFreshDemo(page);
   expect((await workerStarted).url()).toMatch(/assets\/simulation\.worker-[\w-]+\.js$/);
   await expect(page.getByRole("heading", { name: "Foundation range" })).toBeVisible();
-  await expect(page.getByText("LOCAL DEMO", { exact: true })).toBeVisible();
+  await expect(page.getByText("Radar · LOCAL DEMO", { exact: true })).toBeVisible();
 
   const graphics = await page.getByLabel("Real-time strategy battlefield").evaluate((element) => {
     const canvas = element as HTMLCanvasElement;
