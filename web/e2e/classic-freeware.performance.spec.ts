@@ -111,6 +111,10 @@ test.describe("real classic-freeware performance", () => {
       timeout: budgets.maximumColdStartupMs,
     });
     await expect(page.locator(".mission-picker select").nth(1)).toHaveValue("gdi-01-east-a");
+    await expect(page.getByRole("button", { name: /^(?:Pause|Resume)$/, includeHidden: true })).toBeEnabled({
+      timeout: budgets.maximumColdStartupMs,
+    });
+    await dismissBattlefieldGuide(page, { waitForWelcome: true });
     await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeEnabled({
       timeout: budgets.maximumColdStartupMs,
     });
@@ -122,7 +126,6 @@ test.describe("real classic-freeware performance", () => {
 
     // Keep the contextual-action export and selected-unit DOM path active for
     // the entire measurement window; an idle battlefield misses that hot path.
-    await dismissBattlefieldGuide(page);
     const battlefield = page.getByLabel("Real-time strategy battlefield");
     const bounds = await battlefield.boundingBox();
     expect(bounds).not.toBeNull();

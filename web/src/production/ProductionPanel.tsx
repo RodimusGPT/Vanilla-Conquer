@@ -71,6 +71,7 @@ function EntryCard({
     <div className="production-entry-actions">
       <button
         className="production-primary"
+        data-tutorial-action={presentation.action}
         aria-label={`${presentation.actionLabel} ${displayName(entry)}`}
         disabled={unavailable || active || presentation.disabled || !presentation.action}
         aria-pressed={active || undefined}

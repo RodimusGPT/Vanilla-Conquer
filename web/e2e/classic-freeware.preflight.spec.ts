@@ -31,10 +31,13 @@ async function serviceWorkerControlled(page: Page): Promise<boolean> {
 async function waitForFreewareMission(page: Page, missionId = "gdi-01-east-a", title = "GDI Mission 1"): Promise<void> {
   await expect(page.locator(".mission-picker select").first()).toHaveValue(packageId, { timeout: 3 * 60_000 });
   await expect(page.locator(".mission-picker select").nth(1)).toHaveValue(missionId);
-  await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
   await expect(page.locator(".minimap span")).toHaveText(`Radar · ${missionId.toUpperCase()}`);
-  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeEnabled({ timeout: 3 * 60_000 });
+  await expect(page.getByRole("button", { name: /^(?:Pause|Resume)$/, includeHidden: true })).toBeEnabled({ timeout: 3 * 60_000 });
+  await dismissBattlefieldGuide(page, { waitForWelcome: true });
   await expect.poll(() => currentTick(page), { timeout: 3 * 60_000 }).toBeGreaterThan(1);
+  await dismissBattlefieldGuide(page);
+  await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeEnabled();
   await expect(page.locator(".error-banner, .diagnostic-error")).toHaveCount(0);
 }
 
@@ -222,6 +225,34 @@ async function missionSixVisibleSabotageTarget(page: Page): Promise<{ x: number;
   throw new Error("Mission 6 exposed no visible structure with the Commando's Sabotage action");
 }
 
+async function selectMissionSevenOpeningReinforcements(page: Page): Promise<void> {
+  const battlefield = page.getByLabel("Real-time strategy battlefield");
+  const expectedLabel = "6 objects selected · 4 Minigunner, 2 E2";
+  await expect.poll(() => currentTick(page), { timeout: 2 * 60_000 }).toBeGreaterThan(330);
+
+  // Both opening landing craft have unloaded by this boundary. Their six
+  // infantry occupy a compact patch at the lower-left edge of the rendered
+  // tactical view; the broader box tolerates formation and aspect-fit shifts.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const bounds = await battlefield.boundingBox();
+    expect(bounds).not.toBeNull();
+    await page.mouse.move(bounds!.x + bounds!.width * 0.14, bounds!.y + bounds!.height * 0.82);
+    await page.mouse.down();
+    await page.mouse.move(
+      bounds!.x + bounds!.width * 0.34,
+      bounds!.y + bounds!.height * 0.97,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+    await page.waitForTimeout(750);
+
+    const selectionLabels = await page.locator(".selection-status").allTextContents();
+    if (selectionLabels.some((label) => label === expectedLabel)) return;
+  }
+
+  throw new Error("Mission 7's six opening infantry reinforcements could not be box-selected");
+}
+
 test.describe("real classic-freeware bootstrap", () => {
   test.skip(!enabled, "Set CNCWEB_CLASSIC_FREEWARE_PREFLIGHT=1 after building the real sidecar into web/dist");
   test.setTimeout(8 * 60_000);
@@ -272,12 +303,19 @@ test.describe("real classic-freeware bootstrap", () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test("shows exact Mission 1 rules and deploys the MCV through visible controls", async ({ page }) => {
+  test("completes the interactive tutorial through Mission 1 Power Plant placement", async ({ page }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await waitForFreewareMission(page);
+    const welcome = page.getByRole("dialog", { name: "Welcome, Commander", exact: true });
+    await expect(welcome).toBeVisible({ timeout: 3 * 60_000 });
+    await welcome.getByRole("button", { name: "Start tutorial", exact: true }).click();
+    await expect(welcome).toBeHidden();
+    await expect(page.locator(".mission-picker select").first()).toHaveValue(packageId);
+    await expect(page.locator(".mission-picker select").nth(1)).toHaveValue("gdi-01-east-a");
+    await expect(page.locator(".minimap span")).toHaveText("Radar · GDI-01-EAST-A");
+    await expect.poll(() => currentTick(page), { timeout: 3 * 60_000 }).toBeGreaterThan(1);
 
     const objectives = page.locator(".mission-objectives");
     await expect(objectives).toBeVisible();
@@ -287,19 +325,100 @@ test.describe("real classic-freeware bootstrap", () => {
     await expect(objectives).toContainText(/\d+ units and \d+ structures destroyed/);
     await expect(objectives).toContainText(/\d+ losses recorded/);
 
-    await dismissBattlefieldGuide(page);
+    const tutorial = page.getByRole("region", { name: "Battlefield tutorial", exact: true });
+    await expect(tutorial.getByRole("heading", { name: "Move the battlefield", exact: true })).toBeVisible();
     const battlefield = page.getByLabel("Real-time strategy battlefield");
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await battlefield.focus();
+    for (const key of ["KeyD", "KeyA", "KeyS", "KeyW"]) {
+      if (!await tutorial.getByRole("heading", { name: "Move the battlefield", exact: true }).isVisible()) break;
+      await page.keyboard.press(key);
+    }
+    await expect(tutorial.getByRole("heading", { name: "Select a unit", exact: true })).toBeVisible();
+    await page.keyboard.press("Home");
+
     const bounds = await battlefield.boundingBox();
     expect(bounds).not.toBeNull();
     await battlefield.click({ position: { x: bounds!.width * 0.725, y: bounds!.height * 0.63 } });
     await expect(page.locator(".selection-status")).toContainText("Mobile Construction Vehicle selected", { timeout: 15_000 });
+    await expect(tutorial.getByRole("heading", { name: "Issue an order", exact: true })).toBeVisible();
+
+    const nearbyMoveCandidates = [
+      { x: bounds!.width * 0.69, y: bounds!.height * 0.63 },
+      { x: bounds!.width * 0.76, y: bounds!.height * 0.63 },
+      { x: bounds!.width * 0.725, y: bounds!.height * 0.69 },
+    ];
+    let moveTarget: { x: number; y: number } | undefined;
+    for (const candidate of nearbyMoveCandidates) {
+      await battlefield.hover({ position: candidate });
+      const moveVisible = await expect.poll(
+        () => page.locator(".contextual-order-status").textContent(),
+        { timeout: 2_500 },
+      ).toBe("Right-click · Move").then(() => true, () => false);
+      if (moveVisible) {
+        moveTarget = candidate;
+        break;
+      }
+    }
+    expect(moveTarget, "Mission 1 should expose a nearby clear MCV move target").toBeDefined();
+    await battlefield.click({ position: moveTarget!, button: "right" });
+    await expect(page.locator(".notice-strip")).toHaveText("Move order issued");
+    await page.getByRole("button", { name: "Stop selected units", exact: true }).click();
+    await expect(tutorial.getByRole("heading", { name: "Deploy the MCV", exact: true })).toBeVisible({ timeout: 15_000 });
 
     const deploy = page.getByRole("button", { name: "Deploy selected unit", exact: true });
-    await expect(deploy).toBeEnabled();
+    await expect(deploy).toBeEnabled({ timeout: 15_000 });
     await deploy.click();
     await expect(page.locator(".notice-strip")).toHaveText("Deploy order sent");
-    await expect(page.getByLabel("Construction and production")).toContainText("Power Plant", { timeout: 30_000 });
-    await expect(page.getByLabel("Construction and production")).not.toContainText("NUKE");
+
+    const production = page.getByLabel("Construction and production");
+    await expect(production).toContainText("Power Plant", { timeout: 30_000 });
+    await expect(production).not.toContainText("NUKE");
+    await expect(tutorial.getByRole("heading", { name: "Build a Power Plant", exact: true })).toBeVisible();
+    const build = page.getByRole("button", { name: "Build Power Plant", exact: true });
+    await expect(build).toBeEnabled();
+    await build.click();
+    await expect(page.locator(".notice-strip")).toHaveText("Building Power Plant");
+    await expect(tutorial.getByRole("heading", { name: "Place the Power Plant", exact: true })).toBeVisible({ timeout: 15_000 });
+
+    const cancelPowerPlant = page.getByRole("button", { name: "Cancel Power Plant production", exact: true });
+    await expect(cancelPowerPlant).toBeEnabled();
+    await cancelPowerPlant.click();
+    await expect(page.locator(".notice-strip")).toHaveText("Canceling Power Plant");
+    await expect(tutorial).toContainText("Build the Power Plant again");
+    await expect(build).toBeEnabled({ timeout: 15_000 });
+    await build.click();
+    await expect(page.locator(".notice-strip")).toHaveText("Building Power Plant");
+
+    const place = page.getByRole("button", { name: "Place Power Plant", exact: true });
+    await expect(place).toBeEnabled({ timeout: 90_000 });
+    await place.click();
+    const quickPlace = page.getByRole("button", { name: "Quick-place Power Plant at a legal site", exact: true });
+    let structurePlaced = false;
+    for (let attempt = 0; attempt < 5 && !structurePlaced; attempt += 1) {
+      await expect(quickPlace).toBeEnabled({ timeout: 15_000 });
+      await quickPlace.click();
+      await expect.poll(
+        () => page.locator(".notice-strip").textContent(),
+        { timeout: 30_000 },
+      ).toMatch(/^(?:Structure placed|That footprint is blocked · choose another green location)$/);
+      structurePlaced = await quickPlace.count() === 0;
+    }
+    expect(structurePlaced, "Tutorial Power Plant placement exhausted five legal sites").toBe(true);
+
+    await expect(tutorial.getByRole("heading", { name: "Command is yours", exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect.poll(() => page.evaluate((key) => {
+      const encoded = localStorage.getItem(key);
+      return encoded ? JSON.parse(encoded) as unknown : null;
+    }, "cncweb:battlefield-tutorial:v2")).toMatchObject({
+      status: "completed",
+      completionAcknowledged: false,
+      outcomes: { place_power_plant: "verified" },
+    });
+    await tutorial.getByRole("button", { name: "Continue mission", exact: true }).click();
+    await expect(tutorial).toHaveCount(0);
+    await expect.poll(() => page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "null"), "cncweb:battlefield-tutorial:v2"))
+      .toMatchObject({ status: "completed", completionAcknowledged: true });
     await expect(page.locator(".error-banner, .diagnostic-error")).toHaveCount(0);
     expect(pageErrors).toEqual([]);
   });
@@ -631,6 +750,46 @@ test.describe("real classic-freeware bootstrap", () => {
     expect(pageErrors).toEqual([]);
   });
 
+  test("shows exact Mission 7 rules and orders the opening reinforcements", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await waitForFreewareMission(page);
+    await page.locator(".mission-picker select").nth(1).selectOption("gdi-07-east-a");
+    await page.getByRole("button", { name: "Start new mission", exact: true }).click();
+    await waitForFreewareMission(page, "gdi-07-east-a", "GDI Mission 7 (East A)");
+    await expectMissionObjectives(page, [
+      {
+        label: "Eliminate the remaining Nod force",
+        description: "Landing-craft reinforcements culminate in an MCV; use it to build up a base, then remove every counted unit and structure from Nod control. Destroy units; destroy or capture structures. Nod production, rebuilt structures, timed attack teams, and later autocreated teams can add targets.",
+        progress: "0 units and 0 structures destroyed",
+      },
+      {
+        label: "Keep GDI operational",
+        description: "The operation fails if every counted GDI infantry unit, ground unit, structure, and regular aircraft is destroyed. Landing craft, transport/cargo aircraft, and A-10 strike aircraft alone do not prevent defeat.",
+        progress: "0 losses recorded",
+      },
+    ]);
+
+    await dismissBattlefieldGuide(page);
+    const battlefield = page.getByLabel("Real-time strategy battlefield");
+    await selectMissionSevenOpeningReinforcements(page);
+    await expect(page.locator(".selection-status")).toHaveText("6 objects selected · 4 Minigunner, 2 E2");
+
+    const bounds = await battlefield.boundingBox();
+    expect(bounds).not.toBeNull();
+    const moveTarget = { x: bounds!.width * 0.24, y: bounds!.height * 0.82 };
+    await battlefield.hover({ position: moveTarget, force: true });
+    await expect(page.locator(".contextual-order-status")).toHaveText("Right-click · Move");
+    await expect(battlefield).toHaveAttribute("data-contextual-action", "1");
+    await battlefield.click({ position: moveTarget, button: "right", force: true });
+    await expect(page.locator(".notice-strip")).toHaveText("Move order issued");
+
+    await expect(page.locator(".error-banner, .diagnostic-error")).toHaveCount(0);
+    expect(pageErrors).toEqual([]);
+  });
+
   test("presents fog-safe contextual actions through the rendered battlefield", async ({ page }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -704,14 +863,12 @@ test.describe("real classic-freeware bootstrap", () => {
     await expect(load).toBeEnabled();
     await load.click();
     await expect(page.locator(".notice-strip")).toContainText(`Loaded Manual save from tick ${savedTick.toLocaleString()}`);
-    await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeEnabled();
-    const loadedTick = await pauseAtStableTick(page);
-    expect(loadedTick).toBeGreaterThanOrEqual(savedTick);
+    await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeEnabled();
+    const loadedTick = await currentTick(page);
+    await page.waitForTimeout(500);
+    expect(await currentTick(page)).toBe(loadedTick);
+    expect(loadedTick).toBe(savedTick);
     expect(loadedTick).toBeLessThan(advancedTick);
-    // The load notice above identifies the exact serialized tick. The next
-    // observed paused tick also includes variable browser/UI scheduling time,
-    // so compare it with the deliberately separated pre-load timeline rather
-    // than imposing a fixed post-load drift allowance.
 
     const onlineReload = await page.reload({ waitUntil: "domcontentloaded" });
     expect(onlineReload).not.toBeNull();
@@ -864,7 +1021,7 @@ test.describe("real classic-freeware bootstrap", () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test("keeps the real winter mission playable in a coarse-pointer portrait viewport", async ({ browser }, testInfo) => {
+  test("persists tutorial dismissal and keeps the real winter mission playable in a coarse-pointer portrait viewport", async ({ browser }, testInfo) => {
     const context = await browser.newContext({
       viewport: { width: 390, height: 844 },
       hasTouch: true,
@@ -875,37 +1032,81 @@ test.describe("real classic-freeware bootstrap", () => {
     page.on("pageerror", (error) => pageErrors.push(error.message));
     try {
       await page.goto("/", { waitUntil: "domcontentloaded" });
+
+      await expect(page.locator(".mission-picker select").first()).toHaveValue(packageId, { timeout: 3 * 60_000 });
+      await expect(page.locator(".mission-picker select").nth(1)).toHaveValue("gdi-01-east-a");
+      const welcome = page.getByRole("dialog", { name: "Welcome, Commander", exact: true });
+      await expect(welcome).toBeVisible({ timeout: 3 * 60_000 });
+      const welcomeBounds = await welcome.boundingBox();
+      expect(welcomeBounds?.x).toBeGreaterThanOrEqual(0);
+      expect(welcomeBounds!.x + welcomeBounds!.width).toBeLessThanOrEqual(390);
+      const notNow = welcome.getByRole("button", { name: "Not now", exact: true });
+      const startTutorial = welcome.getByRole("button", { name: "Start tutorial", exact: true });
+      for (const action of [notNow, startTutorial]) {
+        const actionBounds = await action.boundingBox();
+        expect(actionBounds?.width).toBeGreaterThanOrEqual(44);
+        expect(actionBounds?.height).toBeGreaterThanOrEqual(44);
+      }
+      await notNow.tap();
+      await expect(welcome).toBeHidden();
+      await expect.poll(() => page.evaluate((key) => {
+        const encoded = localStorage.getItem(key);
+        return encoded ? JSON.parse(encoded) as unknown : null;
+      }, "cncweb:battlefield-tutorial:v2")).toMatchObject({
+        version: 2,
+        status: "dismissed",
+        minimized: false,
+      });
+
       await waitForFreewareMission(page);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await waitForFreewareMission(page);
+      await expect(welcome).toHaveCount(0);
+
+      const controlsLauncher = page.getByRole("button", { name: "Open controls and tutorial", exact: true });
+      await expect(controlsLauncher).toBeVisible();
+      const launcherBounds = await controlsLauncher.boundingBox();
+      expect(launcherBounds?.width).toBeGreaterThanOrEqual(44);
+      expect(launcherBounds?.height).toBeGreaterThanOrEqual(44);
+      await controlsLauncher.tap();
+
+      const controls = page.getByRole("dialog", { name: "Controls & tutorial", exact: true });
+      await expect(controls).toBeVisible();
+      await expect(controls.getByText("Black map?", { exact: true })).toBeVisible();
+      await expect(controls.getByText("Mobile Construction Vehicle", { exact: false })).toBeVisible();
+      const controlsBounds = await controls.boundingBox();
+      expect(controlsBounds?.x).toBeGreaterThanOrEqual(0);
+      expect(controlsBounds!.x + controlsBounds!.width).toBeLessThanOrEqual(390);
+
+      const restartTutorial = controls.getByRole("button", { name: "Restart tutorial", exact: true });
+      await expect(restartTutorial).toBeEnabled();
+      await restartTutorial.tap();
+      const restartConfirm = page.getByRole("dialog", { name: "Start a fresh tutorial?", exact: true });
+      await expect(restartConfirm).toBeVisible();
+      await expect(restartConfirm).toContainText("GDI Mission 1");
+      const cancelRestart = restartConfirm.getByRole("button", { name: "Cancel", exact: true });
+      const confirmRestartAction = restartConfirm.locator(".battlefield-tutorial-dialog-actions button").nth(1);
+      await expect(confirmRestartAction).toBeEnabled();
+      await expect(confirmRestartAction).toContainText(/fresh|mission|tutorial/i);
+      for (const action of [cancelRestart, confirmRestartAction]) {
+        const actionBounds = await action.boundingBox();
+        expect(actionBounds?.width).toBeGreaterThanOrEqual(44);
+        expect(actionBounds?.height).toBeGreaterThanOrEqual(44);
+      }
+      await cancelRestart.tap();
+      await expect(restartConfirm).toHaveCount(0);
+      await expect(controls).toBeVisible();
+      await controls.getByRole("button", { name: "Close controls and tutorial", exact: true }).tap();
+      await expect(controls).toHaveCount(0);
+      await expect(controlsLauncher).toBeFocused();
+
       await page.locator(".mission-picker select").nth(1).selectOption("gdi-08-east-a");
       await page.getByRole("button", { name: "Start new mission", exact: true }).click();
       await waitForFreewareMission(page, "gdi-08-east-a", "GDI Mission 8 (East A)");
-
       await expect(page.locator(".portrait-blocker")).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
       await page.getByRole("button", { name: "Collapse mission panel", exact: true }).click();
-      const guide = page.locator(".battlefield-guide");
-      await expect(guide).toBeVisible();
-      const guideBounds = await guide.boundingBox();
-      expect(guideBounds?.x).toBeGreaterThanOrEqual(0);
-      expect(guideBounds!.x + guideBounds!.width).toBeLessThanOrEqual(390);
-      const guideDismiss = page.getByRole("button", { name: "Dismiss battlefield controls guide", exact: true });
-      const guideDismissBounds = await guideDismiss.boundingBox();
-      expect(guideDismissBounds?.width).toBeGreaterThanOrEqual(44);
-      expect(guideDismissBounds?.height).toBeGreaterThanOrEqual(44);
-      await guideDismiss.tap();
-      await expect(guide).toHaveCount(0);
-      expect(await page.evaluate((key) => localStorage.getItem(key), "cncweb:battlefield-onboarding:v1")).toBe("dismissed");
-      await page.reload({ waitUntil: "domcontentloaded" });
-      await waitForFreewareMission(page, "gdi-08-east-a", "GDI Mission 8 (East A)");
-      await expect(guide).toHaveCount(0);
-      const guideLauncher = page.getByRole("button", { name: "Open battlefield controls guide", exact: true });
-      await expect(guideLauncher).toBeVisible();
-      await page.getByRole("button", { name: "Collapse mission panel", exact: true }).click();
-      const guideLauncherBounds = await guideLauncher.boundingBox();
-      expect(guideLauncherBounds?.height).toBeGreaterThanOrEqual(44);
-      await guideLauncher.tap();
-      await expect(guide).toBeVisible();
-      await dismissBattlefieldGuide(page);
+
       const battlefield = page.getByLabel("Real-time strategy battlefield");
       const bounds = await battlefield.boundingBox();
       expect(bounds?.width).toBeGreaterThanOrEqual(388);

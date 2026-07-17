@@ -21,7 +21,20 @@ export interface CompositedPixelReport {
 }
 
 /** Keeps first-run chrome from influencing image acceptance or pointer targets. */
-export async function dismissBattlefieldGuide(page: Page): Promise<void> {
+export async function dismissBattlefieldGuide(
+  page: Page,
+  options: { waitForWelcome?: boolean } = {},
+): Promise<void> {
+  const welcome = page.getByRole("dialog", { name: "Welcome, Commander", exact: true });
+  if (options.waitForWelcome) {
+    await welcome.waitFor({ state: "visible", timeout: 750 }).catch(() => undefined);
+  }
+  if (await welcome.isVisible().catch(() => false)) {
+    await welcome.getByRole("button", { name: "Not now", exact: true }).click();
+    await expect(welcome).toBeHidden();
+  }
+  const hideTutorial = page.getByRole("button", { name: "Hide for now", exact: true });
+  if (await hideTutorial.isVisible().catch(() => false)) await hideTutorial.click();
   const dismiss = page.getByRole("button", { name: "Dismiss battlefield controls guide", exact: true });
   if (await dismiss.isVisible().catch(() => false)) await dismiss.click();
 }
@@ -40,9 +53,9 @@ export async function expectCompositedBattlefield(
   await dismissBattlefieldGuide(page);
   const png = await battlefield.screenshot({
     // Element screenshots include overlapping siblings in the compositor. Hide
-    // both first-run states for this capture so UI chrome cannot satisfy the
+    // every tutorial surface for this capture so UI chrome cannot satisfy the
     // battlefield color/diversity floor.
-    style: ".battlefield-guide, .battlefield-guide-launcher { visibility: hidden !important; }",
+    style: ".battlefield-guide, .battlefield-guide-launcher, .battlefield-tutorial-layer, .battlefield-tutorial-backdrop, .battlefield-controls-launcher { visibility: hidden !important; }",
   });
   const report = await page.evaluate(async ({ encoded, cropWidthRatio, cropHeightRatio, nonDarkChannel }) => {
     const image = new Image();

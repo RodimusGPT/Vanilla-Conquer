@@ -672,10 +672,12 @@ test("saves while paused, loads the earlier state, and resumes it after refresh"
   const loadedMetadataTick = Number(/tick\s+([\d,]+)/.exec(notice)?.[1].replaceAll(",", ""));
   expect(loadedMetadataTick).toBe(savedTick);
   await expect.poll(() => cameraState(page)).toEqual(savedCamera);
-  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeEnabled();
-  const reloadedTick = await pauseAtStableTick(page);
+  await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeEnabled();
+  const reloadedTick = await currentTick(page);
+  await page.waitForTimeout(500);
+  expect(await currentTick(page)).toBe(reloadedTick);
+  expect(reloadedTick).toBe(loadedMetadataTick);
   expect(reloadedTick).toBeLessThan(advancedTick);
-  expect(reloadedTick).toBeLessThanOrEqual(loadedMetadataTick + 4);
 
   await page.reload();
   await expect(page.getByText("Resumed local demo", { exact: true })).toBeVisible();

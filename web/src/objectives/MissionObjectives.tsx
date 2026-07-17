@@ -24,7 +24,7 @@ export interface MissionObjectivePresentation {
 
 type MissionFour = "4-west-a" | "4-west-b" | "4-east-a";
 type MissionFive = "5-east-a" | "5-west-a" | "5-west-b";
-type ReviewedGdiMission = 1 | 2 | 3 | 6 | MissionFour | MissionFive;
+type ReviewedGdiMission = 1 | 2 | 3 | 6 | 7 | MissionFour | MissionFive;
 
 function reviewedGdiMission(mission: RuntimeMissionV1): ReviewedGdiMission | undefined {
   if (mission.faction !== "gdi") return undefined;
@@ -33,6 +33,7 @@ function reviewedGdiMission(mission: RuntimeMissionV1): ReviewedGdiMission | und
     if (mission.id === "gdi-02-east-a" && mission.scenarioRoot === "SCG02EA" && mission.scenario === 2 && mission.buildLevel === 2) return 2;
     if (mission.id === "gdi-03-east-a" && mission.scenarioRoot === "SCG03EA" && mission.scenario === 3 && mission.buildLevel === 3) return 3;
     if (mission.id === "gdi-06-east-a" && mission.scenarioRoot === "SCG06EA" && mission.scenario === 6 && mission.buildLevel === 6) return 6;
+    if (mission.id === "gdi-07-east-a" && mission.scenarioRoot === "SCG07EA" && mission.scenario === 7 && mission.buildLevel === 7) return 7;
   }
   if (
     mission.id === "gdi-04-west-a"
@@ -233,6 +234,35 @@ function missionSixPresentation(
   };
 }
 
+function missionSevenPresentation(
+  result: MissionObjectiveResult | undefined,
+  stats: SnapshotSidebar | undefined,
+): MissionObjectivePresentation {
+  const status = resultStatus(result);
+  return {
+    title: "Operation orders",
+    status,
+    items: [
+      {
+        id: "eliminate-nod",
+        label: "Eliminate the remaining Nod force",
+        description: "Landing-craft reinforcements culminate in an MCV; use it to build up a base, then remove every counted unit and structure from Nod control. Destroy units; destroy or capture structures. Nod production, rebuilt structures, timed attack teams, and later autocreated teams can add targets.",
+        progress: result && !result.won
+          ? "Engine-confirmed operation failed"
+          : destroyedProgress(stats, result),
+        status,
+      },
+      {
+        id: "preserve-gdi",
+        label: "Keep GDI operational",
+        description: "The operation fails if every counted GDI infantry unit, ground unit, structure, and regular aircraft is destroyed. Landing craft, transport/cargo aircraft, and A-10 strike aircraft alone do not prevent defeat.",
+        progress: survivalProgress(stats, result, "All counted GDI units and structures were lost"),
+        status,
+      },
+    ],
+  };
+}
+
 /**
  * Returns mission rules only when the browser has an exact, reviewed rule set.
  * Final status always comes from the engine result; snapshot statistics are
@@ -251,6 +281,7 @@ export function missionObjectivePresentation(
       : missionFivePresentation(result, stats);
   }
   if (reviewedMission === 6) return missionSixPresentation(result);
+  if (reviewedMission === 7) return missionSevenPresentation(result, stats);
   const status = resultStatus(result);
   const missionTwo = reviewedMission === 2;
   const missionThree = reviewedMission === 3;

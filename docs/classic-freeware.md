@@ -73,8 +73,9 @@ The release gate proves one archive download, real Wasm mission startup,
 manual save/load and online/offline resume, exclusion from the Cache API,
 coarse-pointer portrait play, the winter mission, and reuse of the installed
 OPFS revision. Its engine verifiers mount the same package and produce
-deterministic public-ABI victories for GDI Missions 1–6, including all three
-Mission 4 and Mission 5 variants and Mission 6's Commando sabotage path.
+deterministic public-ABI victories for GDI Missions 1–7, including all three
+Mission 4 and Mission 5 variants, Mission 6's Commando sabotage path, and
+Mission 7's carried-state base-building operation.
 Missions 1–3 use public production, placement, repair,
 clear-selection, select-object, and contextual-order commands. Mission 1
 reaches terminal victory at tick 2,137 after 13 Nod kills and two GDI losses.
@@ -101,8 +102,19 @@ Commando to survive, Nod forces to remain, and Airstrip type 11 to be carried
 by both authoritative terminal events, proving the campaign's Mission 7 bypass
 rather than an elimination victory.
 
+Mission 7 starts through the campaign-transition ABI with Refinery type 7
+sabotaged and nuke-piece bits 5. It verifies that the unique Nod Refinery and
+matching rebuild node are absent, the authored
+`CarryOverMoney=0` rule still starts GDI at 5,000 credits, and the sabotage
+marker is consumed. The ordinary-command playthrough receives the authored
+landing-craft waves, deploys the MCV, builds a base and strike force, and wins
+only after every counted unit and structure has been removed from Nod control
+through destruction or capture while GDI remains operational. Its correlated
+terminal events retain nuke bits 5 and carry no pending sabotage.
+
 Run the Mission 3 verifier, the complete Mission 4 and Mission 5 variant
-suites, or the Mission 6 sabotage verifier independently with:
+suites, the Mission 6 sabotage verifier, or the Mission 7 verifier independently
+with:
 
 ```sh
 cd web
@@ -110,15 +122,16 @@ corepack pnpm verify:classic-freeware:mission-three
 corepack pnpm verify:classic-freeware:mission-four
 corepack pnpm verify:classic-freeware:mission-five
 corepack pnpm verify:classic-freeware:mission-six
+corepack pnpm verify:classic-freeware:mission-seven
 ```
 
 The Mission 3 alias selects canonical `SCG03EA`; the Mission 4 alias exercises
 canonical `SCG04WA`, `SCG04WB`, and `SCG04EA`; the Mission 5 alias exercises
 canonical `SCG05EA`, `SCG05WA`, and `SCG05WB`; and the Mission 6 alias selects
-canonical `SCG06EA` in the shared
+canonical `SCG06EA`. The Mission 7 alias selects canonical `SCG07EA` in the shared
 `web/scripts/verify-classic-freeware-mission-one.mjs` verifier.
 
-The browser also displays exact reviewed rules for Missions 1–6. Mission 3's
+The browser also displays exact reviewed rules for Missions 1–7. Mission 3's
 canonical orders are:
 
 - **Eliminate the Nod force:** “Destroy every counted Nod unit and structure in
@@ -160,8 +173,20 @@ Mission 6's canonical orders are:
 - **Keep the Commando alive:** losing the Commando fails the operation; landing
   craft and transport aircraft alone do not keep the GDI ground force active.
 
-Missions 1–3 and Mission 5 use combat totals as progress context. Missions 4–6
-display cause-neutral state for conditions that cannot be inferred from
+Mission 7's canonical orders are:
+
+- **Eliminate the remaining Nod force:** landing-craft reinforcements culminate
+  in an MCV; use it to build a base, then remove every counted unit and
+  structure from Nod control. Destroy units; destroy or capture structures. Nod
+  production, rebuilt structures, timed attack teams, and later autocreated
+  teams can add targets.
+- **Keep GDI operational:** losing every counted GDI infantry unit, ground unit,
+  structure, and regular aircraft fails the operation. Landing craft,
+  transport/cargo aircraft, and A-10 strike aircraft alone do not prevent
+  defeat.
+
+Missions 1–3, Mission 5, and Mission 7 use combat totals as progress context.
+Missions 4 and 6 display cause-neutral state for conditions that cannot be inferred from
 sidebar totals. In every reviewed mission, the engine's terminal result alone
 decides success or failure. In Mission 1 the browser-visible deploy
 acceptance selects the real MCV, consumes its engine-authored deploy action, and
@@ -169,6 +194,14 @@ uses **Deploy** until Construction Yard production is available. In Mission 2 it
 Minigunner and exercises hold/resume through visible production controls.
 Semantic labels identify the selected MCV and resulting Construction Yard
 without changing the engine command path.
+
+When that exact canonical Mission 1 starts fresh rather than from a save, a
+player with no stored tutorial state is offered the paused **Welcome,
+Commander** tutorial. Its progressive coach verifies actual camera, selection,
+processed-order, deployment, production, and placement evidence and completes
+after the player places a Power Plant. Hiding the coach preserves progress; the
+persistent **Controls & tutorial** hub can resume it, restart it in a fresh
+Mission 1, or end it while keeping the complete controls reference available.
 
 A separate loopback-only acceptance hook uses the engine's existing
 end-game debug request to produce genuine campaign-outcome/game-over events;
@@ -220,10 +253,10 @@ and is not fabricated from missing data.
 The mirror strips mission briefing prose, so the catalog uses a neutral
 non-story instruction while preserving each original scenario INI/BIN for
 simulation. The browser supplies exact objective prose only for the reviewed,
-canonical Mission 1–6 identities. Missions 1–3 and Mission 5 use engine-exported
-combat totals as progress context; Missions 4–6 use cause-neutral state for
+canonical Mission 1–7 identities. Missions 1–3, Mission 5, and Mission 7 use engine-exported
+combat totals as progress context; Missions 4 and 6 use cause-neutral state for
 conditions that sidebar totals cannot prove. Completion/failure comes only from
-the engine result. Mission 7 and later retain the neutral
+the engine result. Mission 8 and later retain the neutral
 instruction until their rules are authored and reviewed.
 The mirror also omits winter-specific icon data; the current MVP aliases
 the verified temperate icon archive for the two winter missions. Authentic

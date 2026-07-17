@@ -174,6 +174,9 @@ describe("ProductionPanel", () => {
       if (!(primary instanceof HTMLButtonElement)) throw new Error(`Primary action not found for ${entry.assetName}`);
       return primary;
     };
+    entries.forEach((entry, index) => {
+      expect(primaryFor(entry).getAttribute("data-tutorial-action")).toBe(actions[index]);
+    });
     entries.forEach((entry) => act(() => primaryFor(entry).click()));
     expect(onPrimary.mock.calls).toEqual(actions.map((action, index) => [entries[index], action]));
 

@@ -42,6 +42,13 @@ only to **Explore** before object or terrain actions are inspected; **Select**,
 **Move**, **Attack**, and other actions are exposed only for visible cells.
 Visible targets are chosen from the engine's ordered cell occupiers and native
 object centers rather than WebGL sprite rectangles.
+On a never-seen, fresh launch of exact canonical GDI Mission 1, a paused
+**Welcome, Commander** offer starts a progressive learn-by-doing tutorial. It
+verifies camera, selection, order, MCV deployment, and Power Plant
+build/placement milestones from player input and simulation state, then
+completes when the Power Plant is placed. The persistent **Controls & tutorial**
+hub retains the full control reference and can resume hidden progress, restart
+the tutorial in a fresh Mission 1, or end it.
 Saves are isolated by immutable package revision, mission, and campaign run.
 If no compatible package is installed, the UI runs an explicit synthetic demo
 fallback.
@@ -56,7 +63,7 @@ missing; deterministic hashes still cover the complete logical map.
 
 This is a narrow engineering slice, not a finished browser edition. Newly
 composed replacement music, enhanced graphics, reviewed objective rules beyond
-Mission 6, semantic radar, gamepad and screen-reader order parity, broader state
+Mission 7, semantic radar, gamepad and screen-reader order parity, broader state
 deltas, and presentation interpolation remain open. C&amp;C music and movies are
 deliberately excluded from the distributable freeware profile. Source and CI
 remain asset-free; release assets are generated only into ignored or external
@@ -225,8 +232,9 @@ package contents, provenance, and deployment descriptor. Do not commit that
 output. After building the integrated web bundle and placing the sidecar in
 `web/dist`, `cd web && corepack pnpm test:classic-freeware:release` additionally
 proves real Wasm startup, save/load and online/offline recovery, deterministic
-public-ABI victories for Missions 1–6, including all three Mission 4 and Mission
-5 variants and Mission 6's Commando sabotage path,
+public-ABI victories for Missions 1–7, including all three Mission 4 and Mission
+5 variants, Mission 6's Commando sabotage path, and Mission 7's carried-state
+base-building operation,
 genuine native terminal events, canonical continuation through Mission 3,
 portrait winter play, single-download behavior, Cache API exclusion, desktop
 Chromium/Firefox coverage, and the real-mission performance budget. Linux
@@ -234,7 +242,8 @@ Playwright WebKit lacks OPFS and verifies the explicit fallback; physical
 Safari remains a device gate.
 
 Run the Mission 3 verifier, the complete Mission 4 and Mission 5 variant
-suites, or the Mission 6 sabotage verifier independently with:
+suites, the Mission 6 sabotage verifier, or the Mission 7 verifier independently
+with:
 
 ```sh
 cd web
@@ -242,6 +251,7 @@ corepack pnpm verify:classic-freeware:mission-three
 corepack pnpm verify:classic-freeware:mission-four
 corepack pnpm verify:classic-freeware:mission-five
 corepack pnpm verify:classic-freeware:mission-six
+corepack pnpm verify:classic-freeware:mission-seven
 ```
 
 The shared `web/scripts/verify-classic-freeware-mission-one.mjs` verifier selects
@@ -273,6 +283,15 @@ action, and demolishes the Airstrip. Acceptance requires the Commando to
 survive, Nod forces to remain, and Airstrip type 11 to appear in both correlated
 campaign-outcome and game-over events, proving the Mission 7 bypass rather than
 an elimination victory.
+
+The Mission 7 verifier starts with a carried Refinery sabotage and
+nuke-piece state through the public campaign-transition ABI. It proves that the
+unique Nod Refinery and its rebuild node are removed, carried cash
+is ignored by the authored scenario, and the sabotage marker is consumed. The
+playthrough receives the landing-craft waves, deploys the MCV, builds a working
+base and strike force, and requires an authoritative victory with no counted Nod
+combatants left and a surviving GDI force. The correlated terminal events retain
+the nuke pieces and report no pending sabotage.
 
 A separate Chromium Mission 1 playthrough is deliberately long and opt-in. It
 requires the integrated build and classic-freeware sidecar already present in

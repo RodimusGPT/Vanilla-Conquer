@@ -102,6 +102,17 @@ const missionSix: RuntimeMissionV1 = {
   title: "GDI Mission 6 (East A)",
 };
 
+const missionSeven: RuntimeMissionV1 = {
+  ...mission,
+  id: "gdi-07-east-a",
+  scenarioRoot: "SCG07EA",
+  scenario: 7,
+  variation: 0,
+  direction: 0,
+  buildLevel: 7,
+  title: "GDI Mission 7 (East A)",
+};
+
 const stats = {
   unitsKilled: 3,
   buildingsKilled: 1,
@@ -323,6 +334,36 @@ describe("Mission 1 objectives", () => {
     ]);
   });
 
+  it("presents Mission 7's exact reinforcement, elimination, and survival rules", () => {
+    expect(missionObjectivePresentation(missionSeven, stats, undefined)?.items).toEqual([
+      {
+        id: "eliminate-nod",
+        label: "Eliminate the remaining Nod force",
+        description: "Landing-craft reinforcements culminate in an MCV; use it to build up a base, then remove every counted unit and structure from Nod control. Destroy units; destroy or capture structures. Nod production, rebuilt structures, timed attack teams, and later autocreated teams can add targets.",
+        progress: "3 units and 1 structure destroyed",
+        status: "active",
+      },
+      {
+        id: "preserve-gdi",
+        label: "Keep GDI operational",
+        description: "The operation fails if every counted GDI infantry unit, ground unit, structure, and regular aircraft is destroyed. Landing craft, transport/cargo aircraft, and A-10 strike aircraft alone do not prevent defeat.",
+        progress: "2 losses recorded",
+        status: "active",
+      },
+    ]);
+  });
+
+  it("keeps Mission 7 terminal status engine-authoritative", () => {
+    expect(missionObjectivePresentation(missionSeven, stats, { won: true })?.items).toEqual([
+      expect.objectContaining({ status: "complete", progress: "Engine-confirmed objective complete" }),
+      expect.objectContaining({ status: "complete", progress: "GDI force survived" }),
+    ]);
+    expect(missionObjectivePresentation(missionSeven, stats, { won: false })?.items).toEqual([
+      expect.objectContaining({ status: "failed", progress: "Engine-confirmed operation failed" }),
+      expect.objectContaining({ status: "failed", progress: "All counted GDI units and structures were lost" }),
+    ]);
+  });
+
   it("fails closed for missions and variants without a reviewed rule set", () => {
     expect(missionObjectivePresentation({ ...mission, id: "forged-mission" }, stats, undefined)).toBeUndefined();
     expect(missionObjectivePresentation({ ...mission, buildLevel: 2 }, stats, undefined)).toBeUndefined();
@@ -356,6 +397,11 @@ describe("Mission 1 objectives", () => {
     expect(missionObjectivePresentation({ ...missionSix, faction: "nod" }, stats, undefined)).toBeUndefined();
     expect(missionObjectivePresentation({ ...missionSix, id: "forged-mission" }, stats, undefined)).toBeUndefined();
     expect(missionObjectivePresentation({ ...missionSix, buildLevel: 7 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionSeven, direction: 1 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionSeven, variation: 1 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionSeven, faction: "nod" }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionSeven, id: "forged-mission" }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionSeven, buildLevel: 8 }, stats, undefined)).toBeUndefined();
   });
 
   it("renders a semantic objective list and visible state", () => {

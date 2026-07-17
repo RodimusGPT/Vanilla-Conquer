@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type InputHTMLAttributes, type RefObject } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState, type InputHTMLAttributes, type RefObject } from "react";
 import { RuntimeAudio } from "./audio/RuntimeAudio";
 import { bootstrapClassicFreeware } from "./bootstrap/classicFreewareBootstrap";
 import { isTdCampaignFinalMission, nextTdCampaignMissions, tdCampaignCarryState } from "./campaign/tdCampaign";
 import { TouchController, type ScreenPoint } from "./input/TouchController";
 import {
+  EXPLORE_CONTEXTUAL_ACTION,
   contextualObjectIdentity,
   findNativeContextualTarget,
   resolveContextualAction,
@@ -34,7 +35,22 @@ import {
 } from "./input/gameCommands";
 import { rememberOrderCoachDismissal, shouldShowOrderCoach, wasOrderCoachDismissed } from "./input/orderCoach";
 import { battlefieldSelectionPresentation, type BattlefieldSelectionPresentation } from "./input/selectionModel";
-import { BattlefieldOnboarding } from "./onboarding/BattlefieldOnboarding";
+import {
+  BattlefieldOnboarding,
+  type TutorialCoachPresentation,
+  type TutorialTargetRect,
+} from "./onboarding/BattlefieldOnboarding";
+import {
+  TUTORIAL_STEP_IDS,
+  getCurrentTutorialStep,
+  loadTutorialState,
+  saveTutorialState,
+  tutorialPersistenceFingerprint,
+  tutorialReducer,
+  type TutorialSnapshotFacts,
+  type TutorialState,
+  type TutorialStepId,
+} from "./onboarding";
 import { MissionObjectives } from "./objectives/MissionObjectives";
 import { runtimePerformanceMetrics } from "./performance/runtimeMetrics";
 import { ProductionPanel, type ProductionEntryPresentation, type ProductionPrimaryAction } from "./production/ProductionPanel";
@@ -105,6 +121,83 @@ type DiagnosticEvent = Extract<SimulationEvent, { kind: "diagnostic" }>;
 
 let launchSequence = 0;
 const EMPTY_SELECTION_PRESENTATION = battlefieldSelectionPresentation([], undefined);
+function isBattlefieldTutorialMission(mission: RuntimeMissionV1): boolean {
+  return mission.id === "gdi-01-east-a"
+    && mission.scenarioRoot === "SCG01EA"
+    && mission.scenario === 1
+    && mission.variation === 0
+    && mission.direction === 0
+    && mission.buildLevel === 1
+    && mission.sabotagedStructure === -1
+    && mission.faction === "gdi"
+    && mission.theater === "temperate";
+}
+
+function normalizedClassicAsset(value: string): string {
+  return value.split("\0", 1)[0].trim().replace(/[\s-]+/g, "_").toUpperCase();
+}
+
+function isTutorialContextualOrder(action: ResolvedContextualAction): boolean {
+  if (action.action === EXPLORE_CONTEXTUAL_ACTION) return true;
+  return action.action === SnapshotContextualAction.Move
+    || action.action === SnapshotContextualAction.Enter
+    || action.action === SnapshotContextualAction.Attack
+    || action.action === SnapshotContextualAction.AttackOutOfRange
+    || action.action === SnapshotContextualAction.Guard
+    || action.action === SnapshotContextualAction.Capture
+    || action.action === SnapshotContextualAction.Sabotage
+    || action.action === SnapshotContextualAction.Heal
+    || action.action === SnapshotContextualAction.Damage
+    || action.action === SnapshotContextualAction.Repair;
+}
+
+function battlefieldTutorialFacts(snapshot: SnapshotView, runId: string): TutorialSnapshotFacts {
+  const house = snapshot.player?.house;
+  const validHouse = house !== undefined && Number.isInteger(house) && house >= 0 && house < 32;
+  const playerMask = validHouse ? 1 << house : 0;
+  const friendly = validHouse
+    ? snapshot.objects().filter((object) => object.root && object.owner === house)
+    : [];
+  const selected = friendly.filter((object) => (object.selectedMask & playerMask) !== 0);
+  const mobile = (object: SnapshotObject): boolean => object.type === SnapshotObjectType.Infantry
+    || object.type === SnapshotObjectType.Unit || object.type === SnapshotObjectType.Aircraft;
+  const asset = (object: SnapshotObject): string => normalizedClassicAsset(object.assetName || object.typeName);
+  const powerPlant = snapshot.sidebar?.entries.find((entry) => entry.objectType === SnapshotObjectType.BuildingType
+    && normalizedClassicAsset(entry.assetName) === "NUKE");
+  const powerPlantProduction = powerPlant?.completed ? "ready"
+    : powerPlant?.onHold ? "held"
+      : powerPlant?.constructing ? "constructing" : "none";
+  return {
+    runId,
+    tick: snapshot.tick,
+    selectedFriendlyMobile: selected.some(mobile),
+    selectedFriendlyMcv: selected.some((object) => object.type === SnapshotObjectType.Unit && asset(object) === "MCV"),
+    hasFriendlyConstructionYard: friendly.some((object) => object.type === SnapshotObjectType.Building
+      && (asset(object) === "FACT" || asset(object) === "FACTMAKE")),
+    powerPlantAvailable: Boolean(powerPlant),
+    powerPlantProduction,
+    hasFriendlyPowerPlant: friendly.some((object) => object.type === SnapshotObjectType.Building && asset(object) === "NUKE"),
+  };
+}
+
+const TUTORIAL_STEP_TITLES: Readonly<Record<TutorialStepId, string>> = {
+  camera_controls: "Move the battlefield",
+  select_unit: "Select a unit",
+  issue_order: "Issue an order",
+  select_mcv: "Select the MCV",
+  deploy_mcv: "Deploy the MCV",
+  start_power_plant: "Build a Power Plant",
+  place_power_plant: "Place the Power Plant",
+};
+
+function battlefieldTutorialHasFriendlyMcv(snapshot: SnapshotView): boolean {
+  const house = snapshot.player?.house;
+  if (house === undefined || !Number.isInteger(house) || house < 0 || house >= 32) return false;
+  return snapshot.objects().some((object) => object.root
+    && object.owner === house
+    && object.type === SnapshotObjectType.Unit
+    && normalizedClassicAsset(object.assetName || object.typeName) === "MCV");
+}
 
 function useCoarsePointer(): boolean {
   const [coarse, setCoarse] = useState(() => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
@@ -120,7 +213,12 @@ function useCoarsePointer(): boolean {
 
 const DIALOG_FOCUSABLE = "button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])";
 
-function useDialogFocus(open: boolean, dialogRef: RefObject<HTMLElement | null>, restoreRef?: RefObject<HTMLElement | null>): void {
+function useDialogFocus(
+  open: boolean,
+  dialogRef: RefObject<HTMLElement | null>,
+  restoreRef?: RefObject<HTMLElement | null>,
+  focusKey?: unknown,
+): void {
   useEffect(() => {
     if (!open || !dialogRef.current) return;
     const dialog = dialogRef.current;
@@ -153,7 +251,7 @@ function useDialogFocus(open: boolean, dialogRef: RefObject<HTMLElement | null>,
       document.removeEventListener("keydown", trapFocus);
       if (previous?.isConnected) previous.focus({ preventScroll: true });
     };
-  }, [dialogRef, open, restoreRef]);
+  }, [dialogRef, focusKey, open, restoreRef]);
 }
 
 function randomSeed(): number {
@@ -566,6 +664,9 @@ export default function App() {
   const importDialogRef = useRef<HTMLElement>(null);
   const aboutDialogRef = useRef<HTMLElement>(null);
   const gameOverDialogRef = useRef<HTMLElement>(null);
+  const tutorialWelcomeDialogRef = useRef<HTMLElement>(null);
+  const tutorialControlsDialogRef = useRef<HTMLElement>(null);
+  const tutorialLauncherRef = useRef<HTMLButtonElement>(null);
   const minimapRef = useRef<HTMLCanvasElement>(null);
   const placementOverlayRef = useRef<HTMLCanvasElement>(null);
   const clientRef = useRef<SimulationClient | undefined>(undefined);
@@ -601,6 +702,9 @@ export default function App() {
   const selectionPresentationRef = useRef<BattlefieldSelectionPresentation>(EMPTY_SELECTION_PRESENTATION);
   const domTelemetryRefreshTickRef = useRef<number | undefined>(undefined);
   const minimapRefreshTickRef = useRef<number | undefined>(undefined);
+  const [tutorialState, dispatchTutorial] = useReducer(tutorialReducer, undefined, () => loadTutorialState());
+  const tutorialStateRef = useRef<TutorialState | undefined>(tutorialState);
+  const tutorialPersistenceFingerprintRef = useRef<string | undefined>(undefined);
 
   const [mode, setMode] = useState<GraphicsMode>("classic");
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("select");
@@ -614,6 +718,12 @@ export default function App() {
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState("Checking classic freeware content…");
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [tutorialWelcomeOpen, setTutorialWelcomeOpen] = useState(false);
+  const [tutorialControlsOpen, setTutorialControlsOpen] = useState(false);
+  const [tutorialRestartConfirm, setTutorialRestartConfirm] = useState(false);
+  const [tutorialRestartPending, setTutorialRestartPending] = useState(false);
+  const [tutorialRestartError, setTutorialRestartError] = useState<string>();
+  const [tutorialTargetRect, setTutorialTargetRect] = useState<TutorialTargetRect>();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectionBox, setSelectionBox] = useState<SelectionBox>();
   const [marker, setMarker] = useState<CommandMarker>();
@@ -648,6 +758,17 @@ export default function App() {
   useDialogFocus(Boolean(pendingImport), importDialogRef, importButtonRef);
   useDialogFocus(aboutOpen, aboutDialogRef, aboutButtonRef);
   useDialogFocus(Boolean(gameOver), gameOverDialogRef);
+  useDialogFocus(tutorialWelcomeOpen, tutorialWelcomeDialogRef, canvasRef);
+  useDialogFocus(tutorialControlsOpen, tutorialControlsDialogRef, tutorialLauncherRef, tutorialRestartConfirm);
+
+  useEffect(() => {
+    tutorialStateRef.current = tutorialState;
+    if (!tutorialState) return;
+    const fingerprint = tutorialPersistenceFingerprint(tutorialState);
+    if (fingerprint === tutorialPersistenceFingerprintRef.current) return;
+    tutorialPersistenceFingerprintRef.current = fingerprint;
+    saveTutorialState(tutorialState);
+  }, [tutorialState]);
 
   useEffect(() => {
     if (!localAcceptanceSession()) return;
@@ -664,7 +785,18 @@ export default function App() {
 
   const selectedPack = library.compatible.find((pack) => pack.descriptor.id === selectedPackId);
   const selectedMission = selectedPack?.catalog.missions.find((mission) => mission.id === selectedMissionId) ?? selectedPack?.catalog.missions[0];
+  const tutorialPackOrder = [
+    ...(launch?.kind === "mission" ? [launch.pack] : []),
+    ...(selectedPack ? [selectedPack] : []),
+    ...library.compatible,
+  ].filter((pack, index, packs) => packs.findIndex((candidate) => candidate.descriptor.id === pack.descriptor.id
+    && candidate.descriptor.revision === pack.descriptor.revision) === index);
+  const tutorialMissionChoice = tutorialPackOrder
+    .map((pack) => ({ pack, mission: pack.catalog.missions.find(isBattlefieldTutorialMission) }))
+    .find((choice): choice is { pack: CompatibleRuntimePack; mission: RuntimeMissionV1 } => Boolean(choice.mission));
   const activeMissionStats = missionStatsLaunchKey === launch?.key ? missionStats : undefined;
+  const tutorialPowerPlantEntry = activeMissionStats?.entries.find((entry) => entry.objectType === SnapshotObjectType.BuildingType
+    && normalizedClassicAsset(entry.assetName) === "NUKE");
   const activeCampaignLaunch = activeLaunchRef.current?.kind === "mission" ? activeLaunchRef.current : undefined;
   const correlatedCampaignResult = gameOver && campaignOutcome && correlateCampaignOutcome(activeCampaignLaunch, gameOver, campaignOutcome);
   const campaignChoices = correlatedCampaignResult
@@ -672,18 +804,258 @@ export default function App() {
     : [];
   const campaignComplete = Boolean(correlatedCampaignResult && isTdCampaignFinalMission(activeCampaignLaunch.mission));
   const contentCount = library.compatible.length + library.incompatible.length;
-  const applicationModalOpen = Boolean(pendingImport) || aboutOpen || Boolean(gameOver);
+  const applicationModalOpen = Boolean(pendingImport) || aboutOpen || Boolean(gameOver)
+    || tutorialWelcomeOpen || tutorialControlsOpen;
+  const battlefieldOnboardingActive = Boolean(launch) && !launching && !importing
+    && !bootstrapping && !loading && !pendingImport && !aboutOpen && !gameOver;
+  const activeTutorialLaunch = launch?.kind === "mission" && isBattlefieldTutorialMission(launch.mission)
+    ? launch
+    : undefined;
+  const activeTutorialMission = Boolean(activeTutorialLaunch);
+  const tutorialStep = getCurrentTutorialStep(tutorialState);
+  const tutorialFinishedSteps = tutorialState
+    ? TUTORIAL_STEP_IDS.filter((step) => tutorialState.outcomes[step] !== undefined).length
+    : 0;
+  const tutorialStepIndex = tutorialStep ? TUTORIAL_STEP_IDS.indexOf(tutorialStep) : -1;
+  const activeTutorialSnapshot = activeTutorialLaunch?.runId && tutorialState?.status === "in-progress"
+    ? snapshotRef.current
+    : undefined;
+  const activeTutorialFacts = activeTutorialSnapshot && activeTutorialLaunch?.runId
+    ? battlefieldTutorialFacts(activeTutorialSnapshot, activeTutorialLaunch.runId)
+    : undefined;
+  const tutorialNeedsBaseRecovery = Boolean(tutorialStep && tutorialStepIndex >= TUTORIAL_STEP_IDS.indexOf("select_mcv")
+    && activeTutorialSnapshot && activeTutorialSnapshot.tick > 150
+    && !battlefieldTutorialHasFriendlyMcv(activeTutorialSnapshot)
+    && !activeTutorialFacts?.hasFriendlyConstructionYard
+    && !activeTutorialFacts?.hasFriendlyPowerPlant
+    && !activeTutorialFacts?.powerPlantAvailable
+    && activeTutorialFacts?.powerPlantProduction === "none");
+  const tutorialCoachVisible = Boolean(activeTutorialMission && tutorialState?.status === "in-progress"
+    && !tutorialState.minimized && !applicationModalOpen && !launching && !importing && !bootstrapping && !loading);
+  const tutorialCompletionVisible = Boolean(activeTutorialMission && tutorialState?.status === "completed"
+    && !tutorialState.completionAcknowledged && !applicationModalOpen && !launching && !importing && !bootstrapping && !loading);
+  const tutorialPowerPlantKey = tutorialPowerPlantEntry ? productionEntryKey(tutorialPowerPlantEntry) : undefined;
+  const tutorialTargetSelector = tutorialCoachVisible && !tutorialNeedsBaseRecovery ? (() => {
+    if (tutorialStep === "camera_controls") return '[data-tutorial-target="camera-controls"]';
+    if (tutorialStep === "issue_order" && coarsePointer) return '[data-tutorial-target="order"]';
+    if (tutorialStep === "deploy_mcv" && selectionPresentation.deployment?.available) return '[data-tutorial-target="deploy"]';
+    if (tutorialStep === "start_power_plant" || tutorialStep === "place_power_plant") {
+      if (tutorialStep === "place_power_plant" && battlefieldTool?.kind === "placement") return '[data-tutorial-target="battlefield"]';
+      if (!sidebarOpen) return '[data-tutorial-target="mission-panel-toggle"]';
+      if (tutorialPowerPlantKey) {
+        const action = tutorialStep === "start_power_plant"
+          ? tutorialPowerPlantEntry?.onHold ? "resume" : "start"
+          : tutorialPowerPlantEntry?.completed ? "place"
+            : tutorialPowerPlantEntry?.onHold ? "resume"
+              : tutorialPowerPlantEntry?.constructing ? undefined : "start";
+        return action
+          ? `[data-entry-key="${tutorialPowerPlantKey}"] [data-tutorial-action="${action}"]`
+          : `[data-entry-key="${tutorialPowerPlantKey}"]`;
+      }
+      return '[aria-label="Construction and production"]';
+    }
+    return '[data-tutorial-target="battlefield"]';
+  })() : undefined;
+  const tutorialStatus = !tutorialState
+    ? "Not started · a fresh GDI Mission 1 is ready when you are"
+    : tutorialState.status === "completed"
+      ? `Completed · ${tutorialFinishedSteps} of ${TUTORIAL_STEP_IDS.length} steps finished`
+      : tutorialState.status === "dismissed"
+        ? "Ended · restart any time from a fresh GDI Mission 1"
+        : `${tutorialState.minimized || !activeTutorialMission ? "Hidden" : "In progress"} · ${tutorialStep ? TUTORIAL_STEP_TITLES[tutorialStep] : "Orientation"} (step ${Math.max(1, tutorialStepIndex + 1)} of ${TUTORIAL_STEP_IDS.length})`;
+  const tutorialCurrentMissionLabel = launch?.kind === "mission" ? launch.mission.title : launch ? "the demo battlefield" : undefined;
+  const tutorialReplayNeedsPreservation = Boolean(launch && snapshotRef.current && !snapshotRef.current.terminal);
+  const tutorialRestartMessage = !tutorialCurrentMissionLabel
+    ? "Start a fresh GDI Mission 1 and begin the tutorial from the first step."
+    : tutorialReplayNeedsPreservation
+      ? `A fresh GDI Mission 1 will replace your current play in ${tutorialCurrentMissionLabel}. The current run will no longer be available from Load.`
+      : `Start a fresh GDI Mission 1 from ${tutorialCurrentMissionLabel}.`;
+  const tutorialCoach: TutorialCoachPresentation | undefined = tutorialCompletionVisible ? {
+    mode: "complete",
+    chapter: "Tutorial complete",
+    step: "Command is yours",
+    instruction: "Continue exploring the shroud, follow the mission objectives, and eliminate the enemy forces.",
+    detail: "Controls and tutorial progress remain available from the Controls button.",
+  } : tutorialCoachVisible && tutorialStep ? tutorialNeedsBaseRecovery ? {
+    mode: "recovery",
+    chapter: "Build a base",
+    step: "The MCV is unavailable",
+    instruction: "The tutorial cannot find a Mobile Construction Vehicle or a deployed Construction Yard in this timeline.",
+    recoveryText: "Load a matching save, restart the mission, or skip the remaining base-building steps.",
+  } : (() => {
+    const common = {
+      mode: "step" as const,
+      chapter: tutorialStepIndex < TUTORIAL_STEP_IDS.indexOf("select_mcv") ? "Battlefield basics" : "Build a base",
+      step: TUTORIAL_STEP_TITLES[tutorialStep],
+      stepNumber: tutorialStepIndex + 1,
+      stepCount: TUTORIAL_STEP_IDS.length,
+      targetRect: tutorialTargetRect,
+    };
+    switch (tutorialStep) {
+      case "camera_controls": {
+        const moved = tutorialState?.camera.moved === true;
+        const zoomed = tutorialState?.camera.zoomed === true;
+        return {
+          ...common,
+          instruction: coarsePointer
+            ? "Pinch to zoom, then drag with two fingers to move the view."
+            : "Zoom with the wheel or +/− controls, then pan with middle-drag, WASD, or the arrow keys.",
+          detail: "Black terrain is unexplored shroud, not a graphics problem. Your starting force is toward the lower right.",
+          progressText: `Step 1 of ${TUTORIAL_STEP_IDS.length} · Zoom ${zoomed ? "✓" : "…"} · Pan ${moved ? "✓" : "…"}`,
+        };
+      }
+      case "select_unit":
+        return {
+          ...common,
+          instruction: coarsePointer ? "Tap any friendly mobile unit on the battlefield." : "Click any friendly mobile unit on the battlefield.",
+          detail: "A selection label will confirm the unit and its health.",
+        };
+      case "issue_order":
+        return {
+          ...common,
+          instruction: coarsePointer
+            ? "Choose Order, then tap a clear destination for the selected unit."
+            : "Right-click a clear destination for the selected unit.",
+          detail: "The step advances after a valid contextual order is sent and the mission reaches a later tick.",
+        };
+      case "select_mcv":
+        return {
+          ...common,
+          instruction: coarsePointer ? "Tap the Mobile Construction Vehicle near your starting force." : "Click the Mobile Construction Vehicle near your starting force.",
+          detail: "The MCV deploys into the Construction Yard that unlocks your base.",
+        };
+      case "deploy_mcv":
+        return selectionPresentation.deployment?.available ? {
+          ...common,
+          instruction: "Choose Deploy in the battlefield command bar.",
+          detail: "Deployment replaces the MCV with a Construction Yard.",
+        } : {
+          ...common,
+          instruction: "Deployment is blocked here. Order the MCV onto clear ground, then select it again.",
+          detail: "The Deploy button becomes available when the vehicle has enough room.",
+        };
+      case "start_power_plant":
+        return !sidebarOpen ? {
+          ...common,
+          instruction: "Open the mission panel to reach the Construction controls.",
+          detail: "The Power Plant is the first structure available from a deployed Construction Yard.",
+        } : tutorialPowerPlantEntry?.onHold ? {
+          ...common,
+          instruction: "Resume the Power Plant build.",
+          detail: `Construction is on hold at ${Math.round(tutorialPowerPlantEntry.progress * 100)}%.`,
+        } : {
+          ...common,
+          instruction: "Choose Build on the Power Plant card.",
+          detail: "The Power Plant costs credits and supplies power for later structures.",
+        };
+      case "place_power_plant":
+        return battlefieldTool?.kind === "placement" ? {
+          ...common,
+          instruction: "Choose a green footprint near the Construction Yard to place the Power Plant.",
+          detail: "Red cells are blocked or outside your build radius. Quick place can choose a legal site for you.",
+        } : !sidebarOpen ? {
+          ...common,
+          instruction: "Open the mission panel to return to the Power Plant controls.",
+          detail: "When construction is ready, choose Place and then a green footprint.",
+        } : tutorialPowerPlantEntry?.completed ? {
+          ...common,
+          instruction: "Choose Place on the completed Power Plant.",
+          detail: "Then select a green footprint close to your Construction Yard.",
+        } : tutorialPowerPlantEntry?.onHold ? {
+          ...common,
+          instruction: "Resume the Power Plant and let construction finish.",
+          detail: `Construction is on hold at ${Math.round(tutorialPowerPlantEntry.progress * 100)}%.`,
+        } : tutorialPowerPlantEntry && !tutorialPowerPlantEntry.constructing ? {
+          ...common,
+          instruction: "Build the Power Plant again, then let construction finish.",
+          detail: "The previous build was canceled. Choose Build on the Power Plant card to restart it.",
+        } : {
+          ...common,
+          instruction: "Let the Power Plant finish constructing.",
+          detail: `${Math.round((tutorialPowerPlantEntry?.progress ?? 0) * 100)}% complete · the Place action appears when it is ready.`,
+        };
+    }
+  })() : undefined;
   const battlefieldToolLabel = battlefieldTool?.kind === "placement"
     ? `${battlefieldTool.phase === "requesting" ? "Preparing" : battlefieldTool.phase === "placing" ? "Placing" : "Place"} ${describeProductionEntry(battlefieldTool.entry).label}`
     : battlefieldTool?.kind === "superweapon" ? `Target ${describeProductionEntry(battlefieldTool.entry).label}`
       : battlefieldTool?.kind === "repair" ? "Repair structures" : battlefieldTool?.kind === "sell" ? "Sell structures" : undefined;
-  const showOrderCoach = shouldShowOrderCoach({
+  const showOrderCoach = !tutorialCoach && shouldShowOrderCoach({
     coarsePointer,
     dismissed: orderCoachDismissed,
     selectionCount: selectionPresentation.count,
     interactionMode,
     hasBattlefieldTool: Boolean(battlefieldTool),
   });
+
+  useEffect(() => {
+    if (!tutorialTargetSelector) {
+      setTutorialTargetRect(undefined);
+      return;
+    }
+    let observed: Element | undefined;
+    let offscreenScrollTarget: Element | undefined;
+    let resizeObserver: ResizeObserver | undefined;
+    let pendingFrame: number | undefined;
+    const scheduleUpdate = (): void => {
+      if (pendingFrame !== undefined) return;
+      pendingFrame = requestAnimationFrame(() => {
+        pendingFrame = undefined;
+        update();
+      });
+    };
+    const update = (): void => {
+      const target = document.querySelector(tutorialTargetSelector);
+      if (target !== observed) {
+        resizeObserver?.disconnect();
+        observed = target ?? undefined;
+        if (observed && typeof ResizeObserver !== "undefined") {
+          resizeObserver = new ResizeObserver(scheduleUpdate);
+          resizeObserver.observe(observed);
+        }
+      }
+      if (!target) {
+        setTutorialTargetRect(undefined);
+        return;
+      }
+      let rect = target.getBoundingClientRect();
+      const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const targetIsOutsideViewport = rect.right <= 0 || rect.left >= viewportWidth
+        || rect.bottom <= 0 || rect.top >= viewportHeight;
+      if (targetIsOutsideViewport && target instanceof HTMLElement && offscreenScrollTarget !== target) {
+        offscreenScrollTarget = target;
+        target.scrollIntoView({ block: "nearest", inline: "nearest" });
+        rect = target.getBoundingClientRect();
+      } else if (!targetIsOutsideViewport) {
+        offscreenScrollTarget = undefined;
+      }
+      if (rect.right <= 0 || rect.left >= viewportWidth || rect.bottom <= 0 || rect.top >= viewportHeight) {
+        setTutorialTargetRect(undefined);
+        return;
+      }
+      const next = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+      setTutorialTargetRect((current) => current && current.left === next.left && current.top === next.top
+        && current.width === next.width && current.height === next.height ? current : next);
+    };
+    const mutationObserver = typeof MutationObserver === "undefined" ? undefined : new MutationObserver(scheduleUpdate);
+    mutationObserver?.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["aria-expanded", "class", "data-entry-key", "data-tutorial-action", "hidden"],
+    });
+    window.addEventListener("resize", scheduleUpdate);
+    document.addEventListener("scroll", scheduleUpdate, true);
+    scheduleUpdate();
+    return () => {
+      if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+      window.removeEventListener("resize", scheduleUpdate);
+      document.removeEventListener("scroll", scheduleUpdate, true);
+    };
+  }, [tutorialTargetSelector]);
 
   const clearContextualHover = useCallback((): void => {
     contextualHoverDirtyRef.current = false;
@@ -822,6 +1194,13 @@ export default function App() {
     applyCamera(focusCameraTransform(snapshot, modeRef.current, cameraRef.current, point));
   }, [applyCamera]);
 
+  const recordTutorialCamera = useCallback((evidence: { moved?: boolean; zoomed?: boolean }): void => {
+    const active = activeLaunchRef.current;
+    if (active?.kind !== "mission" || !isBattlefieldTutorialMission(active.mission)
+      || tutorialStateRef.current?.status !== "in-progress") return;
+    dispatchTutorial({ type: "camera", ...evidence });
+  }, []);
+
   const panCamera = useCallback((delta: ScreenPoint) => {
     const snapshot = snapshotRef.current;
     const canvas = canvasRef.current;
@@ -830,12 +1209,15 @@ export default function App() {
     const world = visibleWorldRect(snapshot, modeRef.current, cameraRef.current);
     const viewport = presentationViewport(bounds.width, bounds.height, world, modeRef.current);
     if (!viewport.width || !viewport.height) return;
+    const before = cameraRef.current;
     applyCamera({
       ...cameraRef.current,
       x: cameraRef.current.x + (-delta.x / viewport.width) * world.width,
       y: cameraRef.current.y + (-delta.y / viewport.height) * world.height,
     });
-  }, [applyCamera]);
+    const after = cameraRef.current;
+    if (after.x !== before.x || after.y !== before.y) recordTutorialCamera({ moved: true });
+  }, [applyCamera, recordTutorialCamera]);
 
   const focusCameraFromMinimap = useCallback((event: { clientX: number; clientY: number }) => {
     const snapshot = snapshotRef.current;
@@ -856,9 +1238,12 @@ export default function App() {
       classicOriginY: snapshot.classicOriginY,
     });
     if (!world) return;
+    const before = cameraRef.current;
     focusCameraOnWorld(world);
+    const after = cameraRef.current;
+    if (after.x !== before.x || after.y !== before.y) recordTutorialCamera({ moved: true });
     setNotice("Camera centered from radar");
-  }, [focusCameraOnWorld]);
+  }, [focusCameraOnWorld, recordTutorialCamera]);
 
   const zoomCamera = useCallback((factor: number, center?: ScreenPoint) => {
     const snapshot = snapshotRef.current;
@@ -866,23 +1251,34 @@ export default function App() {
     const bounds = canvas?.getBoundingClientRect();
     if (!snapshot || !canvas || !bounds?.width || !bounds.height || !Number.isFinite(factor) || factor <= 0) return;
     const anchor = center ?? { x: bounds.width / 2, y: bounds.height / 2 };
-    const before = screenToWorld(anchor, canvas, snapshot, cameraRef.current, modeRef.current);
+    const worldBefore = screenToWorld(anchor, canvas, snapshot, cameraRef.current, modeRef.current);
     let next = clampCameraTransform(snapshot, modeRef.current, {
       ...cameraRef.current,
       zoom: cameraRef.current.zoom * factor,
     });
-    const after = screenToWorld(anchor, canvas, snapshot, next, modeRef.current);
-    if (before && after) {
+    const worldAfter = screenToWorld(anchor, canvas, snapshot, next, modeRef.current);
+    if (worldBefore && worldAfter) {
       next = clampCameraTransform(snapshot, modeRef.current, {
         ...next,
-        x: next.x + before.x - after.x,
-        y: next.y + before.y - after.y,
+        x: next.x + worldBefore.x - worldAfter.x,
+        y: next.y + worldBefore.y - worldAfter.y,
       });
     }
+    const cameraBefore = cameraRef.current;
     applyCamera(next);
-  }, [applyCamera]);
+    const cameraAfter = cameraRef.current;
+    if (cameraAfter.zoom !== cameraBefore.zoom) recordTutorialCamera({ zoomed: true });
+  }, [applyCamera, recordTutorialCamera]);
 
-  const resetCamera = useCallback(() => applyCamera({ x: 0, y: 0, zoom: 1 }), [applyCamera]);
+  const resetCamera = useCallback(() => {
+    const before = cameraRef.current;
+    applyCamera({ x: 0, y: 0, zoom: 1 });
+    const after = cameraRef.current;
+    recordTutorialCamera({
+      moved: after.x !== before.x || after.y !== before.y,
+      zoomed: after.zoom !== before.zoom,
+    });
+  }, [applyCamera, recordTutorialCamera]);
 
   const issueControlGroup = useCallback((index: number, action: "create" | "select" | "additive", focus = false): void => {
     const client = clientRef.current;
@@ -1042,20 +1438,32 @@ export default function App() {
       await client.load(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
       toolRecoverySuppressedThroughTickRef.current = 0;
       restoreSavePresentation(metadata, active);
+      if (active.kind === "mission" && active.runId && isBattlefieldTutorialMission(active.mission)) {
+        dispatchTutorial({ type: "timeline-reset", runId: active.runId, tick: metadata.tick });
+      }
       terminalRef.current = false;
       setGameOver(undefined);
       campaignOutcomeRef.current = undefined;
       setCampaignOutcome(undefined);
+      const shouldResumeAfterLoad = wasRunning
+        || resumeAfterVisibilityRef.current
+        || resumeAfterGraphicsRestoreRef.current
+        || resumeAfterModalRef.current;
       const blockedByVisibility = document.visibilityState !== "visible";
       const blockedByGraphics = graphicsContextLostRef.current;
       const blockedByModal = modalWasOpenRef.current;
       if (blockedByVisibility || blockedByGraphics || blockedByModal) {
-        if (blockedByVisibility) resumeAfterVisibilityRef.current = true;
-        if (blockedByGraphics) resumeAfterGraphicsRestoreRef.current = true;
-        if (blockedByModal) resumeAfterModalRef.current = true;
+        if (shouldResumeAfterLoad) {
+          if (blockedByVisibility) resumeAfterVisibilityRef.current = true;
+          if (blockedByGraphics) resumeAfterGraphicsRestoreRef.current = true;
+          if (blockedByModal) resumeAfterModalRef.current = true;
+        }
         client.setRunning(false);
       } else {
-        client.setRunning(true);
+        resumeAfterVisibilityRef.current = false;
+        resumeAfterGraphicsRestoreRef.current = false;
+        resumeAfterModalRef.current = false;
+        client.setRunning(shouldResumeAfterLoad);
       }
       rememberSession(active, metadata.id);
       setNotice(`Loaded ${metadata.name} from tick ${metadata.tick.toLocaleString()}`);
@@ -1204,8 +1612,8 @@ export default function App() {
     setSelectedMissionId(pack?.catalog.missions[0]?.id ?? "");
   };
 
-  const startSelectedMission = (): void => {
-    if (!selectedPack || !selectedMission || loadInFlightRef.current || saveInFlightRef.current) return;
+  const startMission = (pack: CompatibleRuntimePack, mission: RuntimeMissionV1): MissionLaunch | undefined => {
+    if (loadInFlightRef.current || saveInFlightRef.current) return undefined;
     setError(undefined);
     setDiagnostics([]);
     setGameOver(undefined);
@@ -1213,18 +1621,30 @@ export default function App() {
     setCampaignOutcome(undefined);
     setMissionStats(undefined);
     setMissionStatsLaunchKey(undefined);
-    const next = missionLaunch(selectedPack, selectedMission);
+    const next = missionLaunch(pack, mission);
     sessionEpochRef.current += 1;
     rememberSession(next);
     missionGraphicsLockedRef.current = true;
     modeRef.current = "classic";
     setMode("classic");
+    setSelectedPackId(pack.descriptor.id);
+    setSelectedMissionId(mission.id);
     setLaunch(next);
+    return next;
+  };
+
+  const startSelectedMission = (): void => {
+    if (!selectedPack || !selectedMission) return;
+    startMission(selectedPack, selectedMission);
   };
 
   const restartMission = (): void => {
     if (loadInFlightRef.current || saveInFlightRef.current) return;
     const active = activeLaunchRef.current;
+    if (active?.kind === "mission" && active.runId && isBattlefieldTutorialMission(active.mission)
+      && tutorialStateRef.current?.status === "in-progress") {
+      dispatchTutorial({ type: "timeline-reset", runId: active.runId, tick: 0 });
+    }
     terminalRef.current = false;
     setGameOver(undefined);
     campaignOutcomeRef.current = undefined;
@@ -1243,6 +1663,93 @@ export default function App() {
     missionGraphicsLockedRef.current = next.kind === "mission";
     if (next.kind === "mission") { modeRef.current = "classic"; setMode("classic"); }
     setLaunch(next);
+  };
+
+  const activeTutorialTimeline = (): { runId?: string; tick?: number } => {
+    const active = activeLaunchRef.current;
+    const snapshot = snapshotRef.current;
+    return active?.kind === "mission" && active.runId && isBattlefieldTutorialMission(active.mission)
+      ? { runId: active.runId, tick: snapshot?.tick }
+      : {};
+  };
+
+  const focusBattlefieldAfterTutorial = (): void => {
+    requestAnimationFrame(() => canvasRef.current?.focus({ preventScroll: true }));
+  };
+
+  const startBattlefieldTutorial = (): void => {
+    if (!tutorialWelcomeOpen) {
+      setTutorialRestartError(undefined);
+      setTutorialRestartConfirm(true);
+      return;
+    }
+    dispatchTutorial({ type: "begin", ...activeTutorialTimeline() });
+    setTutorialWelcomeOpen(false);
+    focusBattlefieldAfterTutorial();
+  };
+
+  const hideBattlefieldTutorial = (): void => {
+    if (tutorialWelcomeOpen) {
+      if (!tutorialStateRef.current) dispatchTutorial({ type: "begin", ...activeTutorialTimeline() });
+      dispatchTutorial({ type: "end" });
+      setTutorialWelcomeOpen(false);
+    } else {
+      dispatchTutorial({ type: "minimize" });
+    }
+    focusBattlefieldAfterTutorial();
+  };
+
+  const endBattlefieldTutorial = (): void => {
+    if (!tutorialStateRef.current) dispatchTutorial({ type: "begin", ...activeTutorialTimeline() });
+    dispatchTutorial({ type: "end" });
+    setTutorialWelcomeOpen(false);
+    setTutorialRestartConfirm(false);
+    setTutorialRestartError(undefined);
+    if (!tutorialControlsOpen) focusBattlefieldAfterTutorial();
+  };
+
+  const resumeBattlefieldTutorial = (): void => {
+    dispatchTutorial({ type: "resume" });
+    setTutorialControlsOpen(false);
+    setTutorialRestartConfirm(false);
+    focusBattlefieldAfterTutorial();
+  };
+
+  const closeTutorialControls = (): void => {
+    setTutorialControlsOpen(false);
+    setTutorialRestartConfirm(false);
+    setTutorialRestartError(undefined);
+  };
+
+  const confirmBattlefieldTutorialRestart = (): void => {
+    if (!tutorialMissionChoice || tutorialRestartPending) return;
+    setTutorialRestartPending(true);
+    try {
+      const next = startMission(tutorialMissionChoice.pack, tutorialMissionChoice.mission);
+      if (!next?.runId) {
+        setTutorialRestartError("The fresh tutorial mission could not be started. Close this dialog and try again.");
+        setError("The fresh tutorial mission could not be started");
+        return;
+      }
+      dispatchTutorial({ type: "restart", runId: next.runId, tick: 0 });
+      setTutorialWelcomeOpen(false);
+      setTutorialControlsOpen(false);
+      setTutorialRestartConfirm(false);
+      setTutorialRestartError(undefined);
+      setNotice("Starting a fresh GDI Mission 1 tutorial");
+    } finally {
+      setTutorialRestartPending(false);
+    }
+  };
+
+  const skipTutorialBaseChapter = (): void => {
+    const current = getCurrentTutorialStep(tutorialStateRef.current);
+    const currentIndex = current ? TUTORIAL_STEP_IDS.indexOf(current) : -1;
+    const baseStart = TUTORIAL_STEP_IDS.indexOf("select_mcv");
+    if (currentIndex < baseStart) return;
+    for (let index = currentIndex; index < TUTORIAL_STEP_IDS.length; index += 1) {
+      dispatchTutorial({ type: "skip" });
+    }
   };
 
   const continueCampaign = (mission: RuntimeMissionV1): void => {
@@ -1294,6 +1801,12 @@ export default function App() {
     contextualHoverDirtyRef.current = true;
   }, [mode]);
   useEffect(() => { runningRef.current = running; }, [running]);
+
+  useEffect(() => {
+    if (!activeTutorialMission || launch?.kind !== "mission" || launch.resumeSaveId || tutorialState !== undefined
+      || launching || importing || bootstrapping || loading || gameOver || !snapshotRef.current) return;
+    setTutorialWelcomeOpen(true);
+  }, [activeTutorialMission, bootstrapping, gameOver, importing, launch, launching, loading, tick, tutorialState]);
 
   useEffect(() => {
     if (applicationModalOpen && !modalWasOpenRef.current) {
@@ -1647,6 +2160,10 @@ export default function App() {
         }
         setMissionStats(snapshot.sidebar);
         setMissionStatsLaunchKey(launch.key);
+        if (launch.kind === "mission" && launch.runId && isBattlefieldTutorialMission(launch.mission)
+          && tutorialStateRef.current?.status === "in-progress") {
+          dispatchTutorial({ type: "snapshot", facts: battlefieldTutorialFacts(snapshot, launch.runId) });
+        }
       }
 
       const sidebar = snapshot.sidebar;
@@ -1742,6 +2259,10 @@ export default function App() {
         assignBattlefieldTool(undefined);
         setPendingImport(undefined);
         setAboutOpen(false);
+        setTutorialWelcomeOpen(false);
+        setTutorialControlsOpen(false);
+        setTutorialRestartConfirm(false);
+        setTutorialRestartError(undefined);
         setGameOver(event);
         setNotice(event.won ? "Mission accomplished" : "Mission failed");
       }
@@ -1779,6 +2300,10 @@ export default function App() {
         try {
           await client.load(resumeSave.data.buffer.slice(resumeSave.data.byteOffset, resumeSave.data.byteOffset + resumeSave.data.byteLength) as ArrayBuffer);
           restoreSavePresentation(resumeSave.metadata, launch);
+          if (launch.kind === "mission" && launch.runId && isBattlefieldTutorialMission(launch.mission)
+            && tutorialStateRef.current?.status === "in-progress") {
+            dispatchTutorial({ type: "timeline-reset", runId: launch.runId, tick: resumeSave.metadata.tick });
+          }
           resumed = true;
         } catch (resumeError) {
           setError(`Could not resume local save: ${resumeError instanceof Error ? resumeError.message : String(resumeError)}`);
@@ -1889,8 +2414,19 @@ export default function App() {
           return;
         }
         const contextual = alternate || interactionModeRef.current === "order";
+        const resolvedContextual = contextual && activeSnapshot
+          ? contextualActionAtWorld(activeSnapshot, world)
+          : undefined;
         client.sendCommands([pointCommand(interactionModeRef.current, world, alternate)]);
-        if (contextual && activeSnapshot) setNotice(contextualOrderNotice(contextualActionAtWorld(activeSnapshot, world)));
+        if (resolvedContextual) {
+          setNotice(contextualOrderNotice(resolvedContextual));
+          const active = activeLaunchRef.current;
+          if (activeSnapshot && active?.kind === "mission" && active.runId && isBattlefieldTutorialMission(active.mission)
+            && isTutorialContextualOrder(resolvedContextual)
+            && battlefieldTutorialFacts(activeSnapshot, active.runId).selectedFriendlyMobile) {
+            dispatchTutorial({ type: "valid-order-sent", runId: active.runId, tick: activeSnapshot.tick });
+          }
+        }
         const id = Date.now();
         setMarker({ ...point, id, alternate: contextual });
         setTimeout(() => setMarker((current) => current?.id === id ? undefined : current), 550);
@@ -2184,15 +2720,14 @@ export default function App() {
 
       <main className="play-area" inert={applicationModalOpen} aria-hidden={applicationModalOpen} aria-busy={launching || importing || bootstrapping}>
         <div className={`viewport-frame${showOrderCoach ? " order-coach-visible" : ""}`}>
-          <canvas ref={canvasRef} tabIndex={0} aria-label="Real-time strategy battlefield" aria-describedby="battlefield-help" />
+          <canvas ref={canvasRef} tabIndex={0} aria-label="Real-time strategy battlefield" aria-describedby="battlefield-help" data-tutorial-target="battlefield" />
           <canvas ref={placementOverlayRef} className="placement-overlay" aria-hidden="true" />
           <p id="battlefield-help" className="visually-hidden">Pointer: tap to select or order, drag to box-select, middle-drag or use two fingers to pan, and pinch or wheel to zoom. Build completed structures from the command console, then tap a green footprint. Repair, sell, and support tools also target the battlefield. Keyboard: arrow or W A S D keys pan, Q selects, E enters contextual order mode, X stops selected units, plus and minus zoom, Home resets the camera, Escape cancels an active tool or pauses, and Space switches graphics when available. Number keys select control groups; press the same selected group again to center it. Control plus a number assigns the current selection, Shift plus a number adds a group to the selection, and Alt plus a number selects and centers it.</p>
-          <BattlefieldOnboarding active={launch?.kind === "mission" && !launching && !importing && !bootstrapping} />
           <div className="viewport-chrome top-left">
             <button className="hud-button" onClick={toggleMode} disabled={!launch || importing || launch.kind === "mission"} aria-label={launch?.kind === "mission" ? "Classic graphics required by this mission pack" : "Switch graphics mode"} aria-pressed={mode === "remastered"}><span>Graphics</span><strong>{mode === "classic" ? "Classic" : "Enhanced"}</strong></button>
             <button className="hud-button compact" disabled={!launch || importing || launching || loading || Boolean(gameOver)} onClick={() => clientRef.current?.setRunning(!running)}>{running ? "Pause" : "Resume"}</button>
           </div>
-          <div className="viewport-chrome top-right" role="group" aria-label="Camera controls">
+          <div className="viewport-chrome top-right" role="group" aria-label="Camera controls" data-tutorial-target="camera-controls">
             <button className="hud-button compact camera-button" onClick={() => zoomCamera(1 / 1.2)} disabled={!launch || importing || launching} aria-label="Zoom out">−</button>
             <button className="hud-button compact camera-button camera-reset" onClick={resetCamera} disabled={!launch || importing || launching} aria-label={`Reset camera view (${Math.round(cameraZoom * 100)}%)`}>{Math.round(cameraZoom * 100)}%</button>
             <button className="hud-button compact camera-button" onClick={() => zoomCamera(1.2)} disabled={!launch || importing || launching} aria-label="Zoom in">+</button>
@@ -2216,11 +2751,12 @@ export default function App() {
             {showOrderCoach && <p className="order-coach" role="status">Tap Order, then tap where to go</p>}
             <div className="action-bar-commands">
               <button className={!battlefieldTool && interactionMode === "select" ? "active" : ""} aria-label="Select units on next tap" aria-pressed={!battlefieldTool && interactionMode === "select"} disabled={!launch || importing || launching || loading} onClick={() => chooseInteractionMode("select")}><span>◇</span>Select</button>
-              <button className={[!battlefieldTool && interactionMode === "order" ? "active" : "", showOrderCoach ? "coach" : ""].filter(Boolean).join(" ")} aria-label="Issue a contextual move or attack order on next tap" aria-pressed={!battlefieldTool && interactionMode === "order"} disabled={!launch || importing || launching || loading} onClick={() => chooseInteractionMode("order")}><span>⌖</span>Order</button>
+              <button className={[!battlefieldTool && interactionMode === "order" ? "active" : "", showOrderCoach ? "coach" : ""].filter(Boolean).join(" ")} aria-label="Issue a contextual move or attack order on next tap" aria-pressed={!battlefieldTool && interactionMode === "order"} disabled={!launch || importing || launching || loading} data-tutorial-target="order" onClick={() => chooseInteractionMode("order")}><span>⌖</span>Order</button>
               <button aria-label="Stop selected units" disabled={!launch || importing || loading || !running} onClick={stopSelected}><span>■</span>Stop</button>
               {selectionPresentation.deployment && <button
                 aria-label={selectionPresentation.deployment.available ? "Deploy selected unit" : "Selected unit cannot deploy here"}
                 disabled={!launch || importing || loading || !running || !selectionPresentation.deployment.available}
+                data-tutorial-target="deploy"
                 onClick={deploySelected}
               ><span>⬡</span>{selectionPresentation.deployment.available ? "Deploy" : "Blocked"}</button>}
             </div>
@@ -2228,7 +2764,7 @@ export default function App() {
         </div>
 
         <aside className={sidebarOpen ? "sidebar open" : "sidebar"} aria-label="Mission panel">
-          <button className="sidebar-toggle" onClick={() => setSidebarOpen((value) => !value)} aria-label={sidebarOpen ? "Collapse mission panel" : "Expand mission panel"} aria-expanded={sidebarOpen} aria-controls="mission-panel-content">{sidebarOpen ? "›" : "‹"}</button>
+          <button className="sidebar-toggle" data-tutorial-target="mission-panel-toggle" onClick={() => setSidebarOpen((value) => !value)} aria-label={sidebarOpen ? "Collapse mission panel" : "Expand mission panel"} aria-expanded={sidebarOpen} aria-controls="mission-panel-content">{sidebarOpen ? "›" : "‹"}</button>
           <div id="mission-panel-content" className="sidebar-content" inert={!sidebarOpen} aria-hidden={!sidebarOpen}>
             <div className="minimap">
               <canvas
@@ -2293,6 +2829,53 @@ export default function App() {
           </div>
         </aside>
       </main>
+
+      {battlefieldOnboardingActive && <BattlefieldOnboarding
+        active
+        welcomeOpen={tutorialWelcomeOpen}
+        controlsOpen={tutorialControlsOpen}
+        coach={tutorialCoach}
+        tutorialStatus={tutorialStatus}
+        onStartTutorial={startBattlefieldTutorial}
+        onHideForNow={hideBattlefieldTutorial}
+        onSkipStep={() => dispatchTutorial({ type: "skip" })}
+        onEndTutorial={endBattlefieldTutorial}
+        onOpenControls={() => {
+          setTutorialRestartConfirm(false);
+          setTutorialRestartError(undefined);
+          setTutorialControlsOpen(true);
+        }}
+        onCloseControls={closeTutorialControls}
+        onResumeTutorial={tutorialState?.status === "in-progress" && tutorialState.minimized && activeTutorialMission
+          ? resumeBattlefieldTutorial
+          : undefined}
+        onRestartTutorial={tutorialState ? () => {
+          setTutorialRestartError(undefined);
+          setTutorialRestartConfirm(true);
+        } : undefined}
+        restartDisabledReason={tutorialMissionChoice ? undefined : "Canonical GDI Mission 1 is not installed."}
+        onLoadRecovery={supportsSaves && saveCount > 0 && storage?.supported ? () => { void loadLatest(); } : undefined}
+        onRestartRecovery={restartMission}
+        onSkipRecovery={skipTutorialBaseChapter}
+        onAcknowledgeCompletion={() => {
+          dispatchTutorial({ type: "acknowledge-completion" });
+          focusBattlefieldAfterTutorial();
+        }}
+        confirmRestart={tutorialRestartConfirm}
+        currentMissionLabel={tutorialCurrentMissionLabel}
+        confirmRestartMessage={tutorialRestartMessage}
+        confirmRestartError={tutorialRestartError}
+        confirmRestartActionLabel={tutorialReplayNeedsPreservation ? "Switch to Mission 1" : "Start fresh mission"}
+        confirmRestartPending={tutorialRestartPending}
+        onConfirmRestart={confirmBattlefieldTutorialRestart}
+        onCancelRestart={() => {
+          setTutorialRestartError(undefined);
+          setTutorialRestartConfirm(false);
+        }}
+        welcomeDialogRef={tutorialWelcomeDialogRef}
+        controlsDialogRef={tutorialControlsDialogRef}
+        launcherRef={tutorialLauncherRef}
+      />}
 
       {gameOver && <div className="modal-backdrop" role="presentation">
         <section ref={gameOverDialogRef} tabIndex={-1} className={`game-over ${gameOver.won ? "won" : "lost"}`} role="dialog" aria-modal="true" aria-labelledby="game-over-title">

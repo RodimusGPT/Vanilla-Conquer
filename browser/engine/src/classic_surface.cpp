@@ -9,7 +9,6 @@
 #include "protocol.h"
 
 #include <limits.h>
-#include <string.h>
 
 namespace cnc {
 namespace web {
@@ -41,12 +40,24 @@ bool SurfaceSize(uint32_t width, uint32_t height, uint32_t& pixel_count)
     return pixel_count <= UINT32_MAX - CNC_WEB_CLASSIC_SURFACE_FIXED_SIZE_V1;
 }
 
-ClassicSurfaceRect FindDirtyRect(const uint8_t* current,
-                                 const uint8_t* previous,
-                                 uint32_t width,
-                                 uint32_t height)
+struct DeltaSurfaceAnalysis
 {
+    explicit DeltaSurfaceAnalysis(uint64_t hash_seed)
+        : canonical_hash(hash_seed)
+    {
+    }
+
     ClassicSurfaceRect dirty;
+    uint64_t canonical_hash;
+};
+
+DeltaSurfaceAnalysis AnalyzeDeltaSurface(const uint8_t* current,
+                                         const uint8_t* previous,
+                                         uint32_t width,
+                                         uint32_t height,
+                                         uint64_t hash_seed)
+{
+    DeltaSurfaceAnalysis analysis(hash_seed);
     uint32_t minimum_x = width;
     uint32_t minimum_y = height;
     uint32_t maximum_x = 0u;
@@ -56,39 +67,37 @@ ClassicSurfaceRect FindDirtyRect(const uint8_t* current,
     for (uint32_t y = 0u; y < height; ++y) {
         const uint8_t* current_row = current + y * width;
         const uint8_t* previous_row = previous + y * width;
-        if (memcmp(current_row, previous_row, width) == 0) {
-            continue;
-        }
+        for (uint32_t x = 0u; x < width; ++x) {
+            const uint8_t value = current_row[x];
+            /* Keep this byte operation identical to HashBytes while folding the
+             * delta comparison into the hash traversal. */
+            analysis.canonical_hash ^= static_cast<uint64_t>(value);
+            analysis.canonical_hash *= UINT64_C(1099511628211);
+            if (value == previous_row[x]) {
+                continue;
+            }
 
-        uint32_t left = 0u;
-        while (left < width && current_row[left] == previous_row[left]) {
-            ++left;
+            if (!changed || x < minimum_x) {
+                minimum_x = x;
+            }
+            if (!changed || x + 1u > maximum_x) {
+                maximum_x = x + 1u;
+            }
+            if (!changed) {
+                minimum_y = y;
+            }
+            maximum_y = y + 1u;
+            changed = true;
         }
-        uint32_t right = width;
-        while (right > left && current_row[right - 1u] == previous_row[right - 1u]) {
-            --right;
-        }
-
-        if (!changed || left < minimum_x) {
-            minimum_x = left;
-        }
-        if (!changed || right > maximum_x) {
-            maximum_x = right;
-        }
-        if (!changed) {
-            minimum_y = y;
-        }
-        maximum_y = y + 1u;
-        changed = true;
     }
 
     if (changed) {
-        dirty.x = minimum_x;
-        dirty.y = minimum_y;
-        dirty.width = maximum_x - minimum_x;
-        dirty.height = maximum_y - minimum_y;
+        analysis.dirty.x = minimum_x;
+        analysis.dirty.y = minimum_y;
+        analysis.dirty.width = maximum_x - minimum_x;
+        analysis.dirty.height = maximum_y - minimum_y;
     }
-    return dirty;
+    return analysis;
 }
 
 bool WriteFullHeader(Writer& writer, uint32_t width, uint32_t height)
@@ -113,8 +122,22 @@ bool EncodeClassicSurface(const uint8_t* current,
         return false;
     }
 
+    Writer canonical_header;
+    if (!WriteFullHeader(canonical_header, width, height)) {
+        return false;
+    }
+    const uint64_t header_hash = HashBytes(&canonical_header.Data()[0], canonical_header.Size());
+
     const bool delta = has_baseline && previous != NULL && previous_width == width && previous_height == height;
-    const ClassicSurfaceRect dirty = delta ? FindDirtyRect(current, previous, width, height) : ClassicSurfaceRect();
+    ClassicSurfaceRect dirty;
+    uint64_t canonical_hash = 0u;
+    if (delta) {
+        const DeltaSurfaceAnalysis analysis = AnalyzeDeltaSurface(current, previous, width, height, header_hash);
+        dirty = analysis.dirty;
+        canonical_hash = analysis.canonical_hash;
+    } else {
+        canonical_hash = HashBytes(current, pixel_count, header_hash);
+    }
     if (delta && dirty.width != 0u && dirty.height > UINT32_MAX / dirty.width) {
         return false;
     }
@@ -125,13 +148,10 @@ bool EncodeClassicSurface(const uint8_t* current,
     const uint32_t payload_size = delta ? CNC_WEB_CLASSIC_SURFACE_DELTA_FIXED_SIZE_V1 + dirty_pixels
                                         : CNC_WEB_CLASSIC_SURFACE_FIXED_SIZE_V1 + pixel_count;
 
-    Writer canonical_header;
     Writer payload;
-    if (!WriteFullHeader(canonical_header, width, height) || !payload.Reserve(payload_size)) {
+    if (!payload.Reserve(payload_size)) {
         return false;
     }
-    const uint64_t header_hash = HashBytes(&canonical_header.Data()[0], canonical_header.Size());
-    const uint64_t canonical_hash = HashBytes(current, pixel_count, header_hash);
 
     if (!delta) {
         if (!WriteFullHeader(payload, width, height) || !payload.Bytes(current, pixel_count)) {

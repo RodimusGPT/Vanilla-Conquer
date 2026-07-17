@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { expectCompositedBattlefield } from "./compositedPixels";
+import { dismissBattlefieldGuide, expectCompositedBattlefield } from "./compositedPixels";
 
 const enabled = process.env.CNCWEB_CLASSIC_FREEWARE_CROSS_BROWSER === "1";
 const packageId = "classic-freeware-gdi-v1";
@@ -13,6 +13,8 @@ async function currentTick(page: Page): Promise<number> {
 async function waitForRealMission(page: Page): Promise<void> {
   await expect(page.locator(".mission-picker select").first()).toHaveValue(packageId, { timeout: 3 * 60_000 });
   await expect(page.locator(".mission-picker select").nth(1)).toHaveValue("gdi-01-east-a");
+  await expect(page.getByRole("button", { name: /^(?:Pause|Resume)$/, includeHidden: true })).toBeEnabled({ timeout: 3 * 60_000 });
+  await dismissBattlefieldGuide(page, { waitForWelcome: true });
   await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeEnabled({ timeout: 3 * 60_000 });
   await expect.poll(() => currentTick(page), { timeout: 3 * 60_000 }).toBeGreaterThan(1);
   await expect.poll(() => page.evaluate(() => window.__cncwebRuntimeMetrics?.snapshot(1_000))).toMatchObject({

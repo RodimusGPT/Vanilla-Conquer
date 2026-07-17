@@ -29,7 +29,10 @@ corepack pnpm test:classic-freeware:deployment-tools
 corepack pnpm verify:classic-freeware:mission-one
 corepack pnpm verify:classic-freeware:mission-two
 corepack pnpm verify:classic-freeware:mission-three
+corepack pnpm verify:classic-freeware:mission-four
+corepack pnpm verify:classic-freeware:mission-five
 corepack pnpm verify:classic-freeware:mission-six
+corepack pnpm verify:classic-freeware:mission-seven
 corepack pnpm build
 corepack pnpm check:bundle-budget
 ```
@@ -194,10 +197,18 @@ cannot be preserved, the old build remains available and play resumes.
 - Two fingers pan and pinch zoom. Desktop users can middle-drag or use
   WASD/arrow keys to pan, and use the wheel, +/-, or visible camera controls to
   zoom; Home or the visible reset control restores the view.
-- On the first mission launch, the Battlefield basics guide explains shroud
-  and the primary controls. Dismissal is remembered, and the compact
-  **Controls** button reopens it.
-- Canonical GDI Missions 1–6 show exact reviewed objectives. Mission 1
+- Only a player who has never seen the tutorial receives the paused
+  **Welcome, Commander** offer, and only after a fresh, non-resumed launch of
+  exact canonical GDI Mission 1. The progressive coach verifies camera movement
+  and zoom, friendly-unit selection, a valid contextual order followed by a
+  later simulation tick, MCV
+  selection and deployment, and Power Plant production/placement from real
+  input and simulation state; it completes after the Power Plant is placed.
+  **Hide for now** preserves progress. The persistent **Controls** launcher
+  opens **Controls & tutorial**, where the player can resume, restart in a fresh
+  Mission 1, or end the tutorial while retaining the complete controls
+  reference.
+- Canonical GDI Missions 1–7 show exact reviewed objectives. Mission 1
   eliminates the Nod force while retaining a GDI ground force; Mission 2
   eliminates the Nod occupation while retaining a GDI force; Mission 3
   eliminates every counted Nod unit and structure while requiring at least one
@@ -216,7 +227,12 @@ cannot be preserved, the old build remains available and play resumes.
   the Commando's C4 to sabotage one of seven authored Nod base structures while
   keeping the Commando alive; destroying every counted Nod unit and structure
   is an alternate victory, and sabotaging the Airstrip bypasses Mission 7.
-  Mission 7 and later do not receive inferred rules.
+  Mission 7 receives landing-craft reinforcements ending in an MCV, must remove
+  every counted unit and structure from Nod control through destruction or
+  capture, and must retain counted GDI infantry, ground units, structures, or
+  regular aircraft. Landing craft, transport/cargo aircraft, and A-10 strike
+  aircraft alone do not prevent defeat. Mission 8 and later do not receive
+  inferred rules.
 - Q selects, E enters contextual order mode, and X or **Stop** stops selected
   units.
 - When one deployable unit is selected, the engine-authored contextual action
@@ -250,7 +266,7 @@ coarse-pointer mobile devices.
   excluded from the distributable freeware profile; any future music must be
   original or independently licensed.
 - Production, placement, repair, sell, targeted superweapons, battle telemetry,
-  control groups, and exact Mission 1–6 objectives are connected. Mission 7 and
+  control groups, and exact Mission 1–7 objectives are connected. Mission 8 and
   later still need reviewed objective rules, and the mission panel's live
   downsampled classic surface is not yet a semantic radar implementation.
 - The engine sends one full indexed-surface bootstrap after start/load, then
@@ -268,7 +284,7 @@ coarse-pointer mobile devices.
   recorded in this checkout. The separately generated classic-freeware GDI
   sidecar does have real-Wasm save/offline, forced terminal continuation,
   portrait-touch, Firefox, and selected-unit performance acceptance. Separate
-  ordinary-command verifiers win Missions 1–3 through the public engine ABI.
+  ordinary-command verifiers win Missions 1–7 through the public engine ABI.
   Mission 3's verifier additionally deploys the MCV, builds and places the
   Power Plant/Barracks/Refinery chain, trains infantry, and completes its
   reviewed scout and assault milestones. The browser test separately selects

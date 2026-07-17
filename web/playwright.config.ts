@@ -1,6 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const port = 4173;
+const port = Number(process.env.CNCWEB_PLAYWRIGHT_PORT ?? 4173);
+if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+  throw new Error("CNCWEB_PLAYWRIGHT_PORT must be an integer from 1 through 65535");
+}
 
 export default defineConfig({
   testDir: "./e2e",
@@ -29,7 +32,7 @@ export default defineConfig({
   webServer: {
     command: `pnpm preview --host 127.0.0.1 --port ${port}`,
     url: `http://127.0.0.1:${port}`,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI && process.env.CNCWEB_PLAYWRIGHT_PORT === undefined,
     timeout: 30_000,
   },
 });

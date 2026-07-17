@@ -176,9 +176,12 @@ test.describe("private owned-content browser preflight", () => {
     await load.click();
     await expect.poll(() => page.evaluate(() => document.querySelector(".notice-strip")?.textContent?.startsWith("Loaded Manual save from tick ") ?? false)).toBe(true);
     await expect.poll(async () => sameCamera(await cameraState(page), savedCamera)).toBe(true);
-    await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeEnabled();
-    const loadedTick = await pauseAtStableTick(page);
-    expect(loadedTick >= savedTick && loadedTick < advancedTick && loadedTick <= savedTick + 6).toBe(true);
+    await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeEnabled();
+    const loadedTick = await currentTick(page);
+    await page.waitForTimeout(500);
+    expect(await currentTick(page)).toBe(loadedTick);
+    expect(loadedTick).toBe(savedTick);
+    expect(loadedTick).toBeLessThan(advancedTick);
 
     const onlineReload = await page.reload({ waitUntil: "domcontentloaded" });
     expect(onlineReload).not.toBeNull();

@@ -71,6 +71,20 @@ const missions = new Map([
     ],
     airstrip: { typeName: "AFLD", cellX: 58, cellY: 4 },
   }],
+  [7, {
+    number: 7,
+    id: "gdi-07-east-a",
+    scenarioRoot: "SCG07EA",
+    scenario: 7,
+    variation: 0,
+    direction: 0,
+    buildLevel: 7,
+    maxTicks: 120_000,
+    sabotagedStructure: 7,
+    carryOverCredits: 98_765,
+    nukePieces: 5,
+    sabotagedSite: { typeName: "PROC", cellX: 54, cellY: 10 },
+  }],
 ]);
 const missionFourVariants = new Map([
   ["west-a", {
@@ -360,7 +374,7 @@ const mission = missionNumber === 4
 if (!mission) {
   if (missionNumber === 4 || missionNumber === 5) {
     console.error("CNCWEB_VERIFY_MISSION_VARIANT must be west-a, west-b, or east-a");
-  } else console.error("CNCWEB_VERIFY_MISSION must be 1, 2, 3, 4, 5, or 6");
+  } else console.error("CNCWEB_VERIFY_MISSION must be 1, 2, 3, 4, 5, 6, or 7");
   process.exit(2);
 }
 const trace = process.env.CNCWEB_VERIFY_TRACE === "1";
@@ -527,6 +541,7 @@ const UNIT_REQUEST_STOP = 5;
 const UNIT_SCATTER = 1;
 const ACTION_SELF = 4;
 const ACTION_SABOTAGE = 10;
+const STRUCT_REFINERY = 7;
 const STRUCT_AIRSTRIP = 11;
 const PIP_COMMANDO = 7;
 const MODIFIER_CTRL = 1 << 0;
@@ -596,7 +611,7 @@ function startMessage() {
   view.setInt32(24, mission.variation, true);
   view.setInt32(28, mission.direction, true);
   view.setInt32(32, mission.buildLevel, true);
-  view.setInt32(36, -1, true);
+  view.setInt32(36, mission.sabotagedStructure ?? -1, true);
   view.setUint32(40, 1, true);
   view.setUint32(44, 1, true);
   view.setBigUint64(48, 0n, true);
@@ -1147,6 +1162,60 @@ function findLegalPlacement(snapshot, entry) {
   return undefined;
 }
 
+function findMissionSevenPlacement(snapshot, entry) {
+  const grid = snapshot.placement;
+  assert.ok(grid, `Mission 7 ${entry.assetName} placement state is unavailable`);
+  const gridIndex = (cellX, cellY) => {
+    if (cellX < grid.cellX || cellY < grid.cellY
+      || cellX >= grid.cellX + grid.width || cellY >= grid.cellY + grid.height) return undefined;
+    return (cellY - grid.cellY) * grid.width + cellX - grid.cellX;
+  };
+  const candidates = [];
+  for (let cellY = grid.cellY; cellY < grid.cellY + grid.height; cellY += 1) {
+    for (let cellX = grid.cellX; cellX < grid.cellX + grid.width; cellX += 1) {
+      const anchorIndex = gridIndex(cellX, cellY);
+      if (anchorIndex === undefined || !(grid.flags[anchorIndex] & 1)) continue;
+      const legal = entry.placementOffsets.every((rawOffset) => {
+        const offset = decodePlacementOffset(rawOffset);
+        const footprintIndex = gridIndex(cellX + offset.x, cellY + offset.y);
+        return footprintIndex !== undefined && Boolean(grid.flags[footprintIndex] & 2);
+      });
+      if (legal) {
+        candidates.push({
+          x: cellX - grid.cellX,
+          y: cellY - grid.cellY,
+          cellX,
+          cellY,
+        });
+      }
+    }
+  }
+  const pinned = missionSevenPlacementSites.get(entry.assetName);
+  if (pinned) {
+    return candidates.find((candidate) => (
+      candidate.cellX === pinned.cellX && candidate.cellY === pinned.cellY
+    )) ?? {
+      x: pinned.cellX - grid.cellX,
+      y: pinned.cellY - grid.cellY,
+      cellX: pinned.cellX,
+      cellY: pinned.cellY,
+    };
+  }
+  const preferred = entry.assetName === "PROC"
+    ? { cellX: missionSevenDeploySite.cellX - 2, cellY: missionSevenDeploySite.cellY - 9 }
+    : entry.assetName === "WEAP"
+      ? { cellX: missionSevenDeploySite.cellX + 3, cellY: missionSevenDeploySite.cellY - 3 }
+      : entry.assetName === "GTWR"
+        ? { cellX: missionSevenDeploySite.cellX + 1, cellY: missionSevenDeploySite.cellY - 3 }
+        : { cellX: missionSevenDeploySite.cellX + 2, cellY: missionSevenDeploySite.cellY };
+  return candidates.toSorted((left, right) => (
+    Math.max(Math.abs(left.cellX - preferred.cellX), Math.abs(left.cellY - preferred.cellY))
+    - Math.max(Math.abs(right.cellX - preferred.cellX), Math.abs(right.cellY - preferred.cellY))
+    || right.cellX - left.cellX
+    || right.cellY - left.cellY
+  ))[0];
+}
+
 function advance(handle, ticks) {
   const advanced = outputU32((output) => engine._cnc_web_advance(handle, ticks, output), "engine advance");
   assert.ok(advanced <= ticks, "engine advanced more ticks than requested");
@@ -1287,6 +1356,1250 @@ let missionSixLastOrderTick = -Infinity;
 let missionSixLastOrderKey;
 let missionSixAirstripSelectionTick;
 const missionSixSamDestroyedTicks = [];
+let missionSevenSabotagedSiteObserved = false;
+const missionSevenReinforcementTicks = {
+  infantry: undefined,
+  jeep: undefined,
+  firstTank: undefined,
+  secondTank: undefined,
+  mcv: undefined,
+};
+const missionSevenDeploySite = { cellX: 17, cellY: 41 };
+const missionSevenPlacementSites = new Map([
+  ["NUKE", { cellX: 19, cellY: 43 }],
+  ["PROC", { cellX: 13, cellY: 39 }],
+  ["PYLE", { cellX: 17, cellY: 43 }],
+  ["GTWR", { cellX: 17, cellY: 39 }],
+  ["WEAP", { cellX: 16, cellY: 42 }],
+]);
+const missionSevenSamSites = [
+  { cellX: 48, cellY: 31 },
+  { cellX: 54, cellY: 18 },
+  { cellX: 44, cellY: 18 },
+  { cellX: 22, cellY: 13 },
+];
+const missionSevenWestRoute = [
+  { cellX: 12, cellY: 35 },
+  { cellX: 8, cellY: 27 },
+  { cellX: 8, cellY: 19 },
+  { cellX: 14, cellY: 14 },
+  { cellX: 22, cellY: 13 },
+];
+const missionSevenEngineerRoute = [
+  { cellX: 41, cellY: 33 },
+  { cellX: 49, cellY: 26 },
+];
+const missionSevenJeepRoute = [
+  { cellX: 41, cellY: 33 },
+  { cellX: 49, cellY: 26 },
+];
+const missionSevenSaleCrewRoute = [
+  { cellX: 41, cellY: 33 },
+  { cellX: 49, cellY: 26 },
+];
+const missionSevenHandProductionRoute = [
+  { cellX: 47, cellY: 18 },
+  { cellX: 51, cellY: 17 },
+];
+const missionSevenVehicleStaging = { cellX: 17, cellY: 46, kind: "waypoint" };
+const missionSevenCoreRoute = [
+  { cellX: 41, cellY: 33, typeName: "GUN" },
+  { cellX: 48, cellY: 31, typeName: "SAM", exact: true },
+  { cellX: 49, cellY: 26, kind: "waypoint", label: "east approach" },
+  { cellX: 53, cellY: 20, typeName: "GUN" },
+  { cellX: 46, cellY: 20, typeName: "GUN" },
+  { cellX: 44, cellY: 18, typeName: "SAM", exact: true },
+  { cellX: 54, cellY: 18, typeName: "SAM", exact: true },
+  { cellX: 55, cellY: 14, typeName: "FACT" },
+  { cellX: 60, cellY: 8, kind: "waypoint", label: "airstrip approach" },
+  { cellX: 58, cellY: 4, typeName: "AFLD", exact: true },
+  { cellX: 44, cellY: 13, typeName: "HAND" },
+  { cellX: 53, cellY: 14, typeName: "NUKE", exact: true },
+  { cellX: 51, cellY: 14, typeName: "NUKE", exact: true },
+  { cellX: 50, cellY: 4, typeName: "HQ" },
+  { cellX: 52, cellY: 4, typeName: "NUKE", exact: true },
+  { cellX: 54, cellY: 4, typeName: "NUKE", exact: true },
+  { cellX: 42, cellY: 13, typeName: "NUKE", exact: true },
+  { cellX: 37, cellY: 14, typeName: "GUN", exact: true },
+  { cellX: 37, cellY: 3, typeName: "GUN", exact: true },
+];
+const missionSevenState = {
+  placedSites: [],
+  lastFactRepairTick: -Infinity,
+  pyleSale: {},
+  cySale: { crewBefore: new Set(), crew: [] },
+  westKeys: new Set(),
+  westStage: 0,
+  assaultTick: undefined,
+  wave: 0,
+  waves: [],
+  strikeKeys: new Set(),
+  homeKeys: new Set(),
+  heldKeys: new Set(),
+  routeStage: 0,
+  routeProgress: [],
+  samDeathTicks: new Map(),
+  allSamsDeadTick: undefined,
+  airstrike: {
+    readyTicks: [],
+    orders: [],
+    discharges: [],
+    readyLatched: false,
+    pending: undefined,
+  },
+  postCyTankStarts: 0,
+  postCyJeepStarts: 0,
+  sixthTank: {},
+  jeep: { stage: 0 },
+  engineer: {
+    stage: "await-sale",
+    routeStage: 0,
+    orderTick: -Infinity,
+    progress: [],
+    captureOrders: [],
+    guardOrderTick: -Infinity,
+    guardOrderCount: 0,
+  },
+  purge: {
+    targetKey: undefined,
+    orderTick: -Infinity,
+    targets: [],
+    quietStartTick: undefined,
+    quietSatisfiedTick: undefined,
+    quietStopIssued: false,
+  },
+  capturedHand: undefined,
+  handBaselineFootKeys: new Set(),
+  weapSale: { crewBefore: new Set(), crewKeys: new Set(), crew: [] },
+  saleCrew: { routeStage: 0, arrivalKeys: new Set() },
+  handProduction: {
+    orders: [],
+    keys: new Set(),
+    completions: [],
+    stages: new Map(),
+    arrivals: [],
+  },
+  factDestroyedTick: undefined,
+  airstripDestroyedTick: undefined,
+};
+
+function missionSevenDistance(object, destination) {
+  return Math.max(
+    Math.abs(object.cellX - destination.cellX),
+    Math.abs(object.cellY - destination.cellY),
+  );
+}
+
+function missionSevenMatchesSite(object, site) {
+  return site.typeName !== undefined
+    && object.typeName === site.typeName
+    && missionSevenDistance(object, site) <= (site.exact ? 0 : 3);
+}
+
+function queueMissionSevenContext(commands, group, destination, flags = 0) {
+  if (group.length === 0 || !destination) return false;
+  commands.push({ type: COMMAND_CLEAR_SELECTION, args: [0, 0, 0, 0, 0, 0, 0] });
+  for (const object of group) {
+    commands.push({
+      type: COMMAND_SELECT_OBJECT,
+      args: [object.type, object.id, 0, 0, 0, 0, 0],
+    });
+  }
+  if (flags) commands.push({
+    type: COMMAND_INPUT,
+    flags,
+    args: [INPUT_SPECIAL_KEYS, 0, 0, 0, 0, 0, 0],
+  });
+  commands.push({
+    type: COMMAND_INPUT,
+    flags,
+    args: [
+      INPUT_COMMAND_AT_POSITION,
+      destination.cellX * CELL_PIXELS + CELL_PIXELS / 2,
+      destination.cellY * CELL_PIXELS + CELL_PIXELS / 2,
+      0, 0, 0, 0,
+    ],
+  });
+  if (flags) commands.push({
+    type: COMMAND_INPUT,
+    args: [INPUT_SPECIAL_KEYS, 0, 0, 0, 0, 0, 0],
+  });
+  selectionCommands += group.length;
+  contextualOrders += 1;
+  retargetCycles += 1;
+  return true;
+}
+
+function queueMissionSevenStop(commands, group) {
+  if (group.length === 0) return false;
+  commands.push({ type: COMMAND_CLEAR_SELECTION, args: [0, 0, 0, 0, 0, 0, 0] });
+  for (const object of group) {
+    commands.push({
+      type: COMMAND_SELECT_OBJECT,
+      args: [object.type, object.id, 0, 0, 0, 0, 0],
+    });
+  }
+  commands.push({ type: COMMAND_UNIT, args: [UNIT_REQUEST_STOP, 0, 0, 0, 0, 0, 0] });
+  selectionCommands += group.length;
+  return true;
+}
+
+function startMissionSevenProduction(commands, entry) {
+  commands.push({
+    type: COMMAND_SIDEBAR,
+    args: [SIDEBAR_START_CONSTRUCTION, entry.buildableType, entry.buildableId, 0, 0, 0, 0],
+  });
+  productionStarts += 1;
+  if (entry.objectType === 12) infantryProductionStarts += 1;
+  if (entry.objectType === 13) vehicleProductionStarts += 1;
+}
+
+function sellMissionSevenStructure(commands, structure) {
+  commands.push({
+    type: COMMAND_STRUCTURE,
+    args: [STRUCTURE_SELL, structure.id, 0, 0, 0, 0, 0],
+  });
+}
+
+function observeMissionSevenTurn(snapshot, friendly, hostiles) {
+  const state = missionSevenState;
+  const funds = snapshot.sidebar.credits + snapshot.sidebar.tiberium;
+
+  for (const site of missionSevenSamSites) {
+    const key = `${site.cellX}:${site.cellY}`;
+    if (!state.samDeathTicks.has(key) && !hostiles.some((hostile) => (
+      hostile.typeName === "SAM"
+      && hostile.cellX === site.cellX && hostile.cellY === site.cellY
+    ))) state.samDeathTicks.set(key, snapshot.tick);
+  }
+  if (state.samDeathTicks.size === missionSevenSamSites.length
+    && state.allSamsDeadTick === undefined) state.allSamsDeadTick = snapshot.tick;
+
+  const authoredFact = hostiles.find((hostile) => (
+    hostile.typeName === "FACT" && missionSevenDistance(hostile, { cellX: 55, cellY: 14 }) <= 3
+  ));
+  if (state.assaultTick !== undefined && !authoredFact && state.factDestroyedTick === undefined) {
+    state.factDestroyedTick = snapshot.tick;
+  }
+  const authoredAirstrip = hostiles.find((hostile) => (
+    hostile.typeName === "AFLD" && hostile.cellX === 58 && hostile.cellY === 4
+  ));
+  if (state.assaultTick !== undefined && !authoredAirstrip
+    && state.airstripDestroyedTick === undefined) state.airstripDestroyedTick = snapshot.tick;
+
+  const capturedHand = friendly.find((object) => (
+    object.type === 4 && object.typeName === "HAND"
+    && missionSevenDistance(object, { cellX: 44, cellY: 13 }) <= 3
+  ));
+  if (capturedHand && state.capturedHand === undefined) {
+    state.capturedHand = {
+      tick: snapshot.tick,
+      key: objectKey(capturedHand),
+      strength: capturedHand.strength,
+      maxStrength: capturedHand.maxStrength,
+      cellX: capturedHand.cellX,
+      cellY: capturedHand.cellY,
+    };
+    state.engineer.captureTick = snapshot.tick;
+    state.engineer.stage = "captured";
+    state.handBaselineFootKeys = new Set(
+      friendly.filter((object) => object.type === 1).map(objectKey),
+    );
+    if (state.engineer.guardKey !== undefined) {
+      state.strikeKeys.add(state.engineer.guardKey);
+      state.engineer.guardReleaseTick = snapshot.tick;
+    }
+  }
+
+  if (state.pyleSale.orderTick !== undefined && state.pyleSale.goneTick === undefined
+    && !friendly.some((object) => object.type === 4 && object.id === state.pyleSale.id)) {
+    state.pyleSale.goneTick = snapshot.tick;
+    state.pyleSale.fundsAfter = funds;
+  }
+
+  if (state.cySale.orderTick !== undefined && state.cySale.goneTick === undefined
+    && !friendly.some((object) => object.type === 4 && object.id === state.cySale.id)) {
+    state.cySale.goneTick = snapshot.tick;
+    state.cySale.fundsAfter = funds;
+    const crew = friendly.filter((object) => (
+      object.type === 1 && !state.cySale.crewBefore.has(objectKey(object))
+    ));
+    state.cySale.crew = crew.map((object) => object.typeName).toSorted();
+    assert.equal(state.cySale.crew.length, 5,
+      "Mission 7 delayed Construction Yard survivor count changed");
+    assert.ok(state.cySale.crew.every((typeName) => (
+      typeName === "E1" || typeName === "C1" || typeName === "C7" || typeName === "E6"
+    )), "Mission 7 delayed Construction Yard emitted an invalid survivor type");
+    assert.equal(state.cySale.crew.filter((typeName) => typeName === "E6").length, 1,
+      "Mission 7 delayed Construction Yard did not yield exactly one Engineer");
+    assert.equal(state.cySale.fundsAfter - state.cySale.fundsBefore, 2_500,
+      "Mission 7 Construction Yard sale refund changed");
+    const engineer = crew.find((object) => object.typeName === "E6");
+    assert.ok(engineer, "Mission 7 Construction Yard sale did not yield its Engineer");
+    state.engineer.key = objectKey(engineer);
+    state.engineer.observedTick = snapshot.tick;
+    state.engineer.minimumStrength = engineer.strength;
+    state.engineer.stage = "holding";
+  }
+
+  if (state.weapSale.orderTick !== undefined && state.weapSale.goneTick === undefined) {
+    const spawned = friendly.filter((object) => (
+      object.type === 1 && !state.weapSale.crewBefore.has(objectKey(object))
+    ));
+    for (const object of spawned) state.weapSale.crewKeys.add(objectKey(object));
+    state.weapSale.crew = spawned.map((object) => object.typeName).toSorted();
+    if (!friendly.some((object) => object.type === 4 && object.id === state.weapSale.id)) {
+      state.weapSale.goneTick = snapshot.tick;
+      state.weapSale.fundsAfter = funds;
+      assert.equal(state.weapSale.fundsAfter - state.weapSale.fundsBefore, 1_000,
+        "Mission 7 post-capture Weapons Factory refund changed");
+      assert.equal(state.weapSale.crew.length, 5,
+        "Mission 7 post-capture Weapons Factory survivor count changed");
+      assert.ok(state.weapSale.crew.every((typeName) => (
+        typeName === "E1" || typeName === "C1" || typeName === "C7"
+      )), "Mission 7 post-capture Weapons Factory emitted an invalid survivor type");
+    }
+  }
+
+  if (state.engineer.key !== undefined && state.engineer.captureTick === undefined) {
+    const engineer = friendly.find((object) => objectKey(object) === state.engineer.key);
+    if (engineer) {
+      state.engineer.minimumStrength = Math.min(state.engineer.minimumStrength, engineer.strength);
+    } else if (state.engineer.deathTick === undefined) {
+      state.engineer.deathTick = snapshot.tick;
+    }
+  }
+
+  if (state.capturedHand !== undefined) {
+    const expectedCounts = new Map();
+    for (const { assetName } of state.handProduction.orders) {
+      expectedCounts.set(assetName, (expectedCounts.get(assetName) ?? 0) + 1);
+    }
+    const completedCounts = new Map();
+    for (const { typeName } of state.handProduction.completions) {
+      completedCounts.set(typeName, (completedCounts.get(typeName) ?? 0) + 1);
+    }
+    for (const object of friendly.filter((candidate) => (
+      candidate.type === 1
+      && !state.handBaselineFootKeys.has(objectKey(candidate))
+      && !state.weapSale.crewKeys.has(objectKey(candidate))
+    )).toSorted((left, right) => left.id - right.id)) {
+      const key = objectKey(object);
+      const completed = completedCounts.get(object.typeName) ?? 0;
+      if (state.handProduction.keys.has(key)
+        || completed >= (expectedCounts.get(object.typeName) ?? 0)) continue;
+      state.handProduction.keys.add(key);
+      state.handProduction.completions.push({
+        tick: snapshot.tick,
+        key,
+        typeName: object.typeName,
+      });
+      completedCounts.set(object.typeName, completed + 1);
+      state.handProduction.stages.set(key, 0);
+    }
+  }
+
+  const airstrikeEntry = snapshot.sidebar.entries.find((entry) => entry.assetName === "SW_AirStrike");
+  if (airstrikeEntry) {
+    assert.equal(airstrikeEntry.buildableType, 24, "Mission 7 Air Strike buildable type changed");
+    assert.equal(airstrikeEntry.buildableId, 3, "Mission 7 Air Strike buildable id changed");
+    assert.equal(airstrikeEntry.objectType, 11, "Mission 7 Air Strike object type changed");
+    assert.equal(airstrikeEntry.superweaponType, 3, "Mission 7 Air Strike superweapon type changed");
+    if (airstrikeEntry.completed && !state.airstrike.readyLatched) {
+      state.airstrike.readyTicks.push(snapshot.tick);
+      state.airstrike.readyLatched = true;
+    } else if (!airstrikeEntry.completed) state.airstrike.readyLatched = false;
+  }
+  if (state.allSamsDeadTick !== undefined && snapshot.tick >= state.allSamsDeadTick + 60) {
+    assert.ok(airstrikeEntry, "destroying all four Mission 7 SAM sites did not expose Air Strike");
+  }
+  if (state.airstrike.pending) {
+    const pendingTarget = hostiles.find((hostile) => (
+      objectKey(hostile) === state.airstrike.pending.targetKey
+    ));
+    const discharged = airstrikeEntry && !airstrikeEntry.completed;
+    const a10Observed = friendly.some((object) => object.type === 3 && object.typeName === "A10");
+    const targetDamaged = !pendingTarget
+      || pendingTarget.strength < state.airstrike.pending.targetStrength;
+    if (discharged && a10Observed) {
+      state.airstrike.discharges.push({
+        orderTick: state.airstrike.pending.orderTick,
+        effectTick: snapshot.tick,
+        target: state.airstrike.pending.targetType,
+        a10Observed,
+        targetDamaged,
+      });
+      state.airstrike.pending = undefined;
+    }
+  }
+}
+
+function queueMissionSevenBase(snapshot, friendly, hostiles, commands) {
+  const state = missionSevenState;
+  const funds = snapshot.sidebar.credits + snapshot.sidebar.tiberium;
+  const buildings = friendly.filter((object) => object.type === 4);
+  const builtAssets = new Set(buildings.map((object) => object.typeName));
+
+  if (buildings.length === 0) {
+    const mcv = friendly.find((object) => object.typeName === "MCV");
+    if (mcv) {
+      const atSite = missionSevenDistance(mcv, missionSevenDeploySite) === 0;
+      queueMissionSevenContext(commands, [mcv], atSite ? mcv : missionSevenDeploySite);
+      if (atSite) deploymentOrders += 1;
+    }
+  } else if (state.cySale.orderTick === undefined) {
+    const completedStructure = snapshot.sidebar.entries.find((entry) => (
+      entry.objectType === 15 && entry.completed
+    ));
+    const missingStructure = !builtAssets.has("NUKE") ? "NUKE"
+      : !builtAssets.has("PROC") ? "PROC"
+        : state.pyleSale.orderTick === undefined && !builtAssets.has("PYLE") ? "PYLE"
+          : state.pyleSale.orderTick === undefined && !builtAssets.has("GTWR") ? "GTWR"
+            : !builtAssets.has("WEAP") ? "WEAP"
+              : undefined;
+    const structureEntry = completedStructure ?? (missingStructure
+      ? snapshot.sidebar.entries.find((entry) => (
+          entry.objectType === 15 && entry.assetName === missingStructure
+        ))
+      : undefined);
+    if (structureEntry?.completed) {
+      if (snapshot.placement) {
+        const cell = findMissionSevenPlacement(snapshot, structureEntry);
+        commands.push({
+          type: COMMAND_SIDEBAR,
+          args: [
+            SIDEBAR_PLACE,
+            structureEntry.buildableType,
+            structureEntry.buildableId,
+            cell.x,
+            cell.y,
+            0,
+            0,
+          ],
+        });
+        state.placedSites.push({
+          assetName: structureEntry.assetName,
+          tick: snapshot.tick,
+          cellX: cell.cellX,
+          cellY: cell.cellY,
+        });
+        placements += 1;
+      } else {
+        commands.push({
+          type: COMMAND_SIDEBAR,
+          args: [
+            SIDEBAR_START_PLACEMENT,
+            structureEntry.buildableType,
+            structureEntry.buildableId,
+            0, 0, 0, 0,
+          ],
+        });
+        placementStarts += 1;
+      }
+    } else if (structureEntry && !structureEntry.constructing
+      && !structureEntry.onHold && !structureEntry.busy && funds >= structureEntry.cost) {
+      startMissionSevenProduction(commands, structureEntry);
+    }
+  }
+
+  if (state.pyleSale.orderTick === undefined
+    && builtAssets.has("GTWR") && !builtAssets.has("WEAP")) {
+    const pyle = buildings.find((object) => (
+      object.typeName === "PYLE" && (object.objectFlags & (1 << 5))
+    ));
+    if (pyle) {
+      state.pyleSale = {
+        orderTick: snapshot.tick,
+        id: pyle.id,
+        fundsBefore: funds,
+        strength: pyle.strength,
+      };
+      sellMissionSevenStructure(commands, pyle);
+    }
+  }
+
+  if (state.cySale.orderTick === undefined && state.samDeathTicks.has("48:31")
+    && snapshot.tick >= state.samDeathTicks.get("48:31") + 30) {
+    const constructionYard = buildings.find((object) => (
+      object.typeName === "FACT" && (object.objectFlags & (1 << 5))
+    ));
+    if (constructionYard) {
+      state.cySale.orderTick = snapshot.tick;
+      state.cySale.id = constructionYard.id;
+      state.cySale.fundsBefore = funds;
+      state.cySale.strength = constructionYard.strength;
+      state.cySale.crewBefore = new Set(
+        friendly.filter((object) => object.type === 1).map(objectKey),
+      );
+      sellMissionSevenStructure(commands, constructionYard);
+    }
+  }
+
+  const constructionYard = buildings.find((object) => object.typeName === "FACT");
+  if (constructionYard && state.cySale.orderTick === undefined
+    && constructionYard.strength < constructionYard.maxStrength
+    && !(constructionYard.objectFlags & (1 << 1))
+    && funds >= 250 && snapshot.tick - state.lastFactRepairTick >= 900) {
+    commands.push({
+      type: COMMAND_STRUCTURE,
+      args: [STRUCTURE_REPAIR_START, 0, 0, 0, 0, 0, 0],
+    });
+    commands.push({
+      type: COMMAND_STRUCTURE,
+      args: [STRUCTURE_REPAIR, constructionYard.id, 0, 0, 0, 0, 0],
+    });
+    state.lastFactRepairTick = snapshot.tick;
+    repairOrders += 1;
+  }
+
+  const westSamAlive = hostiles.some((hostile) => (
+    hostile.typeName === "SAM" && hostile.cellX === 22 && hostile.cellY === 13
+  ));
+  if (builtAssets.has("PYLE") && state.pyleSale.orderTick === undefined && westSamAlive) {
+    const liveWest = friendly.filter((object) => (
+      object.type === 1 && state.westKeys.has(objectKey(object))
+    )).length;
+    const infantry = snapshot.sidebar.entries.find((entry) => entry.assetName === "E2")
+      ?? snapshot.sidebar.entries.find((entry) => entry.assetName === "E1");
+    if (infantry && liveWest < 4 && !infantry.constructing && !infantry.completed
+      && !infantry.onHold && !infantry.busy && funds >= infantry.cost + 800) {
+      startMissionSevenProduction(commands, infantry);
+    }
+  }
+
+  if (state.cySale.goneTick !== undefined && builtAssets.has("WEAP")) {
+    const mediumTank = snapshot.sidebar.entries.find((entry) => entry.assetName === "MTNK");
+    const jeep = snapshot.sidebar.entries.find((entry) => entry.assetName === "JEEP");
+    const waveTwoTick = state.waves.findLast(({ wave }) => wave === 2)?.tick;
+    const vehicle = state.postCyTankStarts < 5
+      ? mediumTank
+      : state.wave >= 2 && snapshot.tick > waveTwoTick
+          && state.sixthTank.queueTick === undefined
+        ? mediumTank
+        : state.sixthTank.completedTick !== undefined
+            && snapshot.tick > state.sixthTank.completedTick
+            && state.jeep.queueTick === undefined
+          ? jeep
+          : undefined;
+    if (vehicle && !vehicle.constructing && !vehicle.completed && !vehicle.onHold
+      && !vehicle.busy && funds >= vehicle.cost) {
+      startMissionSevenProduction(commands, vehicle);
+      if (vehicle.assetName === "MTNK") {
+        state.postCyTankStarts += 1;
+        if (state.postCyTankStarts === 6) {
+          state.sixthTank.queueTick = snapshot.tick;
+          state.sixthTank.queueFunds = funds;
+        }
+      } else {
+        state.postCyJeepStarts += 1;
+        state.jeep.queueTick = snapshot.tick;
+        state.jeep.queueFunds = funds;
+      }
+    }
+  }
+
+  if (state.capturedHand !== undefined && state.weapSale.orderTick === undefined) {
+    const weaponsFactory = buildings.find((object) => (
+      object.typeName === "WEAP" && (object.objectFlags & (1 << 5))
+    ));
+    if (weaponsFactory) {
+      state.weapSale.orderTick = snapshot.tick;
+      state.weapSale.id = weaponsFactory.id;
+      state.weapSale.fundsBefore = funds;
+      state.weapSale.crewBefore = new Set(
+        friendly.filter((object) => object.type === 1).map(objectKey),
+      );
+      sellMissionSevenStructure(commands, weaponsFactory);
+    }
+  }
+
+  if (state.weapSale.goneTick !== undefined && state.capturedHand !== undefined
+    && state.handProduction.orders.length < 4) {
+    const infantry = ["E3", "E4", "E1"]
+      .map((assetName) => snapshot.sidebar.entries.find((entry) => entry.assetName === assetName))
+      .find((entry) => entry && !entry.constructing && !entry.completed
+        && !entry.onHold && !entry.busy && funds >= entry.cost);
+    if (infantry) {
+      startMissionSevenProduction(commands, infantry);
+      state.handProduction.orders.push({
+        tick: snapshot.tick,
+        assetName: infantry.assetName,
+        cost: infantry.cost,
+        fundsBefore: funds,
+      });
+    }
+  }
+
+  const airstrikeEntry = snapshot.sidebar.entries.find((entry) => (
+    entry.assetName === "SW_AirStrike"
+  ));
+  if (state.allSamsDeadTick !== undefined && airstrikeEntry?.completed
+    && state.airstrike.pending === undefined) {
+    const priorities = state.airstrike.orders.length === 0
+      ? new Map([["AFLD", 0], ["FACT", 1], ["HAND", 2], ["NUKE", 3], ["HQ", 4]])
+      : new Map([["FACT", 0], ["AFLD", 1], ["HAND", 2], ["NUKE", 3], ["HQ", 4]]);
+    const protectHand = state.engineer.key !== undefined
+      && state.engineer.captureTick === undefined && state.engineer.deathTick === undefined;
+    const structureTarget = hostiles.filter((hostile) => (
+      hostile.type === 4
+      && !(protectHand && hostile.typeName === "HAND"
+        && missionSevenDistance(hostile, { cellX: 44, cellY: 13 }) <= 3)
+    )).toSorted((left, right) => (
+      (priorities.get(left.typeName) ?? 20) - (priorities.get(right.typeName) ?? 20)
+      || left.strength - right.strength
+      || left.cellY - right.cellY
+      || left.cellX - right.cellX
+      || left.id - right.id
+    ))[0];
+    const mobileTarget = chooseTarget(hostiles.filter((hostile) => (
+      hostile.type !== 4 && hostile.typeName !== "HARV"
+    )));
+    const remoteCleanupTarget = state.airstrike.orders.length > 0
+      ? chooseTarget(hostiles.filter((hostile) => (
+        hostile.type !== 4 && hostile.typeName !== "HARV"
+        && hostile.cellX <= 10 && hostile.cellY <= 10
+      )))
+      : undefined;
+    const target = remoteCleanupTarget
+      ?? structureTarget
+      ?? mobileTarget
+      ?? chooseTarget(hostiles);
+    if (target) {
+      commands.push({
+        type: COMMAND_SUPERWEAPON,
+        args: [
+          SUPERWEAPON_PLACE,
+          airstrikeEntry.buildableType,
+          airstrikeEntry.buildableId,
+          target.cellX * CELL_PIXELS + CELL_PIXELS / 2,
+          target.cellY * CELL_PIXELS + CELL_PIXELS / 2,
+          0,
+          0,
+        ],
+      });
+      const order = {
+        tick: snapshot.tick,
+        target: target.typeName,
+        cellX: target.cellX,
+        cellY: target.cellY,
+        strength: target.strength,
+      };
+      state.airstrike.orders.push(order);
+      state.airstrike.pending = {
+        orderTick: snapshot.tick,
+        targetKey: objectKey(target),
+        targetType: target.typeName,
+        targetStrength: target.strength,
+      };
+    }
+  }
+}
+
+function classifyMissionSevenForces(snapshot, friendly, hostiles, attackers) {
+  const state = missionSevenState;
+  const liveFriendlyKeys = new Set(friendly.map(objectKey));
+  for (const keys of [state.westKeys, state.strikeKeys, state.homeKeys, state.heldKeys]) {
+    for (const key of keys) {
+      if (!liveFriendlyKeys.has(key)) keys.delete(key);
+    }
+  }
+
+  const westSamAlive = hostiles.some((hostile) => (
+    hostile.typeName === "SAM" && hostile.cellX === 22 && hostile.cellY === 13
+  ));
+  if (westSamAlive) {
+    const liveWestKeys = new Set(friendly.filter((object) => (
+      object.type === 1 && state.westKeys.has(objectKey(object))
+    )).map(objectKey));
+    if (liveWestKeys.size < 6) {
+      for (const infantry of friendly.filter((object) => (
+        object.type === 1
+        && objectKey(object) !== state.engineer.key
+        && !state.westKeys.has(objectKey(object))
+        && !state.strikeKeys.has(objectKey(object))
+        && !state.weapSale.crewKeys.has(objectKey(object))
+        && !state.handProduction.keys.has(objectKey(object))
+      )).toSorted((left, right) => (
+        Number(right.typeName === "E2") - Number(left.typeName === "E2")
+        || left.id - right.id
+      ))) {
+        const key = objectKey(infantry);
+        state.westKeys.add(key);
+        state.homeKeys.delete(key);
+        liveWestKeys.add(key);
+        if (liveWestKeys.size >= 6) break;
+      }
+    }
+  } else if (state.assaultTick !== undefined) {
+    for (const key of state.westKeys) {
+      if (liveFriendlyKeys.has(key)) state.strikeKeys.add(key);
+    }
+  }
+
+  const buildings = friendly.filter((object) => object.type === 4);
+  const tanks = attackers.filter((attacker) => attacker.typeName === "MTNK")
+    .toSorted((left, right) => right.strength - left.strength || left.id - right.id);
+  const baseReady = buildings.some((object) => object.typeName === "GTWR")
+    && buildings.some((object) => object.typeName === "WEAP");
+  if (state.assaultTick === undefined && baseReady && tanks.length >= 2) {
+    state.assaultTick = snapshot.tick;
+    state.wave = 1;
+    state.waves.push({ tick: snapshot.tick, wave: 1, size: tanks.length });
+    for (const tank of tanks) {
+      const key = objectKey(tank);
+      state.homeKeys.delete(key);
+      state.strikeKeys.add(key);
+    }
+  }
+
+  for (const attacker of attackers) {
+    const key = objectKey(attacker);
+    if (key === state.engineer.key || state.westKeys.has(key)
+      || state.strikeKeys.has(key) || state.homeKeys.has(key) || state.heldKeys.has(key)
+      || key === state.sixthTank.key || key === state.jeep.key) continue;
+    if (state.weapSale.crewKeys.has(key) && state.saleCrew.releaseTick === undefined) continue;
+    if (state.handProduction.keys.has(key)
+      && (state.handProduction.stages.get(key) ?? 0) < missionSevenHandProductionRoute.length) continue;
+
+    if (state.assaultTick === undefined) {
+      state.homeKeys.add(key);
+      continue;
+    }
+    if (attacker.typeName === "MTNK") {
+      if (state.sixthTank.queueTick !== undefined && state.sixthTank.key === undefined) {
+        state.sixthTank.key = key;
+        state.sixthTank.completedTick = snapshot.tick;
+        const engineer = friendly.find((object) => objectKey(object) === state.engineer.key);
+        if (engineer && state.engineer.captureTick === undefined) {
+          state.engineer.guardKey = key;
+          state.engineer.transitGuardKey = key;
+          state.engineer.transitGuardActive = true;
+          state.engineer.guardAssignedTick = snapshot.tick;
+          state.engineer.guardOrderTick = -Infinity;
+          state.engineer.guardMinimumStrength = attacker.strength;
+        } else state.strikeKeys.add(key);
+      } else state.heldKeys.add(key);
+    } else if (attacker.typeName === "JEEP"
+      && state.jeep.queueTick !== undefined && state.jeep.key === undefined) {
+      state.jeep.key = key;
+      state.jeep.completedTick = snapshot.tick;
+      state.heldKeys.add(key);
+    } else state.homeKeys.add(key);
+  }
+
+  const heldTanks = attackers.filter((attacker) => (
+    attacker.typeName === "MTNK" && state.heldKeys.has(objectKey(attacker))
+  ));
+  if (heldTanks.length >= 5 && state.routeStage === 3) {
+    for (const tank of heldTanks) {
+      const key = objectKey(tank);
+      state.heldKeys.delete(key);
+      state.strikeKeys.add(key);
+    }
+    state.wave += 1;
+    state.waves.push({
+      tick: snapshot.tick,
+      wave: state.wave,
+      size: heldTanks.length,
+      routeStage: state.routeStage,
+    });
+  }
+}
+
+function queueMissionSevenWestAndHome(
+  snapshot,
+  friendly,
+  hostiles,
+  attackers,
+  commands,
+  phase = "all",
+) {
+  const state = missionSevenState;
+  const westSam = hostiles.find((hostile) => (
+    hostile.typeName === "SAM" && hostile.cellX === 22 && hostile.cellY === 13
+  ));
+  const westGroup = friendly.filter((object) => (
+    object.type === 1 && state.westKeys.has(objectKey(object))
+  ));
+  if (phase !== "home" && westSam && westGroup.length > 0) {
+    while (state.westStage < missionSevenWestRoute.length - 1) {
+      const waypoint = missionSevenWestRoute[state.westStage];
+      const arrivals = westGroup.filter((unit) => missionSevenDistance(unit, waypoint) <= 2).length;
+      if (arrivals < Math.max(1, Math.ceil(westGroup.length / 2))) break;
+      state.westStage += 1;
+    }
+    const target = state.westStage >= missionSevenWestRoute.length - 1
+      ? westSam
+      : missionSevenWestRoute[state.westStage];
+    queueMissionSevenContext(commands, westGroup, target);
+  }
+
+  const homeGroup = attackers.filter((attacker) => state.homeKeys.has(objectKey(attacker)));
+  const mcvDeploying = friendly.some((object) => object.typeName === "MCV")
+    && !friendly.some((object) => object.type === 4);
+  if (phase !== "west" && !mcvDeploying && homeGroup.length > 0) {
+    const visibleThreat = chooseTarget(hostiles.filter((hostile) => (
+      snapshot.shroud.isVisible(hostile.cellX, hostile.cellY)
+      && hostile.type !== 4 && hostile.typeName !== "HARV"
+      && missionSevenDistance(hostile, missionSevenDeploySite) <= 11
+    )));
+    queueMissionSevenContext(commands, homeGroup,
+      visibleThreat ?? { cellX: missionSevenDeploySite.cellX + 1, cellY: missionSevenDeploySite.cellY });
+  }
+}
+
+function queueMissionSevenEngineerTransit(snapshot, friendly, commands) {
+  const state = missionSevenState;
+  if (state.engineer.key === undefined || state.engineer.captureTick !== undefined
+    || state.engineer.deathTick !== undefined) return;
+  const engineer = friendly.find((object) => objectKey(object) === state.engineer.key);
+  if (!engineer) return;
+
+  const transitGuard = friendly.find((object) => (
+    objectKey(object) === state.engineer.transitGuardKey
+  ));
+  if (state.engineer.transitGuardActive && transitGuard
+    && snapshot.tick - state.engineer.guardOrderTick >= 60) {
+    queueMissionSevenContext(
+      commands,
+      [transitGuard],
+      engineer,
+      MODIFIER_CTRL | MODIFIER_ALT,
+    );
+    state.engineer.guardOrderTick = snapshot.tick;
+    state.engineer.guardOrderCount += 1;
+    state.engineer.guardMinimumStrength = Math.min(
+      state.engineer.guardMinimumStrength ?? transitGuard.strength,
+      transitGuard.strength,
+    );
+  }
+
+  if (state.wave < 2) {
+    const home = { cellX: 18, cellY: 41 };
+    if (missionSevenDistance(engineer, home) > 2
+      && snapshot.tick - state.engineer.orderTick >= 90) {
+      state.engineer.stage = "returning-home";
+      queueMissionSevenContext(commands, [engineer], home, MODIFIER_ALT);
+      state.engineer.orderTick = snapshot.tick;
+    } else if (missionSevenDistance(engineer, home) <= 2
+      && (state.engineer.orderTick === -Infinity
+        || state.engineer.stage === "returning-home")) {
+      queueMissionSevenStop(commands, [engineer]);
+      state.engineer.stage = "holding";
+      state.engineer.orderTick = snapshot.tick;
+    }
+    return;
+  }
+
+  if (state.engineer.routeStage < missionSevenEngineerRoute.length) {
+    state.engineer.stage = "transiting";
+    while (state.engineer.routeStage < missionSevenEngineerRoute.length) {
+      const waypoint = missionSevenEngineerRoute[state.engineer.routeStage];
+      if (missionSevenDistance(engineer, waypoint) > 3) break;
+      state.engineer.progress.push({
+        tick: snapshot.tick,
+        stage: state.engineer.routeStage,
+        waypoint,
+        strength: engineer.strength,
+        cellX: engineer.cellX,
+        cellY: engineer.cellY,
+      });
+      state.engineer.routeStage += 1;
+      state.engineer.orderTick = -Infinity;
+    }
+    const waypoint = missionSevenEngineerRoute[state.engineer.routeStage];
+    if (waypoint && snapshot.tick - state.engineer.orderTick >= 90) {
+      queueMissionSevenContext(commands, [engineer], waypoint, MODIFIER_ALT);
+      state.engineer.orderTick = snapshot.tick;
+    }
+  }
+
+  if (state.engineer.routeStage === missionSevenEngineerRoute.length
+    && state.engineer.stagedTick === undefined) {
+    state.engineer.stagedTick = snapshot.tick;
+    state.engineer.stage = "staged";
+    queueMissionSevenStop(commands, [engineer]);
+    if (state.engineer.transitGuardActive && state.engineer.guardKey !== undefined) {
+      const guardKey = state.engineer.guardKey;
+      state.engineer.transitGuardActive = false;
+      state.engineer.transitGuardReleaseTick = snapshot.tick;
+      state.strikeKeys.add(guardKey);
+      state.engineer.guardKey = undefined;
+      state.engineer.guardAssignedTick = undefined;
+      state.engineer.guardOrderTick = -Infinity;
+    }
+  }
+}
+
+function queueMissionSevenJeep(snapshot, friendly, hostiles, attackers, commands) {
+  const state = missionSevenState;
+  if (state.jeep.key === undefined) return;
+  const jeep = attackers.find((attacker) => objectKey(attacker) === state.jeep.key);
+  if (!jeep) {
+    if (state.jeep.completedTick !== undefined && state.jeep.deathTick === undefined) {
+      state.jeep.deathTick = snapshot.tick;
+    }
+    return;
+  }
+  state.jeep.minimumStrength = Math.min(state.jeep.minimumStrength ?? jeep.strength, jeep.strength);
+  const innerGunsCleared = [[53, 20], [46, 20]].every(([cellX, cellY]) => (
+    state.routeProgress.some((progress) => (
+      progress.typeName === "GUN" && progress.cellX === cellX && progress.cellY === cellY
+    ))
+  ));
+  if (!innerGunsCleared) return;
+
+  while (state.jeep.stage < missionSevenJeepRoute.length) {
+    const waypoint = missionSevenJeepRoute[state.jeep.stage];
+    if (missionSevenDistance(jeep, waypoint) > 3) break;
+    state.jeep.stage += 1;
+  }
+  if (state.jeep.stage < missionSevenJeepRoute.length) {
+    state.heldKeys.delete(state.jeep.key);
+    state.jeep.transitTick ??= snapshot.tick;
+    queueMissionSevenContext(commands, [jeep], missionSevenJeepRoute[state.jeep.stage]);
+    return;
+  }
+
+  state.jeep.parkTick ??= snapshot.tick;
+  const airstrip = hostiles.find((hostile) => (
+    hostile.typeName === "AFLD" && hostile.cellX === 58 && hostile.cellY === 4
+  ));
+  if (state.allSamsDeadTick !== undefined && airstrip) {
+    state.heldKeys.delete(state.jeep.key);
+    state.jeep.releaseTick ??= snapshot.tick;
+    state.jeep.attackOrderTick ??= snapshot.tick;
+    queueMissionSevenContext(commands, [jeep], airstrip);
+  } else if (state.jeep.releaseTick === undefined) queueMissionSevenStop(commands, [jeep]);
+}
+
+function queueMissionSevenHeldVehicles(attackers, commands) {
+  const heldVehicles = attackers.filter((attacker) => (
+    missionSevenState.heldKeys.has(objectKey(attacker))
+  ));
+  queueMissionSevenContext(commands, heldVehicles, missionSevenVehicleStaging);
+}
+
+function queueMissionSevenFootSupport(snapshot, friendly, attackers, commands) {
+  const state = missionSevenState;
+  const saleCrew = friendly.filter((object) => (
+    object.type === 1 && state.weapSale.crewKeys.has(objectKey(object))
+  ));
+  if (state.weapSale.goneTick !== undefined && state.factDestroyedTick !== undefined
+    && state.airstripDestroyedTick !== undefined && state.saleCrew.transitTick === undefined
+    && saleCrew.length > 0) state.saleCrew.transitTick = snapshot.tick;
+  if (state.saleCrew.transitTick !== undefined && state.saleCrew.releaseTick === undefined
+    && saleCrew.length > 0) {
+    while (state.saleCrew.routeStage < missionSevenSaleCrewRoute.length) {
+      const waypoint = missionSevenSaleCrewRoute[state.saleCrew.routeStage];
+      const arrived = saleCrew.filter((object) => missionSevenDistance(object, waypoint) <= 3);
+      for (const object of arrived) {
+        state.saleCrew.arrivalKeys.add(`${objectKey(object)}:${state.saleCrew.routeStage}`);
+      }
+      if (arrived.length < saleCrew.length) break;
+      state.saleCrew.routeStage += 1;
+    }
+    if (state.saleCrew.routeStage < missionSevenSaleCrewRoute.length) {
+      queueMissionSevenContext(commands, saleCrew,
+        missionSevenSaleCrewRoute[state.saleCrew.routeStage]);
+    } else {
+      state.saleCrew.parkTick = snapshot.tick;
+      state.saleCrew.releaseTick = snapshot.tick;
+      for (const object of saleCrew) {
+        const key = objectKey(object);
+        state.homeKeys.delete(key);
+        state.heldKeys.delete(key);
+        state.westKeys.delete(key);
+        state.strikeKeys.add(key);
+      }
+    }
+  } else if (state.weapSale.orderTick !== undefined && state.saleCrew.transitTick === undefined
+    && saleCrew.length > 0) queueMissionSevenStop(commands, saleCrew);
+
+  const stagedGroups = new Map();
+  for (const key of state.handProduction.keys) {
+    const infantry = friendly.find((object) => objectKey(object) === key);
+    if (!infantry) continue;
+    let stage = state.handProduction.stages.get(key) ?? 0;
+    while (stage < missionSevenHandProductionRoute.length
+      && missionSevenDistance(infantry, missionSevenHandProductionRoute[stage]) <= 3) {
+      state.handProduction.arrivals.push({
+        tick: snapshot.tick,
+        key,
+        typeName: infantry.typeName,
+        stage,
+        waypoint: missionSevenHandProductionRoute[stage],
+      });
+      stage += 1;
+    }
+    state.handProduction.stages.set(key, stage);
+    if (stage >= missionSevenHandProductionRoute.length) {
+      state.homeKeys.delete(key);
+      state.heldKeys.delete(key);
+      state.westKeys.delete(key);
+      state.strikeKeys.add(key);
+    } else {
+      const group = stagedGroups.get(stage) ?? [];
+      group.push(infantry);
+      stagedGroups.set(stage, group);
+    }
+  }
+  for (const [stage, group] of stagedGroups) {
+    queueMissionSevenContext(commands, group, missionSevenHandProductionRoute[stage], MODIFIER_ALT);
+  }
+
+  for (const attacker of attackers) {
+    const key = objectKey(attacker);
+    if (state.saleCrew.releaseTick !== undefined && state.weapSale.crewKeys.has(key)) {
+      state.homeKeys.delete(key);
+      state.heldKeys.delete(key);
+      state.westKeys.delete(key);
+      state.strikeKeys.add(key);
+    }
+  }
+}
+
+function queueMissionSevenPurgeAndCapture(snapshot, friendly, hostiles, attackers, commands) {
+  const state = missionSevenState;
+  const engineer = friendly.find((object) => objectKey(object) === state.engineer.key);
+  const capturedHand = friendly.find((object) => (
+    object.type === 4 && object.typeName === "HAND"
+    && missionSevenDistance(object, { cellX: 44, cellY: 13 }) <= 3
+  ));
+  const hostileHand = hostiles.find((object) => (
+    object.type === 4 && object.typeName === "HAND"
+    && missionSevenDistance(object, { cellX: 44, cellY: 13 }) <= 3
+  ));
+  const allSamsDead = state.samDeathTicks.size === missionSevenSamSites.length
+    && state.allSamsDeadTick < snapshot.tick;
+  const preCapture = state.engineer.captureTick === undefined && engineer
+    && state.engineer.stagedTick !== undefined && allSamsDead;
+  const postCapture = state.engineer.captureTick !== undefined;
+  if (!preCapture && !postCapture) return false;
+
+  const purgeForces = attackers.filter((attacker) => (
+    (!preCapture || attacker.typeName === "MTNK")
+    && (state.strikeKeys.has(objectKey(attacker))
+      || objectKey(attacker) === state.engineer.guardKey
+      || objectKey(attacker) === state.sixthTank.key)
+  ));
+  const purgeTanks = purgeForces.filter((attacker) => attacker.typeName === "MTNK");
+  const formationDistance = (object) => purgeForces.length === 0 ? Infinity
+    : Math.min(...purgeForces.map((unit) => missionSevenDistance(unit, object)));
+  const handDistance = (object) => missionSevenDistance(object, { cellX: 44, cellY: 13 });
+  const engineerDistance = (object) => engineer ? missionSevenDistance(object, engineer) : Infinity;
+  const capturedHandDistance = (object) => capturedHand
+    ? missionSevenDistance(object, capturedHand)
+    : Infinity;
+  const anchorDistance = (object) => preCapture
+    ? Math.min(handDistance(object), engineerDistance(object))
+    : Math.min(capturedHandDistance(object), formationDistance(object));
+  const inCore = (object) => object.cellX >= 40 && object.cellX <= 62
+    && object.cellY >= 3 && object.cellY <= 26;
+  const candidates = hostiles.filter((object) => (
+    object.type !== 4
+    && (object.objectFlags & (1 << 12)) !== 0
+    && snapshot.shroud.isVisible(object.cellX, object.cellY)
+    && (preCapture
+      ? anchorDistance(object) <= 12
+      : inCore(object)
+        && (formationDistance(object) <= 8 || capturedHandDistance(object) <= 10))
+  ));
+  let target = candidates.find((object) => objectKey(object) === state.purge.targetKey);
+  if (!target) {
+    const priority = (object) => object.typeName === "LTNK" ? 0
+      : object.typeName === "BGGY" ? 1
+        : ["E3", "E4", "E1"].includes(object.typeName) ? 2 : 3;
+    target = candidates.toSorted((left, right) => (
+      priority(left) - priority(right)
+      || anchorDistance(left) - anchorDistance(right)
+      || left.strength - right.strength
+      || left.id - right.id
+    ))[0];
+    state.purge.targetKey = target && objectKey(target);
+    state.purge.orderTick = -Infinity;
+    if (target) state.purge.targets.push({
+      tick: snapshot.tick,
+      phase: preCapture ? "pre-capture" : "post-capture",
+      key: objectKey(target),
+      typeName: target.typeName,
+      cellX: target.cellX,
+      cellY: target.cellY,
+    });
+  }
+
+  if (preCapture) {
+    if (target) {
+      state.purge.quietStartTick = undefined;
+      state.purge.quietSatisfiedTick = undefined;
+      state.purge.quietStopIssued = false;
+      if (state.engineer.guardKey !== undefined && !state.engineer.transitGuardActive) {
+        state.strikeKeys.add(state.engineer.guardKey);
+        state.engineer.guardKey = undefined;
+        state.engineer.guardAssignedTick = undefined;
+        state.engineer.guardOrderTick = -Infinity;
+      }
+    } else {
+      state.purge.quietStartTick ??= snapshot.tick;
+      if (!state.purge.quietStopIssued) {
+        const movingTanks = purgeTanks.filter((tank) => objectKey(tank) !== state.engineer.guardKey);
+        queueMissionSevenStop(commands, movingTanks);
+        state.purge.quietStopIssued = true;
+      }
+      if (state.purge.quietSatisfiedTick === undefined
+        && snapshot.tick - state.purge.quietStartTick >= 180) {
+        state.purge.quietSatisfiedTick = snapshot.tick;
+      }
+      if (state.purge.quietSatisfiedTick !== undefined && state.engineer.guardKey === undefined) {
+        const guard = purgeTanks.toSorted((left, right) => (
+          right.strength - left.strength || right.maxStrength - left.maxStrength || left.id - right.id
+        ))[0];
+        if (guard) {
+          state.engineer.guardKey = objectKey(guard);
+          state.engineer.guardAssignedTick = snapshot.tick;
+          state.engineer.guardOrderTick = -Infinity;
+          state.engineer.guardMinimumStrength = guard.strength;
+          state.strikeKeys.delete(state.engineer.guardKey);
+        }
+      }
+    }
+  }
+
+  const guard = friendly.find((object) => objectKey(object) === state.engineer.guardKey);
+  if (preCapture && engineer && guard
+    && snapshot.tick - state.engineer.guardOrderTick >= 60) {
+    queueMissionSevenContext(commands, [guard], engineer, MODIFIER_CTRL | MODIFIER_ALT);
+    state.engineer.guardOrderTick = snapshot.tick;
+    state.engineer.guardOrderCount += 1;
+    state.engineer.guardMinimumStrength = Math.min(
+      state.engineer.guardMinimumStrength ?? guard.strength,
+      guard.strength,
+    );
+  }
+  if (preCapture && !target && engineer && guard && hostileHand
+    && state.purge.quietSatisfiedTick !== undefined
+    && snapshot.tick - state.engineer.guardAssignedTick >= 60
+    && snapshot.tick - state.engineer.orderTick >= 60) {
+    state.engineer.stage = "capturing";
+    queueMissionSevenContext(commands, [engineer], hostileHand);
+    state.engineer.orderTick = snapshot.tick;
+    state.engineer.captureOrderTick ??= snapshot.tick;
+    state.engineer.captureOrders.push({
+      tick: snapshot.tick,
+      strength: engineer.strength,
+      cellX: engineer.cellX,
+      cellY: engineer.cellY,
+    });
+  }
+
+  if (target && purgeForces.length > 0
+    && snapshot.tick - state.purge.orderTick >= 90) {
+    for (let index = 0; index < purgeForces.length; index += 6) {
+      queueMissionSevenContext(commands, purgeForces.slice(index, index + 6), target);
+    }
+    state.purge.orderTick = snapshot.tick;
+  }
+  return (target !== undefined && purgeForces.length > 0) || preCapture;
+}
+
+function queueMissionSevenCoreAssault(snapshot, hostiles, attackers, commands, purgeActive) {
+  const state = missionSevenState;
+  if (state.assaultTick === undefined || purgeActive) return;
+  const strike = attackers.filter((attacker) => state.strikeKeys.has(objectKey(attacker)));
+  if (strike.length === 0) return;
+  const visibleHostiles = hostiles.filter((hostile) => (
+    snapshot.shroud.isVisible(hostile.cellX, hostile.cellY)
+  ));
+
+  while (state.routeStage < missionSevenCoreRoute.length) {
+    const site = missionSevenCoreRoute[state.routeStage];
+    if (site.kind === "waypoint") {
+      const tanks = strike.filter((attacker) => attacker.typeName === "MTNK");
+      const required = Math.min(2, tanks.length);
+      const arrivals = tanks.filter((tank) => missionSevenDistance(tank, site) <= 3).length;
+      if (required > 0 && arrivals < required) break;
+      state.routeProgress.push({ ...site, tick: snapshot.tick, arrivals });
+      state.routeStage += 1;
+      continue;
+    }
+    if (hostiles.some((hostile) => missionSevenMatchesSite(hostile, site))) break;
+    state.routeProgress.push({ ...site, tick: snapshot.tick });
+    state.routeStage += 1;
+  }
+
+  const site = missionSevenCoreRoute[state.routeStage];
+  const routeStructure = site && visibleHostiles.find((hostile) => (
+    missionSevenMatchesSite(hostile, site)
+  ));
+  const hiddenTarget = chooseTarget(hostiles);
+  const target = routeStructure ?? site ?? chooseTarget(visibleHostiles) ?? (hiddenTarget && {
+      cellX: hiddenTarget.cellX,
+      cellY: hiddenTarget.cellY,
+    });
+  if (!target) return;
+  const orderedStrike = strike.toSorted((left, right) => (
+    right.maxStrength - left.maxStrength
+    || right.strength - left.strength
+    || left.id - right.id
+  ));
+  const strikeTanks = orderedStrike.filter((unit) => unit.typeName === "MTNK");
+  const strikeSupport = orderedStrike.filter((unit) => unit.typeName !== "MTNK");
+  const nearbyMobile = state.routeStage > 0
+    && state.routeStage < missionSevenCoreRoute.length
+    && strikeTanks.length > 0
+    ? visibleHostiles.filter((hostile) => hostile.type !== 4)
+      .map((hostile) => ({
+        hostile,
+        distance: Math.min(...strikeTanks.map((tank) => missionSevenDistance(tank, hostile))),
+      }))
+      .filter(({ distance }) => distance <= 8)
+      .toSorted((left, right) => (
+        left.distance - right.distance
+        || left.hostile.strength - right.hostile.strength
+        || left.hostile.id - right.hostile.id
+      ))[0]?.hostile
+    : undefined;
+  const coreLocked = state.samDeathTicks.size === missionSevenSamSites.length
+    && hostiles.some((hostile) => (
+      hostile.type === 4 && ["FACT", "AFLD", "HAND"].includes(hostile.typeName)
+    ));
+  const supportTarget = coreLocked ? target : nearbyMobile ?? target;
+  const groups = [
+    ...Array.from({ length: Math.ceil(strikeTanks.length / 6) },
+      (_, index) => strikeTanks.slice(index * 6, index * 6 + 6)),
+    ...Array.from({ length: Math.ceil(strikeSupport.length / 6) },
+      (_, index) => strikeSupport.slice(index * 6, index * 6 + 6)),
+  ].filter((group) => group.length > 0);
+  for (const group of groups) {
+    const groupTarget = group.every((unit) => unit.typeName === "MTNK")
+      ? target
+      : supportTarget;
+    const flags = groupTarget.type === undefined && groupTarget.kind !== "waypoint"
+      ? MODIFIER_CTRL
+      : 0;
+    queueMissionSevenContext(commands, group, groupTarget, flags);
+  }
+}
+
+function queueMissionSevenTurn(snapshot, friendly, hostiles, attackers, commands) {
+  observeMissionSevenTurn(snapshot, friendly, hostiles);
+  classifyMissionSevenForces(snapshot, friendly, hostiles, attackers);
+  queueMissionSevenBase(snapshot, friendly, hostiles, commands);
+  queueMissionSevenWestAndHome(snapshot, friendly, hostiles, attackers, commands, "west");
+  const purgeActive = queueMissionSevenPurgeAndCapture(
+    snapshot,
+    friendly,
+    hostiles,
+    attackers,
+    commands,
+  );
+  queueMissionSevenCoreAssault(snapshot, hostiles, attackers, commands, purgeActive);
+  queueMissionSevenWestAndHome(snapshot, friendly, hostiles, attackers, commands, "home");
+  queueMissionSevenJeep(snapshot, friendly, hostiles, attackers, commands);
+  queueMissionSevenHeldVehicles(attackers, commands);
+  queueMissionSevenFootSupport(snapshot, friendly, attackers, commands);
+  queueMissionSevenEngineerTransit(snapshot, friendly, commands);
+}
 const missionFourProtectedVillageCells = new Set([
   "18:44",
   "19:46",
@@ -1451,6 +2764,20 @@ let peakFriendly = 0;
 let peakHostiles = 0;
 let finalSnapshot;
 try {
+  const applyCampaignTransition = (label) => {
+    if (mission.carryOverCredits === undefined && mission.nukePieces === undefined) return;
+    assert.equal(typeof engine._cnc_web_set_campaign_transition, "function",
+      `${label} engine has no campaign-transition ABI`);
+    assert.equal(
+      engine._cnc_web_set_campaign_transition(
+        handle,
+        mission.carryOverCredits ?? 0,
+        mission.nukePieces ?? 0,
+      ),
+      STATUS_OK,
+      `${label} campaign transition failed`,
+    );
+  };
   const handlePointer = withAllocation(4, "handle output");
   try {
     assert.equal(engine._cnc_web_create(2, handlePointer), STATUS_OK, "cnc_web_create failed");
@@ -1460,6 +2787,7 @@ try {
     engine._free(handlePointer);
   }
 
+  applyCampaignTransition(`classic-freeware GDI Mission ${mission.number}`);
   const startBytes = startMessage();
   assert.equal(
     writeInput(startBytes, (pointer, length) => engine._cnc_web_start(handle, pointer, length)),
@@ -1480,6 +2808,7 @@ try {
     } finally {
       engine._free(replacementHandlePointer);
     }
+    applyCampaignTransition(label);
     assert.equal(
       writeInput(startBytes, (pointer, length) => engine._cnc_web_start(handle, pointer, length)),
       STATUS_OK,
@@ -1543,7 +2872,20 @@ try {
       initialProtectedVillageCells.add(`${structure.cellX}:${structure.cellY}`);
     }
   }
-  assert.ok(mission.number === 6 || initialFriendly > 0,
+  if (mission.number === 7) {
+    assert.equal(mission.sabotagedStructure, STRUCT_REFINERY,
+      "GDI Mission 7 verifier must carry the Refinery sabotage");
+    assert.equal(initialFriendly, 0, "GDI Mission 7 should begin before its landing-craft reinforcements arrive");
+    assert.equal(initialHostiles, 54, "GDI Mission 7 carried sabotage did not remove exactly one Nod structure");
+    assert.equal(snapshot.sidebar.credits + snapshot.sidebar.tiberium, 5_000,
+      "GDI Mission 7 did not ignore carried cash through its authored CarryOverMoney rule");
+    assert.ok(!rootCombatants(snapshot, HOUSE_NOD).some((hostile) => (
+      hostile.typeName === mission.sabotagedSite.typeName
+      && hostile.cellX === mission.sabotagedSite.cellX
+      && hostile.cellY === mission.sabotagedSite.cellY
+    )), "GDI Mission 7 started with the carried sabotaged Refinery intact");
+  }
+  assert.ok(mission.number === 6 || mission.number === 7 || initialFriendly > 0,
     `GDI Mission ${mission.number} started with no friendly combatants`);
   assert.ok(initialHostiles > 0, `GDI Mission ${mission.number} started with no Nod combatants`);
 
@@ -1675,6 +3017,28 @@ try {
     }
     const friendly = rootCombatants(snapshot, HOUSE_GDI);
     const hostiles = rootCombatants(snapshot, HOUSE_NOD);
+    if (mission.number === 7) {
+      if (hostiles.some((hostile) => (
+        hostile.typeName === mission.sabotagedSite.typeName
+        && hostile.cellX === mission.sabotagedSite.cellX
+        && hostile.cellY === mission.sabotagedSite.cellY
+      ))) missionSevenSabotagedSiteObserved = true;
+      const minigunners = friendly.filter((object) => object.typeName === "E1").length;
+      const grenadiers = friendly.filter((object) => object.typeName === "E2").length;
+      const tanks = friendly.filter((object) => object.typeName === "MTNK").length;
+      if (missionSevenReinforcementTicks.infantry === undefined
+        && minigunners >= 4 && grenadiers >= 2) missionSevenReinforcementTicks.infantry = snapshot.tick;
+      if (missionSevenReinforcementTicks.jeep === undefined
+        && friendly.some((object) => object.typeName === "JEEP")) missionSevenReinforcementTicks.jeep = snapshot.tick;
+      if (missionSevenReinforcementTicks.firstTank === undefined && tanks >= 1) {
+        missionSevenReinforcementTicks.firstTank = snapshot.tick;
+      }
+      if (missionSevenReinforcementTicks.secondTank === undefined && tanks >= 2) {
+        missionSevenReinforcementTicks.secondTank = snapshot.tick;
+      }
+      if (missionSevenReinforcementTicks.mcv === undefined
+        && friendly.some((object) => object.typeName === "MCV")) missionSevenReinforcementTicks.mcv = snapshot.tick;
+    }
     if (mission.number === 6 && initialFriendly === 0 && friendly.length > 0) {
       initialFriendly = friendly.length;
     }
@@ -2121,6 +3485,37 @@ try {
       }));
     }
     const commands = [];
+    if (mission.number === 7) {
+      queueMissionSevenTurn(snapshot, friendly, hostiles, attackers, commands);
+      if (trace && snapshot.tick % 300 === 0) console.error(JSON.stringify({ missionSeven: {
+        tick: snapshot.tick,
+        funds: snapshot.sidebar.credits + snapshot.sidebar.tiberium,
+        friendly: friendly.map(({ typeName, id, strength, cellX, cellY }) => (
+          { typeName, id, strength, cellX, cellY }
+        )),
+        hostiles: hostiles.length,
+        routeStage: missionSevenState.routeStage,
+        wave: missionSevenState.wave,
+        strike: missionSevenState.strikeKeys.size,
+        held: missionSevenState.heldKeys.size,
+        engineer: missionSevenState.engineer,
+        purge: missionSevenState.purge,
+        jeep: missionSevenState.jeep,
+        samDeaths: Object.fromEntries(missionSevenState.samDeathTicks),
+      } }));
+      if (commands.length > 0) {
+        submitCommands(handle, snapshot.tick + 1, commands);
+        commandBatches += 1;
+      }
+      const requested = Math.min(TICKS_PER_ORDER, MAX_TICKS - snapshot.tick);
+      const advanced = advance(handle, requested);
+      snapshot = readSnapshot(handle);
+      assert.equal(snapshot.tick, currentTick, "snapshot tick differs from the ABI advance count");
+      if (advanced === 0 && !snapshot.terminal) {
+        assert.fail("Mission 7 engine stopped before reaching a terminal state");
+      }
+      continue;
+    }
     if (mission.number === 5 && mission.variant === "west-b"
       && missionFiveShuttleFactCaptureTick === undefined) {
       const footEngineers = friendly.filter((object) => (
@@ -5179,6 +6574,18 @@ try {
   assert.equal(outcome.args[4], mission.scenario, `campaign outcome scenario is not GDI Mission ${mission.number}`);
   assert.equal(outcome.args[5], HOUSE_GDI, "campaign outcome house is not GDI");
   assert.equal(outcome.text1, mission.scenarioRoot, `campaign outcome scenario root is not ${mission.scenarioRoot}`);
+  if (mission.number === 7) {
+    assert.ok(events.indexOf(outcome) < events.indexOf(gameOver),
+      "GDI Mission 7 campaign outcome was not emitted before game over");
+    assert.equal(outcome.args[1], mission.nukePieces,
+      "GDI Mission 7 campaign outcome did not preserve carried nuke pieces");
+    assert.equal(outcome.args[2], -1,
+      "GDI Mission 7 campaign outcome retained the consumed sabotage marker");
+    assert.equal(gameOver.args[4], -1,
+      "GDI Mission 7 game-over event retained the consumed sabotage marker");
+    assert.equal(gameOver.text1, "PINTLE", "GDI Mission 7 win movie changed");
+    assert.equal(gameOver.text2, "", "GDI Mission 7 unexpectedly emitted an after-score movie");
+  }
   assert.ok(finalSnapshot.terminal, "final snapshot is not terminal");
   assert.equal(finalSnapshot.tick, gameOver.tick, "terminal snapshot and game-over ticks differ");
   assert.equal(advance(handle, 1), 0, "terminal engine accepted another simulation tick");
@@ -5351,6 +6758,172 @@ try {
     assert.equal(stats.buildingsKilled, 3,
       "GDI Mission 6 destroyed structures beyond the two SAM sites and target Airstrip");
   }
+  if (mission.number === 7) {
+    const state = missionSevenState;
+    const samDestroyedTicks = [...state.samDeathTicks.values()];
+    assert.equal(missionSevenSabotagedSiteObserved, false,
+      "GDI Mission 7 carried-sabotage Refinery reappeared during play");
+    assert.deepEqual(missionSevenReinforcementTicks, {
+      infantry: 120,
+      jeep: 390,
+      firstTank: 840,
+      secondTank: 1_020,
+      mcv: 1_740,
+    }, "GDI Mission 7 authored reinforcement timings changed");
+    assert.equal(deploymentOrders, 1, "GDI Mission 7 did not deploy its reinforced MCV exactly once");
+    assert.equal(placementStarts, 5, "GDI Mission 7 did not enter placement for each core structure");
+    assert.equal(placements, 5, "GDI Mission 7 did not place each core structure");
+    assert.deepEqual(state.placedSites.map(({ assetName, cellX, cellY }) => (
+      `${assetName}:${cellX}:${cellY}`
+    )), [
+      "NUKE:19:43",
+      "PROC:13:39",
+      "PYLE:17:43",
+      "GTWR:17:39",
+      "WEAP:16:42",
+    ], "GDI Mission 7 core base layout changed");
+
+    assert.ok(state.pyleSale.orderTick < state.pyleSale.goneTick,
+      "GDI Mission 7 Barracks sale did not complete after its order");
+    assert.equal(state.pyleSale.fundsAfter - state.pyleSale.fundsBefore, 150,
+      "GDI Mission 7 Barracks sale refund changed");
+    assert.ok(state.cySale.orderTick >= state.samDeathTicks.get("48:31") + 30,
+      "GDI Mission 7 sold the Construction Yard before clearing the eastern SAM site");
+    assert.ok(state.cySale.orderTick < state.cySale.goneTick,
+      "GDI Mission 7 Construction Yard sale did not complete after its order");
+    assert.equal(state.cySale.fundsAfter - state.cySale.fundsBefore, 2_500,
+      "GDI Mission 7 Construction Yard sale refund changed");
+    assert.equal(state.cySale.crew.length, 5,
+      "GDI Mission 7 Construction Yard survivor count changed");
+    assert.ok(state.cySale.crew.every((typeName) => (
+      typeName === "E1" || typeName === "C1" || typeName === "C7" || typeName === "E6"
+    )), "GDI Mission 7 Construction Yard emitted an invalid survivor type");
+    assert.equal(state.cySale.crew.filter((typeName) => typeName === "E6").length, 1,
+      "GDI Mission 7 Construction Yard did not yield exactly one Engineer");
+
+    assert.ok(state.engineer.observedTick >= state.cySale.goneTick,
+      "GDI Mission 7 Engineer appeared before the Construction Yard sale completed");
+    assert.ok(state.engineer.minimumStrength > 0,
+      "GDI Mission 7 Engineer did not survive the capture route");
+    assert.equal(state.engineer.deathTick, undefined,
+      "GDI Mission 7 Engineer died before capturing the Hand of Nod");
+    assert.equal(state.engineer.routeStage, missionSevenEngineerRoute.length,
+      "GDI Mission 7 Engineer did not complete its protected capture route");
+    assert.equal(state.engineer.progress.length, missionSevenEngineerRoute.length,
+      "GDI Mission 7 did not record every Engineer route arrival");
+    assert.ok(state.engineer.stagedTick < state.engineer.captureOrderTick,
+      "GDI Mission 7 Engineer did not stage before its capture order");
+    assert.ok(state.engineer.captureOrders.length > 0,
+      "GDI Mission 7 never issued a Hand of Nod capture order");
+    assert.ok(state.engineer.captureOrderTick <= state.engineer.captureTick,
+      "GDI Mission 7 observed the Hand capture before issuing its order");
+    assert.ok(state.capturedHand && state.capturedHand.tick === state.engineer.captureTick,
+      "GDI Mission 7 did not observe the captured Hand of Nod");
+    assert.ok(state.capturedHand.strength > 0
+      && state.capturedHand.strength <= state.capturedHand.maxStrength,
+    "GDI Mission 7 captured Hand of Nod has invalid health");
+    assert.deepEqual([state.capturedHand.cellX, state.capturedHand.cellY], [44, 13],
+      "GDI Mission 7 captured the wrong Hand of Nod");
+
+    assert.ok(state.engineer.captureTick <= state.weapSale.orderTick,
+      "GDI Mission 7 sold the Weapons Factory before capturing the Hand of Nod");
+    assert.ok(state.weapSale.orderTick < state.weapSale.goneTick,
+      "GDI Mission 7 Weapons Factory sale did not complete after its order");
+    assert.equal(state.weapSale.fundsAfter - state.weapSale.fundsBefore, 1_000,
+      "GDI Mission 7 Weapons Factory sale refund changed");
+    assert.equal(state.weapSale.crew.length, 5,
+      "GDI Mission 7 Weapons Factory survivor count changed");
+    assert.ok(state.weapSale.crew.every((typeName) => (
+      typeName === "E1" || typeName === "C1" || typeName === "C7"
+    )), "GDI Mission 7 Weapons Factory emitted an invalid survivor type");
+
+    assert.equal(state.wave, 2, "GDI Mission 7 did not launch both authored assault waves");
+    assert.deepEqual(state.waves.map(({ wave, size }) => [wave, size]), [[1, 2], [2, 5]],
+      "GDI Mission 7 assault-wave composition changed");
+    assert.equal(state.waves[0].tick, state.assaultTick,
+      "GDI Mission 7 first wave and assault start ticks differ");
+    assert.equal(state.waves[1].routeStage, 3,
+      "GDI Mission 7 second wave launched outside the eastern staging point");
+    assert.ok(state.waves[0].tick < state.waves[1].tick,
+      "GDI Mission 7 assault waves launched out of order");
+    assert.equal(state.postCyTankStarts, 6,
+      "GDI Mission 7 did not produce all six post-sale Medium Tanks");
+    assert.equal(state.postCyJeepStarts, 1,
+      "GDI Mission 7 did not produce its post-sale Jeep scout");
+    assert.equal(vehicleProductionStarts, 7,
+      "GDI Mission 7 vehicle production count changed");
+    assert.ok(state.waves[1].tick < state.sixthTank.queueTick
+      && state.sixthTank.queueTick < state.sixthTank.completedTick,
+    "GDI Mission 7 sixth Medium Tank lifecycle is out of order");
+    assert.ok(state.sixthTank.key !== undefined,
+      "GDI Mission 7 did not observe the sixth Medium Tank complete");
+    assert.ok(state.sixthTank.completedTick < state.jeep.queueTick
+      && state.jeep.queueTick < state.jeep.completedTick,
+    "GDI Mission 7 Jeep lifecycle is out of order");
+    assert.ok(state.jeep.key !== undefined,
+      "GDI Mission 7 did not observe the Jeep complete");
+
+    assert.equal(state.samDeathTicks.size, missionSevenSamSites.length,
+      "GDI Mission 7 did not destroy all four authored SAM sites");
+    assert.deepEqual([...state.samDeathTicks.keys()].toSorted(),
+      ["22:13", "44:18", "48:31", "54:18"],
+      "GDI Mission 7 destroyed-SAM site set changed");
+    assert.equal(state.allSamsDeadTick, Math.max(...samDestroyedTicks),
+      "GDI Mission 7 all-SAMs-cleared tick is inconsistent");
+    assert.ok(state.airstrike.readyTicks.length > 0,
+      "GDI Mission 7 never exposed a ready Air Strike");
+    assert.ok(state.airstrike.orders.length > 0,
+      "GDI Mission 7 never ordered an Air Strike");
+    assert.ok(state.airstrike.discharges.length > 0,
+      "GDI Mission 7 never observed an Air Strike discharge");
+    assert.ok(state.airstrike.orders[0].tick >= state.allSamsDeadTick,
+      "GDI Mission 7 ordered an Air Strike before clearing every SAM site");
+    assert.ok(state.airstrike.discharges[0].effectTick
+      > state.airstrike.discharges[0].orderTick,
+    "GDI Mission 7 Air Strike effect preceded its order");
+
+    assert.equal(state.handProduction.orders.length, 4,
+      "GDI Mission 7 did not issue all captured-Hand infantry orders");
+    assert.deepEqual(state.handProduction.orders.map(({ assetName }) => assetName),
+      ["E3", "E3", "E3", "E4"],
+      "GDI Mission 7 captured-Hand production composition changed");
+    assert.equal(state.handProduction.keys.size, state.handProduction.orders.length,
+      "GDI Mission 7 did not observe every captured-Hand infantry completion");
+    assert.deepEqual(state.handProduction.completions.map(({ typeName }) => typeName),
+      state.handProduction.orders.map(({ assetName }) => assetName),
+      "GDI Mission 7 captured-Hand completions did not match its production orders");
+    assert.equal(state.handProduction.arrivals.length,
+      state.handProduction.orders.length * missionSevenHandProductionRoute.length,
+    "GDI Mission 7 captured-Hand infantry did not complete both staging legs");
+    assert.ok([...state.handProduction.stages.values()].every((stage) => (
+      stage === missionSevenHandProductionRoute.length
+    )),
+    "GDI Mission 7 captured-Hand infantry remained short of the assault staging area");
+    assert.equal(infantryProductionStarts, 8,
+      "GDI Mission 7 infantry production count changed");
+    assert.equal(productionStarts, 20,
+      "GDI Mission 7 total production count changed");
+
+    assert.equal(state.routeStage, missionSevenCoreRoute.length,
+      "GDI Mission 7 strike force did not complete its Nod-base route");
+    assert.equal(state.routeProgress.length, missionSevenCoreRoute.length,
+      "GDI Mission 7 did not record every Nod-base route objective");
+    assert.deepEqual(state.routeProgress.map(({ typeName, kind, cellX, cellY }) => (
+      `${typeName ?? kind}:${cellX}:${cellY}`
+    )), missionSevenCoreRoute.map(({ typeName, kind, cellX, cellY }) => (
+      `${typeName ?? kind}:${cellX}:${cellY}`
+    )), "GDI Mission 7 Nod-base route progression changed");
+    assert.ok(state.factDestroyedTick > state.assaultTick,
+      "GDI Mission 7 did not observe the authored Construction Yard destruction");
+    assert.ok(state.airstripDestroyedTick > state.assaultTick,
+      "GDI Mission 7 did not observe the authored Airstrip destruction");
+    assert.equal(finalHostiles, 0,
+      "GDI Mission 7 won with counted Nod combatants still present");
+    assert.ok(finalFriendly > 0,
+      "GDI Mission 7 won without a surviving GDI force");
+    assert.ok(peakFriendly > initialFriendly,
+      "GDI Mission 7 never observed its authored reinforcements and production");
+  }
   const commandTypes = mission.number === 3
     ? [
       "sidebar-start-construction",
@@ -5373,6 +6946,19 @@ try {
           "select-object",
           "context-command-at-position",
         ]
+        : mission.number === 7
+          ? [
+            "sidebar-start-construction",
+            "sidebar-start-placement",
+            "sidebar-place",
+            ...(repairOrders > 0 ? ["structure-repair"] : []),
+            "structure-sell",
+            "superweapon-place",
+            "clear-selection",
+            "select-object",
+            "unit-stop",
+            "context-command-at-position",
+          ]
       : ["clear-selection", "select-object", "context-command-at-position"];
   console.log(JSON.stringify({
     format: `cncweb-classic-freeware-mission-${mission.number === 4
@@ -5381,7 +6967,9 @@ try {
         ? `five-${mission.variant}`
         : mission.number === 6
           ? "six"
-          : ["zero", "one", "two", "three"][mission.number]}-acceptance`,
+          : mission.number === 7
+            ? "seven"
+            : ["zero", "one", "two", "three"][mission.number]}-acceptance`,
     version: 1,
     packageId: manifest.package_id,
     packageRevision,
@@ -5468,6 +7056,76 @@ try {
         orderTick: missionSixSabotageOrderTick,
         structureType: outcome.args[2],
       },
+    } : {}),
+    ...(mission.number === 7 ? {
+      sabotage: {
+        structureType: mission.sabotagedStructure,
+        siteObserved: missionSevenSabotagedSiteObserved,
+      },
+      reinforcementTicks: missionSevenReinforcementTicks,
+      deploySite: missionSevenDeploySite,
+      placedSites: missionSevenState.placedSites,
+      assaultTick: missionSevenState.assaultTick,
+      waves: missionSevenState.waves,
+      sales: {
+        barracks: {
+          orderTick: missionSevenState.pyleSale.orderTick,
+          goneTick: missionSevenState.pyleSale.goneTick,
+          refund: missionSevenState.pyleSale.fundsAfter
+            - missionSevenState.pyleSale.fundsBefore,
+        },
+        constructionYard: {
+          orderTick: missionSevenState.cySale.orderTick,
+          goneTick: missionSevenState.cySale.goneTick,
+          refund: missionSevenState.cySale.fundsAfter
+            - missionSevenState.cySale.fundsBefore,
+          crew: missionSevenState.cySale.crew,
+        },
+        weaponsFactory: {
+          orderTick: missionSevenState.weapSale.orderTick,
+          goneTick: missionSevenState.weapSale.goneTick,
+          refund: missionSevenState.weapSale.fundsAfter
+            - missionSevenState.weapSale.fundsBefore,
+          crew: missionSevenState.weapSale.crew,
+        },
+      },
+      production: {
+        postConstructionYardTankStarts: missionSevenState.postCyTankStarts,
+        sixthTank: missionSevenState.sixthTank,
+        postConstructionYardJeepStarts: missionSevenState.postCyJeepStarts,
+        jeep: missionSevenState.jeep,
+        capturedHandInfantry: {
+          orders: missionSevenState.handProduction.orders,
+          completions: missionSevenState.handProduction.completions,
+          stages: Object.fromEntries(missionSevenState.handProduction.stages),
+          arrivals: missionSevenState.handProduction.arrivals,
+        },
+      },
+      samDestroyedTicks: Object.fromEntries(missionSevenState.samDeathTicks),
+      allSamsDeadTick: missionSevenState.allSamsDeadTick,
+      airstrike: {
+        readyTicks: missionSevenState.airstrike.readyTicks,
+        orders: missionSevenState.airstrike.orders,
+        discharges: missionSevenState.airstrike.discharges,
+        pending: missionSevenState.airstrike.pending !== undefined,
+      },
+      engineer: {
+        observedTick: missionSevenState.engineer.observedTick,
+        minimumStrength: missionSevenState.engineer.minimumStrength,
+        routeStage: missionSevenState.engineer.routeStage,
+        progress: missionSevenState.engineer.progress,
+        stagedTick: missionSevenState.engineer.stagedTick,
+        captureOrderTick: missionSevenState.engineer.captureOrderTick,
+        captureOrders: missionSevenState.engineer.captureOrders,
+        captureTick: missionSevenState.engineer.captureTick,
+        guardOrderCount: missionSevenState.engineer.guardOrderCount,
+        guardMinimumStrength: missionSevenState.engineer.guardMinimumStrength,
+      },
+      capturedHand: missionSevenState.capturedHand,
+      routeStage: missionSevenState.routeStage,
+      routeProgress: missionSevenState.routeProgress,
+      factDestroyedTick: missionSevenState.factDestroyedTick,
+      airstripDestroyedTick: missionSevenState.airstripDestroyedTick,
     } : {}),
     commandTypes,
     forces: {

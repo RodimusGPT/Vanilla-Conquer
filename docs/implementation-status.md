@@ -121,20 +121,25 @@ east/variation A. Red Alert remains a later, separate engine module.
   repeating an active group key centers it; Q/E switch select/order mode and X
   stops selected units. Hotkeys are suppressed in editable controls and
   dialogs. The enhanced sprite renderer remains available to the synthetic
-  demo but mission packs are locked to classic mode. A persistent first-run
-  guide identifies black areas as unexplored shroud, points players to Mission
-  1's lower-right start, documents mouse/keyboard/touch pan, zoom, selection,
-  and orders, covers the Mobile Construction Vehicle deploy → build → place
-  loop, and retains an accessible Controls launcher after dismissal. On coarse
-  pointers, selecting units while still in Select mode highlights Order with a
-  one-line coach that dismisses for the session after Order is chosen.
+  demo but mission packs are locked to classic mode. A never-seen player gets
+  the paused **Welcome, Commander** offer only after a fresh, non-resumed launch
+  of exact canonical GDI Mission 1. Its progressive, non-modal coach verifies
+  user-driven camera movement and zoom, friendly-unit selection, a valid order
+  followed by a simulation tick, MCV selection/deployment, and Power Plant
+  production/placement from input and snapshot evidence; later world state can
+  infer completed prerequisites. The tutorial completes after the Power Plant
+  is placed. **Hide for now** preserves progress, and the persistent accessible
+  **Controls & tutorial** hub can resume it, restart it in a fresh Mission 1, or
+  end it while retaining the complete mouse, keyboard, touch, order, and build
+  reference. On coarse pointers, the separate one-line Order coach is
+  suppressed while the progressive tutorial is visible.
   Production hold uses Hold / Resume build labels so sim Pause stays unambiguous.
   On fine pointers the bottom command bar is compact and muted so it does not
   compete with keyboard select/order shortcuts.
-- Missions 1–6 have exact, reviewed objective presentations gated to their
+- Missions 1–7 have exact, reviewed objective presentations gated to their
   canonical GDI/SCG01EA, GDI/SCG02EA, GDI/SCG03EA, GDI/SCG04WA,
   GDI/SCG04WB, GDI/SCG04EA, GDI/SCG05EA, GDI/SCG05WA, GDI/SCG05WB,
-  and GDI/SCG06EA
+  GDI/SCG06EA, and GDI/SCG07EA
   identities. Mission 1 eliminates the Nod force
   while retaining a GDI ground force; Mission 2 eliminates the Nod occupation
   while retaining a GDI force. Mission 3 must destroy every counted Nod unit and
@@ -148,15 +153,19 @@ east/variation A. Red Alert remains a later, separate engine module.
   structure. Before each authored relief zone is crossed, it also fails if the
   corresponding protected starting group—field force or base structures—is
   eliminated. Repair remains briefing guidance, not a native completion rule.
-  Missions 1–3 and Mission 5 use engine-exported unit/structure totals as
-  progress context; Missions 4–6 use cause-neutral state for conditions
+  Missions 1–3, Mission 5, and Mission 7 use engine-exported unit/structure totals as
+  progress context; Missions 4 and 6 use cause-neutral state for conditions
   that sidebar totals cannot prove. Only the authoritative game-over result
   marks objectives complete or failed. Mission 6 requires a surviving Commando
   and either C4 sabotage of one of seven authored Nod base structure types or
   the alternate counted-force elimination victory. Its exact presentation
   calls out the Airstrip sabotage branch that bypasses Mission 7 and the
-  structure type otherwise carried forward. Mission 7 and later do not inherit
-  guessed rules.
+  structure type otherwise carried forward. Mission 7 receives landing-craft
+  reinforcements ending in an MCV, must remove every counted unit and structure
+  from Nod control through destruction or capture, and fails when every counted
+  GDI infantry unit, ground unit, structure, and regular aircraft is gone.
+  Landing craft, transport/cargo aircraft, and A-10 strike aircraft do not
+  prevent that loss. Mission 8 and later do not inherit guessed rules.
 - Object snapshots also preserve the engine-authored contextual action for
   every player house. The visible selection model turns the selected MCV's
   `Self` action into an enabled **Deploy** command, presents the engine's
@@ -301,6 +310,15 @@ This proves the canonical Mission 7 bypass through ordinary public-ABI commands
 without invoking the debug victory hook. It can be run with
 `corepack pnpm verify:classic-freeware:mission-six`.
 
+The Mission 7 mode enters canonical `SCG07EA` through the public
+campaign-transition ABI with a carried Refinery sabotage and nuke
+pieces. It verifies the authored structure and rebuild-node removal, consumed
+sabotage marker, ignored carry cash, and preserved nuke bits. It then receives
+the landing-craft reinforcements, deploys the MCV, constructs a base and strike
+force, and reaches authoritative victory only with zero counted Nod combatants
+and a surviving counted GDI force. It can be run with
+`corepack pnpm verify:classic-freeware:mission-seven`.
+
 An additional long, opt-in Chromium Playwright acceptance supplies a
 scenario-scripted browser-control victory path. It follows fixed reviewed
 patrol waypoints, finds candidate targets in composited battlefield
@@ -371,8 +389,8 @@ local-only evidence boundary is documented in
    visual interpolation. Extend the automated real-Wasm Chromium baseline with
    memory, package-import, and mission-start budgets on broader representative
    desktop and mobile hardware.
-5. Extend the exact authored Mission 1–6 objectives to reviewed rules for
-   Mission 7 and later, and extend the present mission-information/construction
+5. Extend the exact authored Mission 1–7 objectives to reviewed rules for
+   Mission 8 and later, and extend the present mission-information/construction
    panel and live classic-surface minimap with semantic radar behavior,
    production icon art, and complete gamepad equivalents.
 6. Add semantic screen-reader unit selection/orders, remappable controls,

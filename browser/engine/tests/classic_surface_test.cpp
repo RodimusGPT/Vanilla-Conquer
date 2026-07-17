@@ -119,6 +119,20 @@ int main()
     assert(canonical_full.canonical_payload_size == delta.canonical_payload_size);
     assert(canonical_full.pixel_count == delta.pixel_count);
 
+    std::vector<uint8_t> corner_changed(first_pixels, first_pixels + sizeof(first_pixels));
+    corner_changed[0] = 20u;
+    corner_changed[sizeof(first_pixels) - 1u] = 21u;
+    ClassicSurfaceEncoding corner_delta;
+    assert(cnc::web::EncodeClassicSurface(
+        &corner_changed[0], 4u, 3u, first_pixels, 4u, 3u, true, corner_delta));
+    header = ReadSurfaceHeader(corner_delta.payload);
+    assert(header.x == 0u && header.y == 0u && header.rect_width == 4u && header.rect_height == 3u);
+    assert(corner_delta.dirty.x == 0u && corner_delta.dirty.y == 0u && corner_delta.dirty.width == 4u
+           && corner_delta.dirty.height == 3u);
+    ClassicSurfaceEncoding corner_full;
+    assert(cnc::web::EncodeClassicSurface(&corner_changed[0], 4u, 3u, NULL, 0u, 0u, false, corner_full));
+    assert(corner_delta.canonical_payload_hash == corner_full.canonical_payload_hash);
+
     SnapshotSection full_section;
     full_section.kind = CNC_WEB_SECTION_CLASSIC_SURFACE;
     full_section.count = canonical_full.pixel_count;
@@ -173,7 +187,8 @@ int main()
                                           true,
                                           representative_unchanged));
     std::vector<uint8_t> one_pixel_changed = representative;
-    one_pixel_changed[representative_pixels / 2u] = 8u;
+    const uint32_t representative_changed_index = representative_pixels / 2u;
+    one_pixel_changed[representative_changed_index] = 8u;
     ClassicSurfaceEncoding representative_one_pixel;
     assert(cnc::web::EncodeClassicSurface(&one_pixel_changed[0],
                                           representative_width,
@@ -183,9 +198,26 @@ int main()
                                           representative_height,
                                           true,
                                           representative_one_pixel));
+    ClassicSurfaceEncoding representative_changed_full;
+    assert(cnc::web::EncodeClassicSurface(&one_pixel_changed[0],
+                                          representative_width,
+                                          representative_height,
+                                          NULL,
+                                          0u,
+                                          0u,
+                                          false,
+                                          representative_changed_full));
     assert(representative_full.payload.size() == 2359312u);
     assert(representative_unchanged.payload.size() == 32u);
+    assert(representative_unchanged.canonical_payload_hash == representative_full.canonical_payload_hash);
     assert(representative_one_pixel.payload.size() == 33u);
+    header = ReadSurfaceHeader(representative_one_pixel.payload);
+    assert(header.x == representative_changed_index % representative_width
+           && header.y == representative_changed_index / representative_width && header.rect_width == 1u
+           && header.rect_height == 1u);
+    assert(representative_one_pixel.canonical_payload_hash
+           == representative_changed_full.canonical_payload_hash);
+    assert(representative_one_pixel.canonical_payload_size == representative_changed_full.canonical_payload_size);
     printf("classic_surface_sizes_1536x1536 full=%u unchanged=%u one_pixel=%u\n",
            static_cast<unsigned int>(representative_full.payload.size()),
            static_cast<unsigned int>(representative_unchanged.payload.size()),
