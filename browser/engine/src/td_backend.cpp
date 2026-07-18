@@ -8,6 +8,7 @@
 #include "content_preflight.h"
 #include "determinism.h"
 #include "static_map_delta.h"
+#include "td_difficulty.h"
 #include "td_save_state.h"
 
 #include "common/ccfile.h"
@@ -28,6 +29,7 @@
 typedef void(__cdecl* LegacyEventCallback)(const EventCallbackStruct& event);
 
 extern "C" void __cdecl CNC_Init(const char* command_line, LegacyEventCallback event_callback);
+extern "C" void __cdecl CNC_Config(const CNCRulesDataStruct& rules);
 extern "C" bool __cdecl CNC_Start_Instance_Variation(int scenario_index,
                                                        int scenario_variation,
                                                        int scenario_direction,
@@ -49,6 +51,7 @@ extern "C" bool __cdecl CNC_Set_Multiplayer_Data(int scenario_index,
                                                    int num_players,
                                                    CNCPlayerInfoStruct* player_list,
                                                    int max_players);
+extern "C" void __cdecl CNC_Set_Difficulty(int difficulty);
 extern "C" void __cdecl CNC_Handle_Input(InputRequestEnum input_event,
                                           unsigned char special_key_flags,
                                           unsigned long long player_id,
@@ -1030,6 +1033,11 @@ public:
         BeginDeterministicStartup(config.seed);
         CNC_Init(command_line.c_str(), LegacyEvent);
         initialized_ = true;
+        /* REMASTER_BUILD leaves Rule.Diff for its host to configure. Install
+         * the standalone game's canonical profiles after CNC_Init has reset
+         * engine state and before Start_Scenario creates the player house. */
+        const CNCRulesDataStruct difficulty_rules = ClassicDifficultyRules();
+        CNC_Config(difficulty_rules);
         /* Read_Scenario_Ini applies the destination mission's percentage and
          * cap to this raw cash value. It must be installed after CNC_Init has
          * reset globals but before Start_Scenario reads the INI. */
@@ -1130,6 +1138,9 @@ public:
                               "engine.start.scenario-failed",
                               preflight.scenario_root);
             return CNC_WEB_CONTENT_MISMATCH;
+        }
+        if (config.has_difficulty && config.game_mode == CNC_WEB_GAME_CAMPAIGN) {
+            CNC_Set_Difficulty(static_cast<int>(config.difficulty));
         }
         if (config.has_campaign_transition) {
             if (PlayerPtr == NULL) {
@@ -1332,9 +1343,11 @@ public:
         Writer writer;
         const uint8_t nuke_pieces = PlayerPtr == NULL ? UINT8_MAX
                                                       : static_cast<uint8_t>(PlayerPtr->NukePieces & 0x07u);
+        const uint8_t difficulty = PlayerPtr == NULL ? UINT8_MAX
+                                                     : static_cast<uint8_t>(PlayerPtr->Difficulty);
         if (!writer.U32(Scen.RandomNumber.Seed) || !writer.U8(CNCFirstUpdate ? 1u : 0u)
             || !writer.I32(static_cast<int32_t>(SabotagedType)) || !writer.I32(Scen.CarryOverMoney)
-            || !writer.U8(nuke_pieces)) {
+            || !writer.U8(nuke_pieces) || !writer.U8(difficulty)) {
             return CNC_WEB_OUT_OF_MEMORY;
         }
         bytes.swap(writer.Data());

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Difficulty } from "../simulation/protocol";
 import { loadPersistedSession, savePersistedSession, SESSION_STORAGE_KEY, validatePersistedSession } from "./session";
 
 describe("persisted runtime sessions", () => {
@@ -27,6 +28,7 @@ describe("persisted runtime sessions", () => {
       missionId: "gdi-06-east-a",
       seed: 1,
       runId: "campaign-run-1",
+      difficulty: Difficulty.Hard,
       incomingTransition: { carryOverCredits: 400, nukePieces: 7, sabotagedStructure: -1 },
       pendingVictory: {
         gameOver: { tick: 90, score: 1000, leadership: 70, efficiency: 80, remainingCredits: 900, sabotagedStructure: 11, movieName: "WIN", afterScoreMovieName: "" },
@@ -35,6 +37,23 @@ describe("persisted runtime sessions", () => {
     };
     savePersistedSession(session, storage);
     expect(loadPersistedSession(storage)).toEqual(session);
+  });
+
+  it("accepts an optional v2 campaign difficulty while preserving older v2 sessions", () => {
+    const base = {
+      version: 2 as const,
+      mode: "mission" as const,
+      packageId: "owned-pack",
+      revision: "90".repeat(32),
+      missionId: "gdi-01-east-a",
+      seed: 7,
+      runId: "campaign-run-3",
+    };
+    expect(validatePersistedSession(base)).toEqual(base);
+    expect(validatePersistedSession({ ...base, difficulty: Difficulty.Easy })).toEqual({ ...base, difficulty: Difficulty.Easy });
+    expect(() => validatePersistedSession({ ...base, difficulty: -1 })).toThrow("Campaign difficulty");
+    expect(() => validatePersistedSession({ ...base, difficulty: 3 })).toThrow("Campaign difficulty");
+    expect(() => validatePersistedSession({ ...base, difficulty: "normal" })).toThrow("Campaign difficulty");
   });
 
   it("retains only an explicit v2 marker for a run-less legacy resume", () => {

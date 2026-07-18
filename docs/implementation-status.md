@@ -136,10 +136,17 @@ east/variation A. Red Alert remains a later, separate engine module.
   Production hold uses Hold / Resume build labels so sim Pause stays unambiguous.
   On fine pointers the bottom command bar is compact and muted so it does not
   compete with keyboard select/order shortcuts.
-- Missions 1–7 have exact, reviewed objective presentations gated to their
+- Campaign launches expose Easy, Normal, and Hard and persist the active value
+  across restart, continuation, save/session restoration, and offline reload.
+  The WebAssembly host supplies the standalone TD bias table through
+  `CNC_Config` before scenario startup because `REMASTER_BUILD` intentionally
+  leaves that table host-configured. Native tests pin every profile field, and
+  a real-Wasm acceptance starts all three profiles and observes the applied
+  player cost bias through 80/100/100-credit Minigunner sidebar entries.
+- Missions 1–8 have exact, reviewed objective presentations gated to their
   canonical GDI/SCG01EA, GDI/SCG02EA, GDI/SCG03EA, GDI/SCG04WA,
   GDI/SCG04WB, GDI/SCG04EA, GDI/SCG05EA, GDI/SCG05WA, GDI/SCG05WB,
-  GDI/SCG06EA, and GDI/SCG07EA
+  GDI/SCG06EA, GDI/SCG07EA, GDI/SCG08EA, and GDI/SCG08EB
   identities. Mission 1 eliminates the Nod force
   while retaining a GDI ground force; Mission 2 eliminates the Nod occupation
   while retaining a GDI force. Mission 3 must destroy every counted Nod unit and
@@ -153,9 +160,10 @@ east/variation A. Red Alert remains a later, separate engine module.
   structure. Before each authored relief zone is crossed, it also fails if the
   corresponding protected starting group—field force or base structures—is
   eliminated. Repair remains briefing guidance, not a native completion rule.
-  Missions 1–3, Mission 5, and Mission 7 use engine-exported unit/structure totals as
-  progress context; Missions 4 and 6 use cause-neutral state for conditions
-  that sidebar totals cannot prove. Only the authoritative game-over result
+  Missions 1–3, Mission 5, Mission 7, and Mission 8 use engine-exported
+  unit/structure totals as elimination progress context; Missions 4 and 6,
+  plus Mission 8 East B's protected-object and civilian conditions, use
+  cause-neutral state for rules that sidebar totals cannot prove. Only the authoritative game-over result
   marks objectives complete or failed. Mission 6 requires a surviving Commando
   and either C4 sabotage of one of seven authored Nod base structure types or
   the alternate counted-force elimination victory. Its exact presentation
@@ -165,7 +173,10 @@ east/variation A. Red Alert remains a later, separate engine module.
   from Nod control through destruction or capture, and fails when every counted
   GDI infantry unit, ground unit, structure, and regular aircraft is gone.
   Landing craft, transport/cargo aircraft, and A-10 strike aircraft do not
-  prevent that loss. Mission 8 and later do not inherit guessed rules.
+  prevent that loss. Mission 8 East A removes every counted unit and structure
+  from Nod control while keeping GDI operational. East B adds immediate loss when
+  Dr. Moebius or the hospital is destroyed or when the ninth of its 14 neutral
+  civilian units is lost. Mission 9 and later do not inherit guessed rules.
 - Object snapshots also preserve the engine-authored contextual action for
   every player house. The visible selection model turns the selected MCV's
   `Self` action into an enabled **Deploy** command, presents the engine's
@@ -319,6 +330,12 @@ force, and reaches authoritative victory only with zero counted Nod combatants
 and a surviving counted GDI force. It can be run with
 `corepack pnpm verify:classic-freeware:mission-seven`.
 
+The Mission 8 East A and East B modes are mounted through the same public ABI
+and are already mandatory in `test:classic-freeware:release`, but neither has a
+retained authoritative-victory trace yet. Their ordinary-command routes remain
+under hardening; until both variant commands pass, the aggregate release gate is
+expected to remain red.
+
 An additional long, opt-in Chromium Playwright acceptance supplies a
 scenario-scripted browser-control victory path. It follows fixed reviewed
 patrol waypoints, finds candidate targets in composited battlefield
@@ -373,27 +390,29 @@ local-only evidence boundary is documented in
 
 ## Remaining product work
 
-1. Publish an immutable candidate to an operator-controlled HTTPS target, run
+1. Finish and retain green public-ABI victory traces for both Mission 8
+   variants; they already fail closed in the aggregate release gate.
+2. Publish an immutable candidate to an operator-controlled HTTPS target, run
    the staging gate, then complete physical Safari and representative
    desktop/mobile hardware review, including a human-played Mission 1 victory
    through normal commands and detailed GDI 8/9 winter presentation. Then
    source the missing Nod freeware campaign without importing music or movies.
-2. Run the optional owned-content C01-C09 acceptance sequence and private
+3. Run the optional owned-content C01-C09 acceptance sequence and private
    continuation coverage without weakening the stable one-mission contract.
    Any future music must use original or independently licensed assets.
-3. Produce enhanced texture/terrain atlases and asset tables, stream them to
+4. Produce enhanced texture/terrain atlases and asset tables, stream them to
    the existing sprite renderer, and add presentation parity. The current
    mission package contains classic MIX data only.
-4. Extend the implemented classic-surface dirty-region and STATIC_MAP retained
+5. Extend the implemented classic-surface dirty-region and STATIC_MAP retained
    protocols to the remaining frequently changing snapshot sections, then add
    visual interpolation. Extend the automated real-Wasm Chromium baseline with
    memory, package-import, and mission-start budgets on broader representative
    desktop and mobile hardware.
-5. Extend the exact authored Mission 1–7 objectives to reviewed rules for
-   Mission 8 and later, and extend the present mission-information/construction
+6. Extend the exact authored Mission 1–8 objectives to reviewed rules for
+   Mission 9 and later, and extend the present mission-information/construction
    panel and live classic-surface minimap with semantic radar behavior,
    production icon art, and complete gamepad equivalents.
-6. Add semantic screen-reader unit selection/orders, remappable controls,
+7. Add semantic screen-reader unit selection/orders, remappable controls,
    content conversion/import cancellation, deeper recovery UX, compatibility
    checks, and cross-browser assistive-technology soak testing.
 

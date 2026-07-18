@@ -27,6 +27,7 @@ public:
         , carry_over_money_(0)
         , nuke_pieces_(7u)
         , sabotaged_structure_(-1)
+        , difficulty_(1u)
         , terminal_on_next_advance_(false)
     {
     }
@@ -55,12 +56,15 @@ public:
         carry_over_money_ = config.has_campaign_transition ? config.carry_over_money : 0;
         nuke_pieces_ = config.has_campaign_transition ? config.nuke_pieces : 7u;
         sabotaged_structure_ = config.sabotaged_structure;
+        difficulty_ = config.difficulty;
         BackendEvent event;
         event.type = CNC_WEB_EVENT_DEBUG;
         event.args[0] = config.has_campaign_transition ? 1 : 0;
         event.args[1] = carry_over_money_;
         event.args[2] = static_cast<int32_t>(nuke_pieces_);
         event.args[3] = static_cast<int32_t>(config.seed);
+        event.args[4] = config.has_difficulty ? 1 : 0;
+        event.args[5] = static_cast<int32_t>(config.difficulty);
         event.text1 = "mock-started";
         sink_(sink_context_, event);
         return CNC_WEB_OK;
@@ -154,7 +158,7 @@ public:
         Writer writer;
         if (!writer.U32(random_seed_) || !writer.U8(first_update_ ? 1u : 0u)
             || !writer.I32(carry_over_money_) || !writer.U32(nuke_pieces_)
-            || !writer.I32(sabotaged_structure_)) {
+            || !writer.I32(sabotaged_structure_) || !writer.U8(difficulty_)) {
             return CNC_WEB_OUT_OF_MEMORY;
         }
         bytes.swap(writer.Data());
@@ -217,6 +221,7 @@ private:
     int32_t carry_over_money_;
     uint32_t nuke_pieces_;
     int32_t sabotaged_structure_;
+    uint8_t difficulty_;
     bool terminal_on_next_advance_;
 };
 

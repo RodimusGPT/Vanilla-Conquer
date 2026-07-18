@@ -1,4 +1,5 @@
 import { validateId } from "./helpers";
+import type { Difficulty } from "../simulation/protocol";
 
 export const SESSION_STORAGE_KEY = "theater.runtime-session.v1";
 
@@ -49,6 +50,7 @@ export type PersistedSessionV2 =
     missionId: string;
     seed: number;
     runId: string;
+    difficulty?: Difficulty;
     resumeSaveId?: string;
     legacyResume?: true;
     incomingTransition?: PersistedCampaignTransitionV2;
@@ -71,6 +73,10 @@ function boundedInteger(value: unknown, label: string, minimum: number, maximum:
 
 function validateSeed(seed: unknown, allowZero = false): number {
   return boundedInteger(seed, "Saved session seed", allowZero ? 0 : 1, 0xffff_ffff);
+}
+
+function validateDifficulty(value: unknown): Difficulty {
+  return boundedInteger(value, "Campaign difficulty", 0, 2) as Difficulty;
 }
 
 function optionalSaveId(value: unknown): string | undefined {
@@ -171,7 +177,8 @@ export function validatePersistedSession(value: unknown): PersistedSession {
     return { version: 2, mode: "demo", seed: validateSeed(session.seed), runId: validateRunId(session.runId), ...(resumeSaveId ? { resumeSaveId } : {}) };
   }
 
-  exactKeys(session, ["version", "mode", "packageId", "revision", "missionId", "seed", "runId"], ["resumeSaveId", "legacyResume", "incomingTransition", "pendingVictory"]);
+  exactKeys(session, ["version", "mode", "packageId", "revision", "missionId", "seed", "runId"], ["difficulty", "resumeSaveId", "legacyResume", "incomingTransition", "pendingVictory"]);
+  const difficulty = session.difficulty === undefined ? undefined : validateDifficulty(session.difficulty);
   const resumeSaveId = optionalSaveId(session.resumeSaveId);
   if (session.legacyResume !== undefined && session.legacyResume !== true) throw new Error("Legacy resume marker is invalid");
   if (session.legacyResume && !resumeSaveId) throw new Error("Legacy resume marker requires a save ID");
@@ -184,6 +191,7 @@ export function validatePersistedSession(value: unknown): PersistedSession {
     ...validateMissionIdentity(session),
     seed: validateSeed(session.seed, Boolean(incomingTransition)),
     runId: validateRunId(session.runId),
+    ...(difficulty !== undefined ? { difficulty } : {}),
     ...(resumeSaveId ? { resumeSaveId } : {}),
     ...(session.legacyResume ? { legacyResume: true as const } : {}),
     ...(incomingTransition ? { incomingTransition } : {}),

@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -366,18 +366,64 @@ const missionFiveVariants = new Map([
     ],
   }],
 ]);
+const missionEightVariants = new Map([
+  ["east-a", {
+    number: 8,
+    variant: "east-a",
+    id: "gdi-08-east-a",
+    scenarioRoot: "SCG08EA",
+    scenario: 8,
+    variation: 0,
+    direction: 0,
+    buildLevel: 8,
+    maxTicks: 120_000,
+  }],
+  ["east-b", {
+    number: 8,
+    variant: "east-b",
+    id: "gdi-08-east-b",
+    scenarioRoot: "SCG08EB",
+    scenario: 8,
+    variation: 1,
+    direction: 0,
+    buildLevel: 8,
+    maxTicks: 120_000,
+  }],
+]);
 const mission = missionNumber === 4
   ? missionFourVariants.get(missionVariant)
   : missionNumber === 5
     ? missionFiveVariants.get(missionVariant)
-    : missions.get(missionNumber);
+    : missionNumber === 8
+      ? missionEightVariants.get(missionVariant)
+      : missions.get(missionNumber);
 if (!mission) {
   if (missionNumber === 4 || missionNumber === 5) {
     console.error("CNCWEB_VERIFY_MISSION_VARIANT must be west-a, west-b, or east-a");
-  } else console.error("CNCWEB_VERIFY_MISSION must be 1, 2, 3, 4, 5, 6, or 7");
+  } else if (missionNumber === 8) {
+    console.error("CNCWEB_VERIFY_MISSION_VARIANT must be east-a or east-b");
+  } else console.error("CNCWEB_VERIFY_MISSION must be 1, 2, 3, 4, 5, 6, 7, or 8");
+  process.exit(2);
+}
+const difficultyValues = new Map([
+  ["easy", 0], ["normal", 1], ["hard", 2],
+  ["0", 0], ["1", 1], ["2", 2],
+]);
+const difficultyNames = ["easy", "normal", "hard"];
+const difficultyInput = process.env.CNCWEB_VERIFY_DIFFICULTY
+  ?? (mission.number === 8 ? "normal" : undefined);
+const verifierDifficulty = difficultyInput === undefined
+  ? undefined
+  : difficultyValues.get(difficultyInput.trim().toLowerCase());
+if (difficultyInput !== undefined && verifierDifficulty === undefined) {
+  console.error("CNCWEB_VERIFY_DIFFICULTY must be easy, normal, hard, 0, 1, or 2");
   process.exit(2);
 }
 const trace = process.env.CNCWEB_VERIFY_TRACE === "1";
+let diagnosticClassicPixels;
+let diagnosticClassicWidth = 0;
+let diagnosticClassicHeight = 0;
+let diagnosticPalette;
 const missionFiveWestBStrategy = mission.number === 5 && mission.variant === "west-b";
 const missionTwoAssaultTick = Number.parseInt(process.env.CNCWEB_VERIFY_ASSAULT_TICK ?? "12000", 10);
 if (mission.number === 2 && (!Number.isSafeInteger(missionTwoAssaultTick) || missionTwoAssaultTick < 0 || missionTwoAssaultTick > mission.maxTicks)) {
@@ -742,6 +788,62 @@ function readSnapshot(handle) {
   }
   assert.equal(offset, bytes.byteLength, "snapshot has trailing bytes");
 
+  const diagnosticSurfacePath = process.env.CNCWEB_VERIFY_DUMP_PPM;
+  if (diagnosticSurfacePath) {
+    const surface = sections.get(9);
+    const palette = sections.get(10);
+    if (palette) diagnosticPalette = bytes.slice(palette.offset, palette.offset + palette.length);
+    if (surface) {
+      const width = view.getUint32(surface.offset, true);
+      const height = view.getUint32(surface.offset + 4, true);
+      const pitch = view.getUint32(surface.offset + 8, true);
+      const format = view.getUint32(surface.offset + 12, true);
+      if (format === 1) {
+        diagnosticClassicWidth = width;
+        diagnosticClassicHeight = height;
+        diagnosticClassicPixels = new Uint8Array(width * height);
+        for (let y = 0; y < height; y += 1) {
+          diagnosticClassicPixels.set(bytes.subarray(
+            surface.offset + 16 + y * pitch,
+            surface.offset + 16 + y * pitch + width,
+          ), y * width);
+        }
+      } else if (format === 2 && diagnosticClassicPixels) {
+        const rectX = view.getUint32(surface.offset + 16, true);
+        const rectY = view.getUint32(surface.offset + 20, true);
+        const rectWidth = view.getUint32(surface.offset + 24, true);
+        const rectHeight = view.getUint32(surface.offset + 28, true);
+        for (let y = 0; y < rectHeight; y += 1) {
+          diagnosticClassicPixels.set(bytes.subarray(
+            surface.offset + 32 + y * pitch,
+            surface.offset + 32 + y * pitch + rectWidth,
+          ), (rectY + y) * width + rectX);
+        }
+      }
+    }
+    const dumpTick = Number.parseInt(process.env.CNCWEB_VERIFY_DUMP_TICK ?? "0", 10);
+    if (view.getUint32(16, true) >= dumpTick && diagnosticClassicPixels && diagnosticPalette) {
+      const output = Buffer.alloc(Buffer.byteLength(
+        `P6\n${diagnosticClassicWidth} ${diagnosticClassicHeight}\n255\n`,
+      ) + diagnosticClassicPixels.length * 3);
+      const header = output.write(`P6\n${diagnosticClassicWidth} ${diagnosticClassicHeight}\n255\n`);
+      for (let index = 0; index < diagnosticClassicPixels.length; index += 1) {
+        const color = diagnosticClassicPixels[index];
+        output[header + index * 3] = diagnosticPalette[color * 3];
+        output[header + index * 3 + 1] = diagnosticPalette[color * 3 + 1];
+        output[header + index * 3 + 2] = diagnosticPalette[color * 3 + 2];
+      }
+      writeFileSync(diagnosticSurfacePath, output);
+      console.error(JSON.stringify({
+        diagnosticSurfacePath,
+        width: diagnosticClassicWidth,
+        height: diagnosticClassicHeight,
+        tick: view.getUint32(16, true),
+      }));
+      process.exit(0);
+    }
+  }
+
   const objectsSection = sections.get(SECTION_OBJECTS);
   assert.ok(objectsSection, "snapshot has no object section");
   assert.equal(objectsSection.flags, 0, "object section flags are unsupported");
@@ -763,6 +865,8 @@ function readSnapshot(handle) {
       strength: view.getInt16(objectOffset + 162, true),
       cellX: view.getUint16(objectOffset + 166, true),
       cellY: view.getUint16(objectOffset + 168, true),
+      centerX: view.getUint16(objectOffset + 170, true),
+      centerY: view.getUint16(objectOffset + 172, true),
       owner: view.getUint8(objectOffset + 182),
       subObject: view.getUint8(objectOffset + 184),
       selectedMask: view.getUint32(objectOffset + 188, true),
@@ -1515,8 +1619,8 @@ function queueMissionSevenContext(commands, group, destination, flags = 0) {
     flags,
     args: [
       INPUT_COMMAND_AT_POSITION,
-      destination.cellX * CELL_PIXELS + CELL_PIXELS / 2,
-      destination.cellY * CELL_PIXELS + CELL_PIXELS / 2,
+      destination.worldX ?? destination.cellX * CELL_PIXELS + CELL_PIXELS / 2,
+      destination.worldY ?? destination.cellY * CELL_PIXELS + CELL_PIXELS / 2,
       0, 0, 0, 0,
     ],
   });
@@ -2600,6 +2704,3626 @@ function queueMissionSevenTurn(snapshot, friendly, hostiles, attackers, commands
   queueMissionSevenFootSupport(snapshot, friendly, attackers, commands);
   queueMissionSevenEngineerTransit(snapshot, friendly, commands);
 }
+
+const missionEightSamSites = {
+  "east-a": [
+    { cellX: 16, cellY: 7 },
+    { cellX: 33, cellY: 18 },
+    { cellX: 11, cellY: 20 },
+  ],
+  "east-b": [
+    { cellX: 12, cellY: 5 },
+    { cellX: 54, cellY: 5 },
+    { cellX: 43, cellY: 14 },
+    { cellX: 52, cellY: 14 },
+    { cellX: 13, cellY: 16 },
+  ],
+};
+const missionEightRoutes = {
+  "east-a": [
+    { cellX: 42, cellY: 42, label: "base perimeter" },
+    { cellX: 40, cellY: 36, label: "southern patrol" },
+    { cellX: 45, cellY: 35, label: "eastern patrol" },
+    { cellX: 42, cellY: 25, label: "eastern flank" },
+    { cellX: 48, cellY: 18, label: "northeast bypass" },
+    { cellX: 45, cellY: 10, label: "northern bypass" },
+    { cellX: 33, cellY: 10, label: "northern crossing" },
+    {
+      cellX: 33,
+      cellY: 14,
+      label: "eastern SAM firing line",
+      typeName: "SAM",
+      targetCellX: 33,
+      targetCellY: 18,
+    },
+    { cellX: 33, cellY: 10, label: "northern assault assembly" },
+    { cellX: 16, cellY: 7, label: "northern SAM", typeName: "SAM" },
+    { cellX: 12, cellY: 12, label: "western ridge crossing" },
+    {
+      cellX: 9,
+      cellY: 9,
+      label: "western base",
+      typeName: "FACT",
+      targetCellX: 8,
+      targetCellY: 11,
+    },
+    { cellX: 10, cellY: 10, label: "southern ridge exit" },
+    { cellX: 15, cellY: 10, label: "southern ridge crossing" },
+    { cellX: 18, cellY: 13, label: "southern assembly" },
+    { cellX: 18, cellY: 14, label: "southern artillery approach" },
+    { cellX: 19, cellY: 15, label: "southern artillery staging" },
+    {
+      cellX: 19,
+      cellY: 16,
+      label: "southern artillery gate",
+      typeName: "ARTY",
+      targetCellX: 19,
+      targetCellY: 17,
+    },
+    {
+      cellX: 23,
+      cellY: 20,
+      label: "southern tank gate",
+      typeName: "LTNK",
+      targetCellX: 19,
+      targetCellY: 18,
+    },
+    {
+      cellX: 23,
+      cellY: 22,
+      label: "southern buggy gate",
+      typeName: "BGGY",
+      targetCellX: 20,
+      targetCellY: 18,
+    },
+    {
+      cellX: 23,
+      cellY: 22,
+      label: "southern turret gate",
+      typeName: "GUN",
+      targetCellX: 21,
+      targetCellY: 19,
+    },
+    { cellX: 18, cellY: 22, label: "southern corridor west" },
+    { cellX: 16, cellY: 23, label: "southern corridor southwest" },
+    { cellX: 15, cellY: 26, label: "southern corridor descent" },
+    { cellX: 14, cellY: 27, label: "southern corridor floor" },
+    {
+      cellX: 9,
+      cellY: 22,
+      label: "southwest buggy screen",
+      typeName: "BGGY",
+      targetCellX: 10,
+      targetCellY: 21,
+    },
+    {
+      cellX: 9,
+      cellY: 22,
+      label: "southern SAM firing line",
+      typeName: "SAM",
+      targetCellX: 11,
+      targetCellY: 20,
+    },
+    { cellX: 14, cellY: 27, label: "post-strike southern return" },
+    { cellX: 19, cellY: 22, label: "post-strike western turn" },
+    { cellX: 21, cellY: 23, label: "post-strike central turn" },
+    { cellX: 23, cellY: 20, label: "post-strike northern turn" },
+    { cellX: 23, cellY: 18, label: "production approach" },
+    {
+      cellX: 29,
+      cellY: 14,
+      label: "production base",
+      typeName: "AFLD",
+      targetCellX: 27,
+      targetCellY: 14,
+    },
+  ],
+  "east-b": [
+    { cellX: 25, cellY: 48, label: "southern artillery lane", forceMove: true },
+    { cellX: 13, cellY: 32, label: "western support hold", forceMove: true },
+    { cellX: 13, cellY: 29, label: "western gate approach", forceMove: true },
+    { cellX: 13, cellY: 27, label: "western gate descent", forceMove: true },
+    { cellX: 13, cellY: 25, label: "western gate staging", forceMove: true },
+    { cellX: 13, cellY: 23, label: "western gate firing line", forceMove: true },
+    { cellX: 11, cellY: 18, label: "western turret", typeName: "GUN" },
+    { cellX: 13, cellY: 16, label: "western SAM", typeName: "SAM" },
+    { cellX: 12, cellY: 10, label: "northwest SAM approach", forceMove: true },
+    { cellX: 12, cellY: 5, label: "northwest SAM", typeName: "SAM" },
+    { cellX: 33, cellY: 12, label: "northern crossing" },
+    { cellX: 43, cellY: 14, label: "southeast SAM" },
+    { cellX: 50, cellY: 16, label: "eastern perimeter" },
+    { cellX: 52, cellY: 14, label: "southwest SAM" },
+    { cellX: 54, cellY: 5, label: "northeast SAM" },
+    { cellX: 48, cellY: 8, label: "eastern base" },
+  ],
+};
+const missionEightEastASouthTransitRoute = [
+  { cellX: 42, cellY: 45, label: "southern force assembly" },
+  { cellX: 42, cellY: 37, label: "southern deployment exit" },
+  { cellX: 37, cellY: 38, label: "southern western turn" },
+  { cellX: 32, cellY: 39, label: "southern lower crossing" },
+  { cellX: 29, cellY: 38, label: "southern lower approach" },
+  { cellX: 21, cellY: 30, label: "southern basin approach" },
+  { cellX: 21, cellY: 28, label: "southern basin entry" },
+  { cellX: 15, cellY: 26, label: "southwest corridor descent" },
+  { cellX: 14, cellY: 27, label: "southwest corridor floor" },
+  {
+    cellX: 9,
+    cellY: 22,
+    label: "southwest buggy screen",
+    typeName: "BGGY",
+    targetCellX: 10,
+    targetCellY: 21,
+  },
+  {
+    cellX: 9,
+    cellY: 22,
+    label: "southern SAM firing line",
+    typeName: "SAM",
+    targetCellX: 11,
+    targetCellY: 20,
+  },
+  { cellX: 9, cellY: 18, label: "southwest ridge return" },
+  { cellX: 9, cellY: 13, label: "western base approach" },
+  { cellX: 12, cellY: 12, label: "southern strike assembly" },
+];
+const missionEightEastAWestCleanupTargets = [
+  { typeName: "GUN", cellX: 21, cellY: 19, label: "western turret" },
+  { typeName: "NUKE", cellX: 10, cellY: 9, label: "western power center" },
+  { typeName: "NUKE", cellX: 8, cellY: 8, label: "western power flank" },
+  { typeName: "NUKE", cellX: 6, cellY: 8, label: "western power reserve" },
+  { typeName: "SILO", cellX: 12, cellY: 9, label: "western storage south" },
+  { typeName: "SILO", cellX: 11, cellY: 7, label: "western storage east" },
+  { typeName: "SILO", cellX: 9, cellY: 7, label: "western storage west" },
+  { typeName: "GUN", cellX: 26, cellY: 21, label: "production turret" },
+  { typeName: "HAND", cellX: 27, cellY: 17, label: "hand of Nod" },
+  { typeName: "AFLD", cellX: 29, cellY: 14, label: "airstrip" },
+  { typeName: "PROC", cellX: 25, cellY: 17, label: "refinery" },
+  { typeName: "NUKE", cellX: 23, cellY: 14, label: "production power" },
+];
+const missionEightEastAPostSamCounterattackRoute = [
+  { cellX: 42, cellY: 45, label: "base departure" },
+  { cellX: 37, cellY: 38, label: "southern crossing" },
+  { cellX: 29, cellY: 38, label: "western approach" },
+  { cellX: 21, cellY: 30, label: "basin approach" },
+  { typeName: "GUN", cellX: 21, cellY: 19, label: "western turret" },
+];
+const missionEightEastAPostSamFirstTargetStage =
+  missionEightEastAPostSamCounterattackRoute.findIndex((site) => site.typeName);
+const missionEightEastAPostSamNorthFlankRoute = [
+  { cellX: 22, cellY: 7, label: "northern screen" },
+];
+const missionEightEastAWestScreenPriorities = new Map([
+  ["BGGY", 0], ["LTNK", 1], ["ARTY", 2], ["E4", 3], ["E3", 4], ["E1", 5],
+]);
+const missionEightEastAPostFactRifleCount = 26;
+const missionEightEastAPostFactProductionCount = 26;
+const missionEightEastAPostFactHomeDefenseCount = 4;
+const missionEightEastAPostFactLaunchCompletionCount =
+  missionEightEastAPostFactProductionCount;
+const missionEightEastAScoutRoute = [
+  { cellX: 30, cellY: 40 },
+  { cellX: 24, cellY: 38 },
+  { cellX: 23, cellY: 27 },
+  { cellX: 23, cellY: 24 },
+];
+const missionEightEastADecoyRoute = missionEightEastASouthTransitRoute.slice(0, 13)
+  .map(({ cellX, cellY, label }) => ({ cellX, cellY, label }));
+const missionEightEastAEngineerUnloadApproach = {
+  cellX: 8,
+  cellY: 13,
+  label: "construction yard perimeter",
+};
+const missionEightEastAEngineerTransportReserve = {
+  cellX: 23,
+  cellY: 30,
+  label: "western turret reserve",
+};
+const missionEightEastAEmergencyEngineerRoute = [
+  { cellX: 12, cellY: 12, label: "western ridge crossing" },
+  { cellX: 8, cellY: 12, label: "construction yard approach" },
+];
+const missionEightEastAEngineerTransportRoute = [
+  { cellX: 42, cellY: 25, label: "eastern escort lane" },
+  { cellX: 45, cellY: 10, label: "northern bypass" },
+  { cellX: 33, cellY: 10, label: "northern assault assembly" },
+  { cellX: 18, cellY: 7, label: "northern capture screen" },
+  { cellX: 44, cellY: 50, label: "counterattack reserve" },
+];
+const missionEightEastAReplacementDecoyRoute = [
+  ...missionEightEastASouthTransitRoute.slice(0, 10),
+  missionEightEastAEngineerUnloadApproach,
+  ...missionEightEastAEmergencyEngineerRoute,
+].map(({ cellX, cellY, label }) => ({ cellX, cellY, label }));
+const missionEightEastAEngineerRoute = missionEightEastASouthTransitRoute.slice(0, 14)
+  .map(({ cellX, cellY, label }) => ({ cellX, cellY, label }));
+const missionEightStructurePreferences = new Map([
+  ["NUKE", { cellX: 36, cellY: 50 }],
+  ["PYLE", { cellX: 31, cellY: 52 }],
+  ["PROC", { cellX: 38, cellY: 52 }],
+  ["WEAP", { cellX: 35, cellY: 54 }],
+]);
+const missionEightEastBTankAssembly = { cellX: 39, cellY: 57 };
+const missionEightEastBTankReserve = { cellX: 27, cellY: 57 };
+const missionEightState = {
+  initialized: false,
+  baselineFriendlyKeys: new Set(),
+  initialNeutralUnitKeys: new Set(),
+  initialNeutralStructureKeys: new Set(),
+  minimumNeutralUnits: Infinity,
+  soldStructureIds: new Set(),
+  saleOrders: [],
+  retainedPowerId: undefined,
+  cashConversion: undefined,
+  pyleConversion: undefined,
+  repairedIds: new Set(),
+  repairTicks: new Map(),
+  postSamRepairStopTicks: new Map(),
+  vehicleRepairKeys: new Set(),
+  vehicleRepairInitialStrengths: new Map(),
+  vehicleRepairCompletedKeys: new Set(),
+  vehicleRepairActiveKey: undefined,
+  vehicleRepairClearKey: undefined,
+  vehicleRepairOrders: [],
+  vehicleRepairClearOrders: [],
+  vehicleRepairProgress: [],
+  vehicleRepairLastStrengths: new Map(),
+  vehicleRepairLastProgressTicks: new Map(),
+  vehicleRepairLastOrderTick: -Infinity,
+  vehicleRepairLastClearOrderTick: -Infinity,
+  vehicleRepairCompleteTick: undefined,
+  deployOrderTick: undefined,
+  deploySite: undefined,
+  structureStarts: [],
+  placedSites: [],
+  productionOrders: [],
+  productionCompletions: [],
+  productionKeys: new Set(),
+  eastBProducedTankKeys: new Set(),
+  eastBPreviousTanks: new Map(),
+  eastBTankCohortReadyTick: undefined,
+  villageGuardKeys: new Set(),
+  baseGuardKeys: new Set(),
+  scoutKeys: new Set(),
+  scoutStage: 0,
+  scoutArrivalTicks: [],
+  delxEnteredTick: undefined,
+  delyEnteredTick: undefined,
+  assaultTick: undefined,
+  assaultWave: 0,
+  strikeKeys: new Set(),
+  northHoldKeys: new Set(),
+  northHoldTick: undefined,
+  postSamNorthFlankKeys: new Set(),
+  postSamNorthFlankStage: 0,
+  postSamNorthFlankProgress: [],
+  southReadyKeys: new Set(),
+  southAssaultTick: undefined,
+  secondWaveKeys: new Set(),
+  secondWaveCohortKeys: new Set(),
+  secondWaveLaunchTick: undefined,
+  secondWaveJoinTick: undefined,
+  secondWaveTransitStage: 0,
+  secondWaveTransitProgress: [],
+  northReinforcementTick: undefined,
+  northReinforcementKeys: new Set(),
+  northReinforcementStage: 0,
+  northReinforcementProgress: [],
+  northReinforcementJoinTick: undefined,
+  thirdWaveKeys: new Set(),
+  thirdWaveCohortKeys: new Set(),
+  thirdWaveLaunchTick: undefined,
+  thirdWaveJoinTick: undefined,
+  thirdWaveTransitStage: 0,
+  thirdWaveTransitProgress: [],
+  northernHoldStartedTick: undefined,
+  southHoldStartedTick: undefined,
+  routeStage: 0,
+  routeStageStartedTick: 0,
+  routeProgress: [],
+  routeTargetEngagedStages: new Set(),
+  corridorScreenKeys: new Set(),
+  southTransitFocus: undefined,
+  southTransitInfantryScreenKeys: new Set(),
+  southSamDemolitionKeys: new Set(),
+  southSamDemolitionInitialized: false,
+  southRearGuardKeys: new Set(),
+  southRearGuardStartedTick: undefined,
+  southFinalGateInitialized: false,
+  southFinalGateEnteredTick: undefined,
+  southFinalGateBlockerKeys: new Set(),
+  southFinalGateBlockers: new Map(),
+  southFinalGateBlockerDrops: [],
+  northReleaseKeys: new Set(),
+  northReleaseTick: undefined,
+  baseGuardReleaseKeys: new Set(),
+  baseGuardReleaseTick: undefined,
+  westCleanupStage: 0,
+  westCleanupStartedTick: undefined,
+  westCleanupCompletedTick: undefined,
+  westCleanupTarget: undefined,
+  westCleanupProgress: [],
+  engineer: {
+    orderTick: undefined,
+    observedTick: undefined,
+    key: undefined,
+    initialKey: undefined,
+    initialDeathTick: undefined,
+    replacementOrderTick: undefined,
+    replacementObservedTick: undefined,
+    replacementKey: undefined,
+    secondReplacementOrderTick: undefined,
+    secondReplacementObservedTick: undefined,
+    secondReplacementKey: undefined,
+    secondReplacementDeathTick: undefined,
+    replacementDecoyKey: undefined,
+    replacementDecoyStage: 0,
+    replacementDecoyProgress: [],
+    replacementDecoyLastOrderTick: -Infinity,
+    replacementDecoyEscortInitializedTick: undefined,
+    replacementDecoyEscortKeys: new Set(),
+    replacementDecoyScreenTankKey: undefined,
+    replacementDecoyScreenTankClearedTick: undefined,
+    replacementDecoyScreenReadyTick: undefined,
+    fallbackToDecoyTick: undefined,
+    deathTick: undefined,
+    missingSinceTick: undefined,
+    transportKey: undefined,
+    transportDeathTick: undefined,
+    transportRouteStage: 0,
+    transportRouteProgress: [],
+    transportCounterattackTick: undefined,
+    loadIssuedTick: undefined,
+    sealedTick: undefined,
+    transportRetreatTick: undefined,
+    unloadApproachTick: undefined,
+    unloadStagedTick: undefined,
+    unloadIssuedTick: undefined,
+    unloadedTick: undefined,
+    emergencyIngressStage: 0,
+    emergencyIngressProgress: [],
+    transitStage: 0,
+    transitProgress: [],
+    decoyStage: 0,
+    decoyProgress: [],
+    decoyLastOrderTick: -Infinity,
+    footEscortInitializedTick: undefined,
+    footEscortKeys: new Set(),
+    footDecoyKeys: new Set(),
+    footDecoyStage: 0,
+    footDecoyProgress: [],
+    lastOrderTick: -Infinity,
+    captureOrderTick: undefined,
+    captureOrders: [],
+    captureTick: undefined,
+    capturedFactId: undefined,
+    factSale: {
+      orderTick: undefined,
+      structure: undefined,
+      fundsBefore: undefined,
+      preexistingFriendlyKeys: undefined,
+      goneTick: undefined,
+      fundsAfter: undefined,
+      refund: undefined,
+      crew: [],
+    },
+  },
+  postFactSales: {
+    PROC: undefined,
+    NUKE: undefined,
+  },
+  postFactHomeDefenseKeys: new Set(),
+  postFactHomeDefenseCohortKeys: new Set(),
+  postFactCleanupCohortKeys: new Set(),
+  postSamCounterattackKeys: new Set(),
+  postSamNorthSupportKeys: new Set(),
+  postSamCounterattackLaunchTick: undefined,
+  postSamCounterattackStage: 0,
+  postSamCounterattackProgress: [],
+  postSamCounterattackCompletedTick: undefined,
+  postFactLiveMobileKeys: undefined,
+  postFactProductionOrders: [],
+  postFactProductionCompletions: [],
+  postFactCleanupLaunchTick: undefined,
+  postFactCleanupTransitStage: 0,
+  postFactCleanupTransitProgress: [],
+  southWithdrawalTargets: new Map(),
+  southWithdrawalTargetDeaths: new Map(),
+  southTransitStage: 0,
+  southTransitProgress: [],
+  southTransitTargetKeys: new Map(),
+  roleOrderTicks: new Map(),
+  samDeathTicks: new Map(),
+  allSamsDeadTick: undefined,
+  factInitialStrength: undefined,
+  factMinimumStrength: Infinity,
+  factDeathTick: undefined,
+  airstrike: {
+    readyLatched: false,
+    readyTicks: [],
+    orders: [],
+    discharges: [],
+    pending: undefined,
+  },
+  transportSightings: new Map(),
+  hospitalMinimumStrength: Infinity,
+  moebiusMinimumStrength: Infinity,
+};
+
+function clearMissionEightUnitRoleKey(key) {
+  const state = missionEightState;
+  for (const keys of [
+    state.villageGuardKeys,
+    state.baseGuardKeys,
+    state.scoutKeys,
+    state.strikeKeys,
+    state.northHoldKeys,
+    state.postSamNorthFlankKeys,
+    state.southReadyKeys,
+    state.southRearGuardKeys,
+    state.secondWaveKeys,
+    state.thirdWaveKeys,
+    state.northReinforcementKeys,
+    state.engineer.footEscortKeys,
+    state.engineer.footDecoyKeys,
+    state.engineer.replacementDecoyEscortKeys,
+    state.corridorScreenKeys,
+    state.southTransitInfantryScreenKeys,
+    state.southSamDemolitionKeys,
+    state.northReleaseKeys,
+    state.baseGuardReleaseKeys,
+    state.secondWaveCohortKeys,
+    state.thirdWaveCohortKeys,
+    state.postFactHomeDefenseKeys,
+    state.postFactCleanupCohortKeys,
+    state.postSamCounterattackKeys,
+    state.postSamNorthSupportKeys,
+  ]) keys.delete(key);
+}
+
+function missionEightDistance(object, destination) {
+  return Math.max(
+    Math.abs(object.cellX - destination.cellX),
+    Math.abs(object.cellY - destination.cellY),
+  );
+}
+
+function queueMissionEightContext(commands, group, destination, flags = 0) {
+  return queueMissionSevenContext(commands, group, destination, flags);
+}
+
+function startMissionEightProduction(commands, entry) {
+  startMissionSevenProduction(commands, entry);
+  missionEightState.productionOrders.push({
+    tick: currentTick,
+    assetName: entry.assetName,
+    objectType: entry.objectType,
+    cost: entry.cost,
+  });
+}
+
+function missionEightLegalPlacement(snapshot, entry) {
+  const grid = snapshot.placement;
+  if (!grid || entry.placementOffsets.length === 0) return undefined;
+  const gridIndex = (cellX, cellY) => {
+    if (cellX < grid.cellX || cellY < grid.cellY
+      || cellX >= grid.cellX + grid.width || cellY >= grid.cellY + grid.height) return undefined;
+    return (cellY - grid.cellY) * grid.width + cellX - grid.cellX;
+  };
+  const candidates = [];
+  for (let cellY = grid.cellY; cellY < grid.cellY + grid.height; cellY += 1) {
+    for (let cellX = grid.cellX; cellX < grid.cellX + grid.width; cellX += 1) {
+      const anchorIndex = gridIndex(cellX, cellY);
+      if (anchorIndex === undefined || !(grid.flags[anchorIndex] & 1)) continue;
+      const legal = entry.placementOffsets.every((rawOffset) => {
+        const offset = decodePlacementOffset(rawOffset);
+        const footprintIndex = gridIndex(cellX + offset.x, cellY + offset.y);
+        return footprintIndex !== undefined && Boolean(grid.flags[footprintIndex] & 2);
+      });
+      if (legal) candidates.push({
+        x: cellX - grid.cellX,
+        y: cellY - grid.cellY,
+        cellX,
+        cellY,
+      });
+    }
+  }
+  const preferred = missionEightStructurePreferences.get(entry.assetName)
+    ?? missionEightState.deploySite
+    ?? { cellX: grid.cellX + Math.floor(grid.width / 2), cellY: grid.cellY + Math.floor(grid.height / 2) };
+  return candidates.toSorted((left, right) => (
+    Math.max(Math.abs(left.cellX - preferred.cellX), Math.abs(left.cellY - preferred.cellY))
+      - Math.max(Math.abs(right.cellX - preferred.cellX), Math.abs(right.cellY - preferred.cellY))
+    || left.cellY - right.cellY
+    || left.cellX - right.cellX
+  ))[0];
+}
+
+function initializeMissionEight(snapshot) {
+  const state = missionEightState;
+  if (state.initialized) return;
+  state.initialized = true;
+  state.routeStageStartedTick = snapshot.tick;
+  const friendly = rootCombatants(snapshot, HOUSE_GDI);
+  const attackers = availableAttackers(snapshot);
+  for (const object of friendly) state.baselineFriendlyKeys.add(objectKey(object));
+  for (const object of snapshot.objects.filter((candidate) => (
+    candidate.owner === HOUSE_NEUTRAL && candidate.subObject === 0 && candidate.strength > 0
+  ))) {
+    if (object.type === 1) state.initialNeutralUnitKeys.add(objectKey(object));
+    if (object.type === 4) state.initialNeutralStructureKeys.add(objectKey(object));
+  }
+  state.minimumNeutralUnits = state.initialNeutralUnitKeys.size;
+
+  if (mission.variant === "east-a") {
+    for (const [index, waypoint] of missionEightEastASouthTransitRoute.entries()) {
+      if (!waypoint.typeName) continue;
+      const target = snapshot.objects.find((candidate) => (
+        candidate.owner === HOUSE_NOD && candidate.subObject === 0
+        && candidate.typeName === waypoint.typeName
+        && candidate.cellX === (waypoint.targetCellX ?? waypoint.cellX)
+        && candidate.cellY === (waypoint.targetCellY ?? waypoint.cellY)
+      ));
+      if (target) state.southTransitTargetKeys.set(index, objectKey(target));
+    }
+    for (const vehicle of attackers.filter((candidate) => candidate.type === 2)) {
+      const key = objectKey(vehicle);
+      state.vehicleRepairKeys.add(key);
+      state.vehicleRepairInitialStrengths.set(key, {
+        typeName: vehicle.typeName,
+        strength: vehicle.strength,
+        maxStrength: vehicle.maxStrength,
+      });
+      state.vehicleRepairLastStrengths.set(key, vehicle.strength);
+    }
+    const scoutPriority = new Map([["APC", 0], ["JEEP", 1], ["MSAM", 2], ["MTNK", 3]]);
+    const scouts = attackers.toSorted((left, right) => (
+      (scoutPriority.get(left.typeName) ?? 20) - (scoutPriority.get(right.typeName) ?? 20)
+      || right.strength - left.strength
+      || left.id - right.id
+    )).slice(0, 1);
+    for (const scout of scouts) state.scoutKeys.add(objectKey(scout));
+    const guardPriority = new Map([["E2", 0], ["E1", 1], ["E3", 2], ["MSAM", 3], ["JEEP", 4], ["APC", 5], ["MTNK", 6]]);
+    for (const guard of attackers.filter((candidate) => !state.scoutKeys.has(objectKey(candidate)))
+      .toSorted((left, right) => (
+        (guardPriority.get(left.typeName) ?? 20) - (guardPriority.get(right.typeName) ?? 20)
+        || right.strength - left.strength
+        || left.id - right.id
+      )).slice(0, 8)) state.baseGuardKeys.add(objectKey(guard));
+  } else {
+    const remaining = new Map(attackers.map((attacker) => [objectKey(attacker), attacker]));
+    const take = (typeName, count) => {
+      const selected = [...remaining.values()].filter((attacker) => (
+        attacker.typeName === typeName
+      )).toSorted((left, right) => (
+        right.strength / right.maxStrength - left.strength / left.maxStrength
+        || right.strength - left.strength
+        || left.id - right.id
+      )).slice(0, count);
+      for (const attacker of selected) remaining.delete(objectKey(attacker));
+      return selected;
+    };
+    const planned = (entries) => entries.flatMap(([typeName, count]) => take(typeName, count));
+    const base = planned([
+      ["MTNK", 1], ["JEEP", 1], ["MSAM", 2], ["E3", 1], ["E2", 2], ["E1", 1],
+    ]);
+    const village = planned([
+      ["MTNK", 2], ["E3", 1], ["E2", 2], ["E1", 3],
+    ]);
+    for (const guard of base) state.baseGuardKeys.add(objectKey(guard));
+    for (const guard of village) state.villageGuardKeys.add(objectKey(guard));
+    for (const guard of remaining.values()) {
+      const target = state.baseGuardKeys.size < 8
+        ? state.baseGuardKeys : state.villageGuardKeys;
+      target.add(objectKey(guard));
+    }
+  }
+}
+
+function observeMissionEightTurn(snapshot, friendly, hostiles) {
+  const state = missionEightState;
+  initializeMissionEight(snapshot);
+  if (mission.variant === "east-b") {
+    const liveTanks = friendly.filter((object) => object.typeName === "MTNK");
+    const weaponFactory = friendly.find((object) => (
+      object.type === 4 && object.typeName === "WEAP"
+    ));
+    const factoryExit = weaponFactory
+      ? { cellX: weaponFactory.cellX + 3, cellY: weaponFactory.cellY + 2 }
+      : missionEightEastBTankAssembly;
+    for (const tank of liveTanks) {
+      const key = objectKey(tank);
+      const previous = state.eastBPreviousTanks.get(key);
+      const emergedAtFactory = missionEightDistance(tank, factoryExit) <= 3
+        && (!previous || missionEightDistance(tank, previous) > 6);
+      if (vehicleProductionStarts === 0 || !emergedAtFactory) continue;
+      clearMissionEightUnitRoleKey(key);
+      state.baselineFriendlyKeys.delete(key);
+      state.productionKeys.delete(key);
+      state.eastBProducedTankKeys.add(key);
+    }
+    state.eastBPreviousTanks = new Map(liveTanks.map((tank) => [objectKey(tank), {
+      cellX: tank.cellX,
+      cellY: tank.cellY,
+    }]));
+  }
+  if (mission.variant === "east-a") {
+    const fact = hostiles.find((hostile) => (
+      hostile.typeName === "FACT" && hostile.cellX === 8 && hostile.cellY === 11
+    ));
+    if (fact) {
+      state.factInitialStrength ??= fact.strength;
+      state.factMinimumStrength = Math.min(state.factMinimumStrength, fact.strength);
+    } else if (state.factInitialStrength !== undefined && state.factDeathTick === undefined) {
+      state.factMinimumStrength = 0;
+      state.factDeathTick = snapshot.tick;
+    }
+
+    const capturedFact = friendly.find((object) => (
+      object.type === 4 && object.typeName === "FACT"
+      && object.cellX === 8 && object.cellY === 11
+    ));
+    if (capturedFact && state.engineer.captureTick === undefined) {
+      state.engineer.captureTick = snapshot.tick;
+      state.engineer.capturedFactId = capturedFact.id;
+    }
+    if (state.engineer.orderTick !== undefined && state.engineer.key === undefined) {
+      const engineer = friendly.find((object) => (
+        object.type === 1 && object.typeName === "E6"
+        && !state.baselineFriendlyKeys.has(objectKey(object))
+      ));
+      if (engineer) {
+        state.engineer.key = objectKey(engineer);
+        state.engineer.initialKey = state.engineer.key;
+        state.engineer.observedTick = snapshot.tick;
+        clearMissionEightUnitRoleKey(state.engineer.key);
+      }
+    }
+    if (state.engineer.replacementOrderTick !== undefined
+      && state.engineer.replacementKey === undefined) {
+      const replacement = friendly.find((object) => (
+        object.type === 1 && object.typeName === "E6"
+        && objectKey(object) !== state.engineer.initialKey
+        && !state.baselineFriendlyKeys.has(objectKey(object))
+      ));
+      if (replacement) {
+        state.engineer.key = objectKey(replacement);
+        state.engineer.replacementKey = state.engineer.key;
+        state.engineer.replacementObservedTick = snapshot.tick;
+        state.engineer.deathTick = undefined;
+        state.engineer.missingSinceTick = undefined;
+        state.engineer.transitStage = 0;
+        state.engineer.transitProgress = [];
+        state.engineer.footEscortInitializedTick = undefined;
+        state.engineer.footEscortKeys.clear();
+        state.engineer.footDecoyKeys.clear();
+        state.engineer.footDecoyStage = 0;
+        state.engineer.footDecoyProgress = [];
+        state.engineer.lastOrderTick = -Infinity;
+        clearMissionEightUnitRoleKey(state.engineer.key);
+      }
+    }
+    if (state.engineer.secondReplacementOrderTick !== undefined
+      && state.engineer.secondReplacementKey === undefined) {
+      const replacement = friendly.find((object) => (
+        object.type === 1 && object.typeName === "E6"
+        && objectKey(object) !== state.engineer.initialKey
+        && objectKey(object) !== state.engineer.replacementKey
+        && !state.baselineFriendlyKeys.has(objectKey(object))
+      ));
+      if (replacement) {
+        state.engineer.replacementDecoyKey = state.engineer.replacementKey;
+        state.engineer.key = objectKey(replacement);
+        state.engineer.secondReplacementKey = state.engineer.key;
+        state.engineer.secondReplacementObservedTick = snapshot.tick;
+        state.engineer.deathTick = undefined;
+        state.engineer.missingSinceTick = undefined;
+        state.engineer.transitStage = 0;
+        state.engineer.transitProgress = [];
+        state.engineer.footEscortInitializedTick = undefined;
+        state.engineer.footEscortKeys.clear();
+        state.engineer.footDecoyKeys.clear();
+        state.engineer.footDecoyStage = 0;
+        state.engineer.footDecoyProgress = [];
+        state.engineer.lastOrderTick = -Infinity;
+        clearMissionEightUnitRoleKey(state.engineer.key);
+      }
+    }
+    let liveEngineer = state.engineer.key !== undefined
+      ? friendly.find((object) => objectKey(object) === state.engineer.key)
+      : undefined;
+    if (!liveEngineer && state.engineer.unloadIssuedTick !== undefined) {
+      const unloadedEngineer = friendly.find((object) => (
+        object.type === 1 && object.typeName === "E6"
+      ));
+      if (unloadedEngineer) {
+        state.engineer.key = objectKey(unloadedEngineer);
+        liveEngineer = unloadedEngineer;
+      }
+    }
+    if (!liveEngineer && state.engineer.key === state.engineer.secondReplacementKey
+      && state.engineer.fallbackToDecoyTick === undefined) {
+      const decoy = friendly.find((object) => (
+        objectKey(object) === state.engineer.replacementDecoyKey
+      ));
+      if (decoy) {
+        state.engineer.secondReplacementDeathTick = snapshot.tick;
+        state.engineer.fallbackToDecoyTick = snapshot.tick;
+        state.engineer.key = state.engineer.replacementDecoyKey;
+        state.engineer.deathTick = undefined;
+        state.engineer.missingSinceTick = undefined;
+        state.engineer.transitStage = state.engineer.replacementDecoyStage;
+        state.engineer.transitProgress = state.engineer.replacementDecoyProgress.map((entry) => ({
+          ...entry,
+          fallbackDecoy: true,
+        }));
+        state.engineer.footEscortInitializedTick = undefined;
+        state.engineer.footEscortKeys.clear();
+        state.engineer.footDecoyKeys.clear();
+        state.engineer.lastOrderTick = -Infinity;
+        clearMissionEightUnitRoleKey(state.engineer.key);
+        liveEngineer = decoy;
+      }
+    }
+    const engineerTransport = state.engineer.transportKey !== undefined
+      ? friendly.find((object) => objectKey(object) === state.engineer.transportKey)
+      : undefined;
+    if (state.engineer.loadIssuedTick !== undefined && !liveEngineer && engineerTransport) {
+      state.engineer.sealedTick ??= snapshot.tick;
+    }
+    if (state.engineer.sealedTick !== undefined && liveEngineer) {
+      state.engineer.unloadedTick ??= snapshot.tick;
+    }
+    const plausiblyTransported = state.engineer.loadIssuedTick !== undefined
+      && state.engineer.unloadedTick === undefined && engineerTransport;
+    if (state.engineer.key !== undefined && state.engineer.captureTick === undefined
+      && state.engineer.deathTick === undefined && !liveEngineer && !plausiblyTransported) {
+      state.engineer.missingSinceTick ??= snapshot.tick;
+      if (snapshot.tick >= state.engineer.missingSinceTick + 300) {
+        state.engineer.deathTick = snapshot.tick;
+        if (state.engineer.key === state.engineer.initialKey) {
+          state.engineer.initialDeathTick ??= snapshot.tick;
+        }
+      }
+    } else state.engineer.missingSinceTick = undefined;
+    const factSale = state.engineer.factSale;
+    if (factSale.orderTick !== undefined && factSale.goneTick === undefined
+      && !friendly.some((object) => (
+        object.type === 4 && object.id === factSale.structure.id
+      ))) {
+      factSale.goneTick = snapshot.tick;
+      factSale.fundsAfter = snapshot.sidebar.credits + snapshot.sidebar.tiberium;
+      factSale.refund = factSale.fundsAfter - factSale.fundsBefore;
+      const crew = friendly.filter((object) => (
+        (object.type === 1 || object.type === 2)
+        && !factSale.preexistingFriendlyKeys.has(objectKey(object))
+        && missionEightDistance(object, { cellX: 8, cellY: 11 }) <= 4
+      ));
+      factSale.crew = crew.map(({ typeName, id, strength, maxStrength, cellX, cellY }) => (
+        { typeName, id, strength, maxStrength, cellX, cellY }
+      ));
+      for (const object of crew) {
+        const key = objectKey(object);
+        clearMissionEightUnitRoleKey(key);
+        state.strikeKeys.add(key);
+      }
+    }
+  }
+
+  for (const sale of Object.values(state.postFactSales).filter(Boolean)) {
+    if (sale.goneTick !== undefined || friendly.some((object) => (
+      object.type === 4 && object.id === sale.structure.id
+    ))) continue;
+    sale.goneTick = snapshot.tick;
+    sale.fundsAfter = snapshot.sidebar.credits + snapshot.sidebar.tiberium;
+    sale.refund = sale.fundsAfter - sale.fundsBefore;
+    const crew = friendly.filter((object) => (
+      (object.type === 1 || object.type === 2)
+      && !sale.preexistingFriendlyKeys.has(objectKey(object))
+    ));
+    sale.crew = crew.map(({ typeName, id, strength, maxStrength, cellX, cellY }) => (
+      { typeName, id, strength, maxStrength, cellX, cellY }
+    ));
+    for (const object of crew) {
+      const key = objectKey(object);
+      clearMissionEightUnitRoleKey(key);
+      state.postFactHomeDefenseKeys.add(key);
+      state.postFactHomeDefenseCohortKeys.add(key);
+    }
+  }
+
+  if (state.postFactSales.PROC?.goneTick !== undefined
+    || state.engineer.factSale.goneTick !== undefined) {
+    const liveMobiles = friendly.filter((object) => object.type === 1 || object.type === 2);
+    if (state.postFactLiveMobileKeys !== undefined) {
+      for (const object of liveMobiles) {
+        const key = objectKey(object);
+        if (state.postFactLiveMobileKeys.has(key)) continue;
+        const pendingPostFactOrder = state.postFactProductionOrders[
+          state.postFactProductionCompletions.length
+        ];
+        const producedAtPyle = pendingPostFactOrder
+          && object.typeName === pendingPostFactOrder.assetName
+          && missionEightDistance(object, { cellX: 48, cellY: 50 }) <= 2;
+        if (!producedAtPyle) continue;
+        clearMissionEightUnitRoleKey(key);
+        const completionIndex = state.postFactProductionCompletions.length;
+        if (completionIndex < missionEightEastAPostFactHomeDefenseCount) {
+          state.postFactHomeDefenseKeys.add(key);
+          state.postFactHomeDefenseCohortKeys.add(key);
+        } else {
+          state.postFactCleanupCohortKeys.add(key);
+          if (state.postFactCleanupLaunchTick === undefined) {
+            state.postFactHomeDefenseKeys.add(key);
+          } else state.strikeKeys.add(key);
+        }
+        state.postFactProductionCompletions.push({
+          tick: snapshot.tick,
+          key,
+          typeName: object.typeName,
+          strength: object.strength,
+          cellX: object.cellX,
+          cellY: object.cellY,
+          fundingSale: pendingPostFactOrder.fundingSale,
+          orderTick: pendingPostFactOrder.tick,
+        });
+      }
+    }
+    state.postFactLiveMobileKeys = new Set(liveMobiles.map(objectKey));
+  }
+
+  for (const object of friendly.filter((candidate) => candidate.type === 1 || candidate.type === 2)) {
+    const key = objectKey(object);
+    if (state.baselineFriendlyKeys.has(key) || state.productionKeys.has(key)) continue;
+    if (state.postFactHomeDefenseKeys.has(key)) continue;
+    state.productionKeys.add(key);
+    state.productionCompletions.push({
+      tick: snapshot.tick,
+      key,
+      typeName: object.typeName,
+      objectType: object.type,
+    });
+  }
+  if (state.cashConversion && state.cashConversion.goneTick === undefined
+    && state.cashConversion.structureIds.every((id) => !friendly.some((object) => (
+      object.type === 4 && object.id === id
+    )))) {
+    state.cashConversion.goneTick = snapshot.tick;
+    state.cashConversion.fundsAfter = snapshot.sidebar.credits + snapshot.sidebar.tiberium;
+    state.cashConversion.refund = state.cashConversion.fundsAfter
+      - state.cashConversion.fundsBefore;
+    const crew = friendly.filter((object) => (
+      (object.type === 1 || object.type === 2)
+      && !state.cashConversion.preexistingFriendlyKeys.has(objectKey(object))
+    ));
+    state.cashConversion.crew = crew.map(({ typeName, id, strength, cellX, cellY }) => (
+      { typeName, id, strength, cellX, cellY }
+    ));
+    for (const object of crew) {
+      const key = objectKey(object);
+      clearMissionEightUnitRoleKey(key);
+      state.postFactHomeDefenseKeys.add(key);
+      state.postFactHomeDefenseCohortKeys.add(key);
+    }
+  }
+  if (state.pyleConversion && state.pyleConversion.goneTick === undefined
+    && !friendly.some((object) => (
+      object.type === 4 && object.id === state.pyleConversion.structure.id
+    ))) {
+    const conversion = state.pyleConversion;
+    conversion.goneTick = snapshot.tick;
+    conversion.fundsAfter = snapshot.sidebar.credits + snapshot.sidebar.tiberium;
+    conversion.refund = conversion.fundsAfter - conversion.fundsBefore;
+    const crew = friendly.filter((object) => (
+      (object.type === 1 || object.type === 2)
+      && !conversion.preexistingFriendlyKeys.has(objectKey(object))
+    ));
+    conversion.crew = crew.map(({ typeName, id, strength, cellX, cellY }) => (
+      { typeName, id, strength, cellX, cellY }
+    ));
+    for (const object of crew) {
+      const key = objectKey(object);
+      clearMissionEightUnitRoleKey(key);
+      state.postFactHomeDefenseKeys.add(key);
+      state.postFactHomeDefenseCohortKeys.add(key);
+    }
+  }
+
+  for (const site of missionEightSamSites[mission.variant]) {
+    const key = `${site.cellX}:${site.cellY}`;
+    if (!state.samDeathTicks.has(key) && !hostiles.some((hostile) => (
+      hostile.typeName === "SAM" && hostile.cellX === site.cellX && hostile.cellY === site.cellY
+    ))) state.samDeathTicks.set(key, snapshot.tick);
+  }
+  for (const [key, target] of state.southWithdrawalTargets) {
+    const liveTarget = hostiles.find((hostile) => objectKey(hostile) === key);
+    if (liveTarget) {
+      target.minimumStrength = Math.min(target.minimumStrength ?? target.strength, liveTarget.strength);
+      target.lastCellX = liveTarget.cellX;
+      target.lastCellY = liveTarget.cellY;
+    } else if (!state.southWithdrawalTargetDeaths.has(key)) {
+      state.southWithdrawalTargetDeaths.set(key, {
+        ...target,
+        deathTick: snapshot.tick,
+      });
+    }
+  }
+  if (state.samDeathTicks.size === missionEightSamSites[mission.variant].length
+    && state.allSamsDeadTick === undefined) state.allSamsDeadTick = snapshot.tick;
+
+  const airstrikeEntry = snapshot.sidebar.entries.find((entry) => entry.assetName === "SW_AirStrike");
+  if (airstrikeEntry) {
+    assert.equal(airstrikeEntry.buildableType, 24, "Mission 8 Air Strike buildable type changed");
+    assert.equal(airstrikeEntry.buildableId, 3, "Mission 8 Air Strike buildable id changed");
+    assert.equal(airstrikeEntry.objectType, 11, "Mission 8 Air Strike object type changed");
+    assert.equal(airstrikeEntry.superweaponType, 3, "Mission 8 Air Strike superweapon type changed");
+    if (airstrikeEntry.completed && !state.airstrike.readyLatched) {
+      state.airstrike.readyTicks.push(snapshot.tick);
+      state.airstrike.readyLatched = true;
+    } else if (!airstrikeEntry.completed) state.airstrike.readyLatched = false;
+  }
+  if (state.allSamsDeadTick !== undefined && snapshot.tick >= state.allSamsDeadTick + 90) {
+    assert.ok(airstrikeEntry, `destroying every Mission 8 ${mission.variant} SAM did not expose Air Strike`);
+  }
+  if (state.airstrike.pending) {
+    const pendingTarget = hostiles.find((hostile) => objectKey(hostile) === state.airstrike.pending.targetKey);
+    const discharged = airstrikeEntry && !airstrikeEntry.completed;
+    const a10Observed = friendly.some((object) => object.type === 3 && object.typeName === "A10");
+    const targetDamaged = !pendingTarget || pendingTarget.strength < state.airstrike.pending.targetStrength;
+    if (discharged && (a10Observed || targetDamaged)) {
+      state.airstrike.discharges.push({
+        orderTick: state.airstrike.pending.orderTick,
+        effectTick: snapshot.tick,
+        target: state.airstrike.pending.targetType,
+        a10Observed,
+        targetDamaged,
+        targetStrengthBefore: state.airstrike.pending.targetStrength,
+        targetStrengthAfter: pendingTarget?.strength ?? 0,
+      });
+      state.airstrike.pending = undefined;
+    }
+  }
+
+  if (mission.variant === "east-a") {
+    const scouts = friendly.filter((object) => state.scoutKeys.has(objectKey(object)));
+    if (state.delxEnteredTick === undefined && scouts.some((object) => (
+      object.cellX >= 14 && object.cellX <= 27 && object.cellY >= 26 && object.cellY <= 27
+    ))) state.delxEnteredTick = snapshot.tick;
+    if (state.delyEnteredTick === undefined && scouts.some((object) => (
+      object.cellX >= 14 && object.cellX <= (object.cellY === 24 ? 25 : 26)
+      && object.cellY >= 24 && object.cellY <= 25
+    ))) state.delyEnteredTick = snapshot.tick;
+  } else {
+    const neutralUnits = snapshot.objects.filter((object) => (
+      object.owner === HOUSE_NEUTRAL && object.subObject === 0 && object.type === 1 && object.strength > 0
+    ));
+    state.minimumNeutralUnits = Math.min(state.minimumNeutralUnits, neutralUnits.length);
+    const hospital = friendly.find((object) => object.type === 4 && object.typeName === "HOSP"
+      && object.cellX === 3 && object.cellY === 60);
+    const moebius = friendly.find((object) => object.type === 1 && object.typeName === "MOEBIUS"
+      && object.cellX === 6 && object.cellY === 60);
+    if (hospital) state.hospitalMinimumStrength = Math.min(state.hospitalMinimumStrength, hospital.strength);
+    if (moebius) state.moebiusMinimumStrength = Math.min(state.moebiusMinimumStrength, moebius.strength);
+    for (const transport of hostiles.filter((object) => object.type === 3 && object.typeName === "TRAN")) {
+      const key = objectKey(transport);
+      if (!state.transportSightings.has(key)) state.transportSightings.set(key, {
+        tick: snapshot.tick,
+        cellX: transport.cellX,
+        cellY: transport.cellY,
+      });
+    }
+  }
+}
+
+function queueMissionEightRepairs(snapshot, friendly, commands) {
+  const state = missionEightState;
+  if (mission.variant === "east-b" && friendly.filter((object) => (
+    object.typeName === "MTNK"
+    && state.eastBProducedTankKeys.has(objectKey(object))
+  )).length < 6) return;
+  if (mission.variant === "east-a" && state.allSamsDeadTick !== undefined) {
+    for (const building of friendly.filter((object) => (
+      object.type === 4 && (object.objectFlags & (1 << 1))
+      && snapshot.tick - (state.postSamRepairStopTicks.get(object.id) ?? -Infinity) >= 90
+    ))) {
+      commands.push({ type: COMMAND_STRUCTURE, args: [STRUCTURE_REPAIR_START, 0, 0, 0, 0, 0, 0] });
+      commands.push({ type: COMMAND_STRUCTURE, args: [STRUCTURE_REPAIR, building.id, 0, 0, 0, 0, 0] });
+      state.postSamRepairStopTicks.set(building.id, snapshot.tick);
+    }
+    return;
+  }
+  const funds = snapshot.sidebar.credits + snapshot.sidebar.tiberium;
+  const importantEastA = new Set(["PROC", "NUKE", "PYLE", "GTWR", "FIX"]);
+  for (const building of friendly.filter((object) => (
+    object.type === 4 && object.strength < object.maxStrength
+    && !(object.objectFlags & (1 << 1))
+    && (mission.variant === "east-b" || importantEastA.has(object.typeName))
+    && funds >= 300
+    && snapshot.tick - (state.repairTicks.get(object.id) ?? -900) >= 900
+  ))) {
+    commands.push({ type: COMMAND_STRUCTURE, args: [STRUCTURE_REPAIR_START, 0, 0, 0, 0, 0, 0] });
+    commands.push({ type: COMMAND_STRUCTURE, args: [STRUCTURE_REPAIR, building.id, 0, 0, 0, 0, 0] });
+    state.repairedIds.add(building.id);
+    state.repairTicks.set(building.id, snapshot.tick);
+    repairOrders += 1;
+  }
+}
+
+function queueMissionEightVehicleRepair(snapshot, friendly, commands) {
+  const state = missionEightState;
+  if (mission.variant !== "east-a" || state.vehicleRepairCompleteTick !== undefined
+    || state.assaultTick !== undefined) return;
+  const vehicles = friendly.filter((object) => (
+    object.type === 2 && state.vehicleRepairKeys.has(objectKey(object))
+  ));
+  for (const vehicle of vehicles) {
+    const key = objectKey(vehicle);
+    const previousStrength = state.vehicleRepairLastStrengths.get(key) ?? vehicle.strength;
+    if (vehicle.strength > previousStrength) {
+      state.vehicleRepairProgress.push({
+        tick: snapshot.tick,
+        key,
+        typeName: vehicle.typeName,
+        from: previousStrength,
+        to: vehicle.strength,
+      });
+      state.vehicleRepairLastProgressTicks.set(key, snapshot.tick);
+    }
+    state.vehicleRepairLastStrengths.set(key, vehicle.strength);
+    if (vehicle.strength >= vehicle.maxStrength) {
+      state.vehicleRepairCompletedKeys.add(key);
+      if (state.vehicleRepairActiveKey === key) {
+        state.vehicleRepairActiveKey = undefined;
+        state.vehicleRepairClearKey = key;
+      }
+    }
+  }
+
+  const repairFacility = friendly.find((object) => object.type === 4 && object.typeName === "FIX");
+  if (!repairFacility) return;
+  if (state.vehicleRepairClearKey) {
+    const clearing = vehicles.find((vehicle) => objectKey(vehicle) === state.vehicleRepairClearKey);
+    if (!clearing || missionEightDistance(clearing, repairFacility) > 1) {
+      state.vehicleRepairClearKey = undefined;
+    } else {
+      if (snapshot.tick - state.vehicleRepairLastClearOrderTick >= 90) {
+        const parkingIndex = state.vehicleRepairCompletedKeys.size - 1;
+        const parking = { cellX: 43 + (parkingIndex % 5) * 2, cellY: 55 };
+        queueMissionEightContext(commands, [clearing], parking, MODIFIER_ALT);
+        state.vehicleRepairLastClearOrderTick = snapshot.tick;
+        state.vehicleRepairClearOrders.push({
+          tick: snapshot.tick,
+          key: state.vehicleRepairClearKey,
+          typeName: clearing.typeName,
+          cellX: parking.cellX,
+          cellY: parking.cellY,
+        });
+      }
+      return;
+    }
+  }
+  if (state.vehicleRepairCompletedKeys.size === state.vehicleRepairKeys.size) {
+    state.vehicleRepairCompleteTick = snapshot.tick;
+    return;
+  }
+  let active = vehicles.find((vehicle) => objectKey(vehicle) === state.vehicleRepairActiveKey);
+  if (!active) {
+    const candidates = vehicles.filter((vehicle) => (
+      !state.vehicleRepairCompletedKeys.has(objectKey(vehicle))
+      && (state.scoutStage >= missionEightEastAScoutRoute.length
+        || !state.scoutKeys.has(objectKey(vehicle)))
+    ));
+    active = candidates.toSorted((left, right) => (
+      left.strength / left.maxStrength - right.strength / right.maxStrength
+      || left.id - right.id
+    ))[0];
+    state.vehicleRepairActiveKey = active ? objectKey(active) : undefined;
+  }
+  if (!active) return;
+  const key = objectKey(active);
+  const lastProgress = state.vehicleRepairLastProgressTicks.get(key) ?? -Infinity;
+  if (snapshot.tick - state.vehicleRepairLastOrderTick >= 300
+    && snapshot.tick - lastProgress >= 180) {
+    queueMissionEightContext(commands, [active], repairFacility);
+    state.vehicleRepairLastOrderTick = snapshot.tick;
+    state.vehicleRepairOrders.push({
+      tick: snapshot.tick,
+      key,
+      typeName: active.typeName,
+      strength: active.strength,
+      maxStrength: active.maxStrength,
+    });
+  }
+}
+
+function queueMissionEightPostFactSale(snapshot, friendly, commands, structure) {
+  const state = missionEightState;
+  const sale = {
+    orderTick: snapshot.tick,
+    structure: {
+      typeName: structure.typeName,
+      id: structure.id,
+      strength: structure.strength,
+      maxStrength: structure.maxStrength,
+      cellX: structure.cellX,
+      cellY: structure.cellY,
+    },
+    fundsBefore: snapshot.sidebar.credits + snapshot.sidebar.tiberium,
+    preexistingFriendlyKeys: new Set(friendly.filter((object) => (
+      object.type === 1 || object.type === 2
+    )).map(objectKey)),
+    goneTick: undefined,
+    fundsAfter: undefined,
+    refund: undefined,
+    crew: [],
+  };
+  state.postFactSales[structure.typeName] = sale;
+  sellMissionSevenStructure(commands, structure);
+  state.soldStructureIds.add(structure.id);
+  state.saleOrders.push({
+    tick: snapshot.tick,
+    typeName: structure.typeName,
+    cellX: structure.cellX,
+    cellY: structure.cellY,
+    reason: "post-FACT split-force economy",
+  });
+}
+
+function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
+  const state = missionEightState;
+  if (mission.variant === "east-a") {
+    const capturedFact = friendly.find((object) => (
+      object.type === 4 && object.typeName === "FACT"
+      && object.cellX === 8 && object.cellY === 11
+      && (object.objectFlags & (1 << 5))
+    ));
+    if (state.engineer.captureTick !== undefined
+      && state.engineer.factSale.orderTick === undefined && capturedFact) {
+      const factSale = state.engineer.factSale;
+      factSale.orderTick = snapshot.tick;
+      factSale.structure = {
+        typeName: capturedFact.typeName,
+        id: capturedFact.id,
+        strength: capturedFact.strength,
+        maxStrength: capturedFact.maxStrength,
+        cellX: capturedFact.cellX,
+        cellY: capturedFact.cellY,
+      };
+      factSale.fundsBefore = snapshot.sidebar.credits + snapshot.sidebar.tiberium;
+      factSale.preexistingFriendlyKeys = new Set(friendly.filter((object) => (
+        object.type === 1 || object.type === 2
+      )).map(objectKey));
+      sellMissionSevenStructure(commands, capturedFact);
+      state.soldStructureIds.add(capturedFact.id);
+      state.saleOrders.push({
+        tick: snapshot.tick,
+        typeName: capturedFact.typeName,
+        cellX: capturedFact.cellX,
+        cellY: capturedFact.cellY,
+        reason: "captured-FACT conversion",
+      });
+    }
+    const disposable = friendly.filter((object) => (
+      object.type === 4
+      && (object.objectFlags & (1 << 5))
+      && !state.soldStructureIds.has(object.id)
+      && (object.typeName === "HQ" || object.typeName === "SILO"
+        || (object.typeName === "FIX" && state.vehicleRepairCompleteTick !== undefined))
+    ));
+    for (const structure of disposable) {
+      sellMissionSevenStructure(commands, structure);
+      state.soldStructureIds.add(structure.id);
+      state.saleOrders.push({
+        tick: snapshot.tick,
+        typeName: structure.typeName,
+        cellX: structure.cellX,
+        cellY: structure.cellY,
+      });
+    }
+    if (state.factDeathTick !== undefined && state.engineer.captureTick === undefined
+      && state.postFactSales.PROC === undefined) {
+      const refinery = friendly.find((object) => (
+        object.type === 4 && object.typeName === "PROC"
+        && (object.objectFlags & (1 << 5))
+        && !state.soldStructureIds.has(object.id)
+      ));
+      if (refinery) queueMissionEightPostFactSale(snapshot, friendly, commands, refinery);
+    }
+    if (state.northHoldTick !== undefined && state.cashConversion === undefined) {
+      const powerPlants = friendly.filter((object) => (
+        object.type === 4 && object.typeName === "NUKE" && (object.objectFlags & (1 << 5))
+      )).toSorted((left, right) => (
+        right.strength / right.maxStrength - left.strength / left.maxStrength
+        || left.cellY - right.cellY
+        || left.cellX - right.cellX
+        || left.id - right.id
+      ));
+      state.retainedPowerId = powerPlants[0]?.id;
+      const conversionStructures = friendly.filter((object) => (
+        object.type === 4 && (object.objectFlags & (1 << 5))
+        && !state.soldStructureIds.has(object.id)
+        && (object.typeName === "PROC"
+          || (object.typeName === "NUKE" && object.id !== state.retainedPowerId))
+      ));
+      if (conversionStructures.length > 0) {
+        state.cashConversion = {
+          orderTick: snapshot.tick,
+          structureIds: conversionStructures.map((structure) => structure.id),
+          structures: conversionStructures.map(({ typeName, id, strength, cellX, cellY }) => (
+            { typeName, id, strength, cellX, cellY }
+          )),
+          fundsBefore: snapshot.sidebar.credits + snapshot.sidebar.tiberium,
+          preexistingFriendlyKeys: new Set(friendly.filter((object) => (
+            object.type === 1 || object.type === 2
+          )).map(objectKey)),
+          goneTick: undefined,
+          fundsAfter: undefined,
+          refund: undefined,
+          crew: [],
+        };
+        for (const structure of conversionStructures) {
+          sellMissionSevenStructure(commands, structure);
+          state.soldStructureIds.add(structure.id);
+          state.saleOrders.push({
+            tick: snapshot.tick,
+            typeName: structure.typeName,
+            cellX: structure.cellX,
+            cellY: structure.cellY,
+            reason: "third-wave cash conversion",
+          });
+        }
+      }
+    }
+    if (state.cashConversion?.goneTick !== undefined && state.pyleConversion === undefined) {
+      const surplusTower = friendly.filter((object) => (
+        object.type === 4 && object.typeName === "GTWR" && (object.objectFlags & (1 << 5))
+        && !state.soldStructureIds.has(object.id)
+      )).toSorted((left, right) => right.cellY - left.cellY || right.id - left.id)[0];
+      if (surplusTower) {
+        const retainedPower = friendly.find((object) => (
+          object.type === 4 && object.typeName === "NUKE"
+          && object.id === state.retainedPowerId && !state.soldStructureIds.has(object.id)
+        ));
+        const supportStructures = [surplusTower, retainedPower].filter(Boolean);
+        state.pyleConversion = {
+          orderTick: snapshot.tick,
+          structure: {
+            typeName: surplusTower.typeName,
+            id: surplusTower.id,
+            strength: surplusTower.strength,
+            cellX: surplusTower.cellX,
+            cellY: surplusTower.cellY,
+          },
+          fundsBefore: snapshot.sidebar.credits + snapshot.sidebar.tiberium,
+          preexistingFriendlyKeys: new Set(friendly.filter((object) => (
+            object.type === 1 || object.type === 2
+          )).map(objectKey)),
+          goneTick: undefined,
+          fundsAfter: undefined,
+          refund: undefined,
+          crew: [],
+        };
+        for (const structure of supportStructures) {
+          sellMissionSevenStructure(commands, structure);
+          state.soldStructureIds.add(structure.id);
+          state.saleOrders.push({
+            tick: snapshot.tick,
+            typeName: structure.typeName,
+            cellX: structure.cellX,
+            cellY: structure.cellY,
+            reason: "post-SAM support conversion",
+          });
+        }
+      }
+    }
+  }
+  queueMissionEightRepairs(snapshot, friendly, commands);
+  queueMissionEightVehicleRepair(snapshot, friendly, commands);
+  let funds = snapshot.sidebar.credits + snapshot.sidebar.tiberium;
+  const buildings = friendly.filter((object) => object.type === 4);
+  const builtAssets = new Set(buildings.map((object) => object.typeName));
+  const healthyReservedEastBTanks = mission.variant === "east-b" ? friendly.filter((object) => (
+    object.typeName === "MTNK"
+    && state.eastBProducedTankKeys.has(objectKey(object))
+    && object.strength >= Math.ceil(object.maxStrength * 0.75)
+    && missionEightDistance(object, missionEightEastBTankReserve) <= 3
+  )) : [];
+  if (healthyReservedEastBTanks.length >= 6) state.eastBTankCohortReadyTick ??= snapshot.tick;
+  const eastBTankCohortReady = state.eastBTankCohortReadyTick !== undefined;
+
+  if (mission.variant === "east-b" && !builtAssets.has("FACT")) {
+    const mcv = friendly.find((object) => object.type === 2 && object.typeName === "MCV");
+    if (mcv && (state.deployOrderTick === undefined || snapshot.tick - state.deployOrderTick >= 90)) {
+      queueMissionEightContext(commands, [mcv], mcv);
+      state.deployOrderTick = snapshot.tick;
+      state.deploySite ??= { cellX: mcv.cellX, cellY: mcv.cellY };
+      deploymentOrders += 1;
+    }
+    return;
+  }
+
+  if (mission.variant === "east-b") {
+    const sequence = ["NUKE", "PYLE", "PROC", "WEAP"];
+    const missingAsset = sequence.find((assetName) => !builtAssets.has(assetName));
+    if (missingAsset) {
+      const entry = snapshot.sidebar.entries.find((candidate) => (
+        candidate.assetName === missingAsset && candidate.objectType === 15
+      ));
+      if (entry?.completed) {
+        if (snapshot.placement) {
+          const cell = missionEightLegalPlacement(snapshot, entry);
+          assert.ok(cell, `no legal Mission 8 east-b ${entry.assetName} placement was exported`);
+          commands.push({
+            type: COMMAND_SIDEBAR,
+            args: [SIDEBAR_PLACE, entry.buildableType, entry.buildableId, cell.x, cell.y, 0, 0],
+          });
+          state.placedSites.push({ assetName: entry.assetName, tick: snapshot.tick,
+            cellX: cell.cellX, cellY: cell.cellY });
+          placements += 1;
+        } else {
+          commands.push({
+            type: COMMAND_SIDEBAR,
+            args: [SIDEBAR_START_PLACEMENT, entry.buildableType, entry.buildableId, 0, 0, 0, 0],
+          });
+          placementStarts += 1;
+        }
+      } else if (entry && !entry.constructing && !entry.onHold && !entry.busy && funds >= entry.cost) {
+        startMissionEightProduction(commands, entry);
+        state.structureStarts.push({ assetName: entry.assetName, tick: snapshot.tick, cost: entry.cost });
+        funds -= entry.cost;
+      }
+    }
+  }
+
+  let engineerQueued = false;
+  if (mission.variant === "east-a" && state.vehicleRepairCompleteTick !== undefined
+    && state.engineer.orderTick === undefined && builtAssets.has("PYLE")) {
+    const engineer = snapshot.sidebar.entries.find((entry) => entry.assetName === "E6");
+    if (engineer && !engineer.constructing && !engineer.completed
+      && !engineer.onHold && !engineer.busy && funds >= engineer.cost + 400) {
+      startMissionEightProduction(commands, engineer);
+      state.engineer.orderTick = snapshot.tick;
+      state.engineer.orderFunds = funds;
+      funds -= engineer.cost;
+      engineerQueued = true;
+    }
+  }
+
+  const postFactStartsFor = (fundingSale) => state.postFactProductionOrders.filter((order) => (
+    order.fundingSale === fundingSale
+  )).length;
+  const postFactFundingSale = mission.variant === "east-a" && builtAssets.has("PYLE")
+    && state.postFactSales.PROC?.goneTick !== undefined && postFactStartsFor("PROC") < 3
+      ? "PROC"
+      : mission.variant === "east-a" && builtAssets.has("PYLE")
+        && state.engineer.factSale.goneTick !== undefined
+        && postFactStartsFor("FACT") < missionEightEastAPostFactProductionCount
+        ? "FACT"
+      : undefined;
+  if (postFactFundingSale) {
+    const postFactStartIndex = postFactStartsFor(postFactFundingSale);
+    const assetName = postFactFundingSale === "FACT"
+      ? postFactStartIndex < missionEightEastAPostFactRifleCount ? "E1" : "E3"
+      : "E1";
+    const infantry = snapshot.sidebar.entries.find((entry) => entry.assetName === assetName);
+    if (infantry && !infantry.constructing && !infantry.completed
+      && !infantry.onHold && !infantry.busy && funds >= infantry.cost) {
+      state.postFactProductionOrders.push({
+        tick: snapshot.tick,
+        assetName: infantry.assetName,
+        cost: infantry.cost,
+        fundsBefore: funds,
+        fundingSale: postFactFundingSale,
+      });
+      startMissionEightProduction(commands, infantry);
+      funds -= infantry.cost;
+    }
+  }
+
+  if (mission.variant === "east-b" && builtAssets.has("WEAP")) {
+    const vehicleAsset = !eastBTankCohortReady
+      ? "MTNK"
+      : vehicleProductionStarts % 5 === 4 ? "JEEP" : "MTNK";
+    const vehicle = snapshot.sidebar.entries.find((entry) => entry.assetName === vehicleAsset)
+      ?? snapshot.sidebar.entries.find((entry) => entry.assetName === "MTNK");
+    if (vehicle && !vehicle.constructing && !vehicle.completed && !vehicle.onHold && !vehicle.busy
+      && funds >= vehicle.cost) {
+      startMissionEightProduction(commands, vehicle);
+      funds -= vehicle.cost;
+    }
+  }
+
+  const canProduceEastA = mission.variant === "east-a"
+    && !engineerQueued && !postFactFundingSale && state.engineer.orderTick !== undefined
+    && state.vehicleRepairCompleteTick !== undefined
+    && (state.thirdWaveLaunchTick === undefined || state.allSamsDeadTick !== undefined)
+    && (!state.cashConversion || state.cashConversion.goneTick !== undefined);
+  const canProduceEastB = mission.variant === "east-b" && builtAssets.has("PROC")
+    && eastBTankCohortReady;
+  if (canProduceEastA || canProduceEastB) {
+    const structureReserve = mission.variant === "east-b" && !builtAssets.has("WEAP")
+      ? 2_000
+      : mission.variant === "east-b" && !eastBTankCohortReady ? 1_200
+      : mission.variant === "east-a" && state.allSamsDeadTick !== undefined ? 0
+        : mission.variant === "east-a" && state.secondWaveLaunchTick !== undefined ? 0 : 400;
+    const infantryPattern = mission.variant === "east-a"
+      ? state.allSamsDeadTick !== undefined
+        ? ["E3"]
+        : state.secondWaveLaunchTick !== undefined ? ["E1"] : ["E1", "E3", "E1", "E1"]
+      : ["E3", "E2", "E3"];
+    const infantryAsset = infantryPattern[infantryProductionStarts % infantryPattern.length];
+    const infantry = snapshot.sidebar.entries.find((entry) => entry.assetName === infantryAsset)
+      ?? snapshot.sidebar.entries.find((entry) => entry.assetName === "E2")
+      ?? snapshot.sidebar.entries.find((entry) => entry.assetName === "E1");
+    if (infantry && !infantry.constructing && !infantry.completed && !infantry.onHold && !infantry.busy
+      && funds >= infantry.cost + structureReserve) {
+      startMissionEightProduction(commands, infantry);
+      funds -= infantry.cost;
+    }
+  }
+
+  const airstrikeEntry = snapshot.sidebar.entries.find((entry) => entry.assetName === "SW_AirStrike");
+  const holdingEastACounterattackStrike = mission.variant === "east-a"
+    && state.allSamsDeadTick !== undefined && state.factDeathTick === undefined
+    && (state.postSamCounterattackLaunchTick === undefined
+      || state.postSamCounterattackStage < 2);
+  if (airstrikeEntry?.completed && !state.airstrike.pending && hostiles.length > 0
+    && !holdingEastACounterattackStrike) {
+    const priorities = new Map([["HAND", 0], ["AFLD", 1], ["PROC", 2], ["FACT", 3], ["GUN", 4], ["NUKE", 5]]);
+    const withdrawalLane = { cellX: 9, cellY: 22 };
+    const engineerIngressPending = mission.variant === "east-a"
+      && state.allSamsDeadTick !== undefined && state.engineer.captureTick === undefined;
+    const withdrawalPriorities = new Map([
+      ["ARTY", 0], ["LTNK", 1], ["BGGY", 2], ["E4", 3],
+      ["E3", 4], ["E2", 5], ["E1", 6], ["GUN", 7],
+    ]);
+    const baseAirstrikePoint = { cellX: 43, cellY: 52 };
+    const baseAirstrikeTarget = mission.variant === "east-a"
+      ? hostiles.filter((hostile) => (
+          hostile.type !== 4
+          && withdrawalPriorities.has(hostile.typeName)
+          && missionEightDistance(hostile, baseAirstrikePoint) <= 18
+        )).toSorted((left, right) => (
+          (withdrawalPriorities.get(left.typeName) ?? 20)
+            - (withdrawalPriorities.get(right.typeName) ?? 20)
+          || missionEightDistance(left, baseAirstrikePoint)
+            - missionEightDistance(right, baseAirstrikePoint)
+          || left.strength - right.strength
+          || left.id - right.id
+        ))[0]
+      : undefined;
+    const withdrawalCandidates = mission.variant === "east-a"
+      && state.allSamsDeadTick !== undefined && state.factDeathTick === undefined
+      ? hostiles.filter((hostile) => (
+          withdrawalPriorities.has(hostile.typeName)
+          && snapshot.shroud.isVisible(hostile.cellX, hostile.cellY)
+          && missionEightDistance(hostile, withdrawalLane) <= 12
+        )).toSorted((left, right) => (
+          Number(!(engineerIngressPending && left.typeName === "E1"
+            && left.cellX === 13 && left.cellY === 12))
+            - Number(!(engineerIngressPending && right.typeName === "E1"
+              && right.cellX === 13 && right.cellY === 12))
+          ||
+          (withdrawalPriorities.get(left.typeName) ?? 20)
+            - (withdrawalPriorities.get(right.typeName) ?? 20)
+          || missionEightDistance(left, withdrawalLane) - missionEightDistance(right, withdrawalLane)
+          || left.strength - right.strength
+          || left.id - right.id
+        ))
+      : [];
+    const withdrawalTarget = withdrawalCandidates[0];
+    const counterattackSite = (state.postSamCounterattackLaunchTick !== undefined
+      || (state.pyleConversion?.goneTick !== undefined && snapshot.tick >= 30_000))
+      && hostiles.some((hostile) => (
+        hostile.typeName === "GUN" && hostile.cellX === 21 && hostile.cellY === 19
+      )) ? { typeName: "GUN", cellX: 21, cellY: 19 } : undefined;
+    const counterattackTarget = counterattackSite ? hostiles.find((hostile) => (
+      hostile.typeName === counterattackSite.typeName
+      && hostile.cellX === counterattackSite.cellX
+      && hostile.cellY === counterattackSite.cellY
+    )) : undefined;
+    const productionTurretTarget = mission.variant === "east-a"
+      && state.engineer.factSale.goneTick !== undefined
+      && state.airstrike.orders.length >= 2
+      ? hostiles.find((hostile) => (
+        hostile.typeName === "GUN" && hostile.cellX === 26 && hostile.cellY === 21
+      ))
+      : undefined;
+    const productionBaseTarget = mission.variant === "east-a"
+      && state.postFactCleanupLaunchTick !== undefined
+      ? hostiles.filter((hostile) => (
+          (hostile.typeName === "HAND" && hostile.cellX === 27 && hostile.cellY === 17)
+          || (hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14)
+        )).toSorted((left, right) => (
+          Number(left.typeName !== "HAND") - Number(right.typeName !== "HAND")
+          || left.id - right.id
+        ))[0]
+      : undefined;
+    const structureTarget = hostiles.filter((hostile) => hostile.type === 4).toSorted((left, right) => (
+      (priorities.get(left.typeName) ?? 20) - (priorities.get(right.typeName) ?? 20)
+      || left.strength - right.strength
+      || left.cellY - right.cellY
+      || left.cellX - right.cellX
+      || left.id - right.id
+    ))[0];
+    const target = counterattackTarget ?? productionTurretTarget ?? productionBaseTarget
+      ?? baseAirstrikeTarget ?? structureTarget ?? withdrawalTarget ?? chooseTarget(hostiles);
+    if (target) {
+      commands.push({
+        type: COMMAND_SUPERWEAPON,
+        args: [
+          SUPERWEAPON_PLACE,
+          airstrikeEntry.buildableType,
+          airstrikeEntry.buildableId,
+          target.cellX * CELL_PIXELS + CELL_PIXELS / 2,
+          target.cellY * CELL_PIXELS + CELL_PIXELS / 2,
+          0, 0,
+        ],
+      });
+      state.airstrike.orders.push({
+        tick: snapshot.tick,
+        target: target.typeName,
+        cellX: target.cellX,
+        cellY: target.cellY,
+        targetStrength: target.strength,
+        withdrawalCandidates: withdrawalCandidates.map((candidate) => ({
+          typeName: candidate.typeName,
+          id: candidate.id,
+          strength: candidate.strength,
+          cellX: candidate.cellX,
+          cellY: candidate.cellY,
+          laneDistance: missionEightDistance(candidate, withdrawalLane),
+        })),
+      });
+      state.airstrike.pending = {
+        orderTick: snapshot.tick,
+        targetKey: objectKey(target),
+        targetType: target.typeName,
+        targetStrength: target.strength,
+      };
+    }
+  }
+}
+
+function missionEightThreatNear(hostiles, point, radius) {
+  const priorities = new Map([["TRAN", 0], ["ARTY", 1], ["LTNK", 2], ["BGGY", 3], ["E4", 4], ["E3", 5], ["E1", 6], ["GUN", 7]]);
+  return hostiles.filter((hostile) => missionEightDistance(hostile, point) <= radius)
+    .toSorted((left, right) => (
+      (priorities.get(left.typeName) ?? 20) - (priorities.get(right.typeName) ?? 20)
+      || missionEightDistance(left, point) - missionEightDistance(right, point)
+      || left.strength - right.strength
+      || left.id - right.id
+    ))[0];
+}
+
+function queueMissionEightRole(commands, role, group, target, flags = 0, cadence = 60) {
+  if (group.length === 0 || !target) return;
+  const last = missionEightState.roleOrderTicks.get(role) ?? -Infinity;
+  if (currentTick - last < cadence) return;
+  queueMissionEightContext(commands, group, target, flags);
+  missionEightState.roleOrderTicks.set(role, currentTick);
+}
+
+function queueMissionEightStop(commands, role, group, cadence = 300) {
+  if (group.length === 0) return;
+  const last = missionEightState.roleOrderTicks.get(role) ?? -Infinity;
+  if (currentTick - last < cadence) return;
+  commands.push({ type: COMMAND_CLEAR_SELECTION, args: [0, 0, 0, 0, 0, 0, 0] });
+  for (const object of group) {
+    commands.push({
+      type: COMMAND_SELECT_OBJECT,
+      args: [object.type, object.id, 0, 0, 0, 0, 0],
+    });
+  }
+  commands.push({ type: COMMAND_UNIT, args: [UNIT_REQUEST_STOP, 0, 0, 0, 0, 0, 0] });
+  selectionCommands += group.length;
+  missionEightState.roleOrderTicks.set(role, currentTick);
+}
+
+function queueMissionEightScout(snapshot, friendly, attackers, commands) {
+  if (mission.variant !== "east-a") return;
+  const state = missionEightState;
+  if (state.assaultTick !== undefined) return;
+  let scouts = attackers.filter((object) => state.scoutKeys.has(objectKey(object)));
+  if (state.scoutStage >= missionEightEastAScoutRoute.length) {
+    scouts = scouts.filter((object) => (
+      objectKey(object) !== state.vehicleRepairActiveKey
+      && objectKey(object) !== state.vehicleRepairClearKey
+    ));
+    queueMissionEightRole(commands, "scout-return", scouts, { cellX: 43, cellY: 50 }, MODIFIER_ALT, 90);
+    return;
+  }
+  if (scouts.length === 0 && snapshot.tick < 7_200) {
+    const replacement = attackers.filter((object) => !state.baseGuardKeys.has(objectKey(object)))
+      .toSorted((left, right) => right.strength - left.strength || left.id - right.id)[0];
+    if (replacement) {
+      state.scoutKeys.add(objectKey(replacement));
+      scouts = [replacement];
+    }
+  }
+  const waypoint = missionEightEastAScoutRoute[state.scoutStage];
+  if (scouts.some((scout) => missionEightDistance(scout, waypoint) <= 1)) {
+    state.scoutArrivalTicks.push(snapshot.tick);
+    state.scoutStage += 1;
+  }
+  const next = missionEightEastAScoutRoute[state.scoutStage];
+  if (next) queueMissionEightRole(commands, "scout", scouts, next, MODIFIER_ALT, 60);
+}
+
+function queueMissionEightEngineer(snapshot, friendly, hostiles, commands) {
+  const state = missionEightState;
+  if (mission.variant !== "east-a" || state.engineer.key === undefined
+    || state.engineer.captureTick !== undefined || state.engineer.deathTick !== undefined) return;
+  const engineer = friendly.find((object) => objectKey(object) === state.engineer.key);
+  if (engineer) clearMissionEightUnitRoleKey(state.engineer.key);
+
+  if (state.engineer.transportKey === undefined) {
+    const transport = friendly.filter((object) => (
+      object.type === 2 && object.typeName === "APC"
+    )).toSorted((left, right) => (
+      Number(!state.scoutKeys.has(objectKey(left)))
+        - Number(!state.scoutKeys.has(objectKey(right)))
+      || right.strength / right.maxStrength - left.strength / left.maxStrength
+      || left.id - right.id
+    ))[0];
+    if (transport) state.engineer.transportKey = objectKey(transport);
+  }
+  const transport = state.engineer.transportKey !== undefined
+    ? friendly.find((object) => objectKey(object) === state.engineer.transportKey)
+    : undefined;
+  if (!transport && state.engineer.transportKey !== undefined) {
+    state.engineer.transportDeathTick ??= snapshot.tick;
+  }
+  if (transport) clearMissionEightUnitRoleKey(state.engineer.transportKey);
+
+  const replacementDecoyKey = state.engineer.replacementDecoyKey
+    ?? (state.engineer.secondReplacementOrderTick !== undefined
+      ? state.engineer.replacementKey : undefined);
+  const replacementDecoy = replacementDecoyKey !== undefined
+    ? friendly.find((object) => objectKey(object) === replacementDecoyKey)
+    : undefined;
+  if (replacementDecoy && state.engineer.replacementDecoyEscortInitializedTick === undefined) {
+    state.engineer.replacementDecoyEscortInitializedTick = snapshot.tick;
+    const escorts = friendly.filter((object) => (
+      object.type === 1 && object.typeName !== "E6"
+      && missionEightDistance(object, { cellX: 45, cellY: 50 }) <= 14
+    )).toSorted((left, right) => (
+      right.strength / right.maxStrength - left.strength / left.maxStrength
+      || right.strength - left.strength
+      || left.id - right.id
+    )).slice(0, 14);
+    for (const escort of escorts) {
+      const key = objectKey(escort);
+      clearMissionEightUnitRoleKey(key);
+      state.engineer.replacementDecoyEscortKeys.add(key);
+    }
+  }
+  const replacementDecoyEscorts = friendly.filter((object) => (
+    state.engineer.replacementDecoyEscortKeys.has(objectKey(object))
+  ));
+  while (replacementDecoy
+    && state.engineer.replacementDecoyStage < missionEightEastAReplacementDecoyRoute.length) {
+    const waypoint = missionEightEastAReplacementDecoyRoute[
+      state.engineer.replacementDecoyStage
+    ];
+    if (missionEightDistance(replacementDecoy, waypoint) > 2) break;
+    state.engineer.replacementDecoyProgress.push({
+      tick: snapshot.tick,
+      stage: state.engineer.replacementDecoyStage,
+      label: waypoint.label,
+      cellX: waypoint.cellX,
+      cellY: waypoint.cellY,
+    });
+    state.engineer.replacementDecoyStage += 1;
+  }
+  const replacementDecoyWaypoint = missionEightEastAReplacementDecoyRoute[
+    state.engineer.replacementDecoyStage
+  ];
+  const decoyFact = hostiles.find((object) => (
+    object.type === 4 && object.typeName === "FACT"
+    && object.cellX === 8 && object.cellY === 11
+  ));
+  const replacementDecoyCanCapture = replacementDecoy
+    && state.engineer.replacementDecoyStage >= 12
+    && decoyFact;
+  const replacementDecoyFinalScreenTarget = replacementDecoy
+    && state.engineer.replacementDecoyStage >= 11
+    ? { cellX: 5, cellY: 16 }
+    : undefined;
+  if (replacementDecoyFinalScreenTarget
+    && state.engineer.replacementDecoyScreenTankKey === undefined
+    && state.engineer.replacementDecoyScreenTankClearedTick === undefined) {
+    const tank = hostiles.filter((hostile) => (
+      hostile.type === 2 && hostile.typeName === "LTNK"
+      && missionEightDistance(hostile, replacementDecoy) <= 20
+    )).toSorted((left, right) => (
+      missionEightDistance(left, replacementDecoy)
+        - missionEightDistance(right, replacementDecoy)
+      || left.strength - right.strength
+      || left.id - right.id
+    ))[0];
+    if (tank) state.engineer.replacementDecoyScreenTankKey = objectKey(tank);
+    else state.engineer.replacementDecoyScreenTankClearedTick = snapshot.tick;
+  }
+  const replacementDecoyScreenTank = state.engineer.replacementDecoyScreenTankKey
+    ? hostiles.find((hostile) => (
+      objectKey(hostile) === state.engineer.replacementDecoyScreenTankKey
+    ))
+    : undefined;
+  if (state.engineer.replacementDecoyScreenTankKey !== undefined
+    && !replacementDecoyScreenTank
+    && state.engineer.replacementDecoyScreenTankClearedTick === undefined) {
+    state.engineer.replacementDecoyScreenTankClearedTick = snapshot.tick;
+  }
+  if (replacementDecoyFinalScreenTarget
+    && state.engineer.replacementDecoyScreenTankClearedTick !== undefined
+    && state.engineer.replacementDecoyScreenReadyTick === undefined) {
+    const arrivals = replacementDecoyEscorts.filter((escort) => (
+      missionEightDistance(escort, replacementDecoyFinalScreenTarget) <= 2
+    )).length;
+    if (replacementDecoyEscorts.length === 0
+      || arrivals >= Math.max(2, Math.ceil(replacementDecoyEscorts.length * 0.5))) {
+      state.engineer.replacementDecoyScreenReadyTick = snapshot.tick;
+    }
+  }
+  if (replacementDecoyFinalScreenTarget) {
+    for (let index = 0; index < replacementDecoyEscorts.length; index += 10) {
+      queueMissionEightRole(commands, `east-a-replacement-decoy-final-screen-${index / 10}`,
+        replacementDecoyEscorts.slice(index, index + 10),
+        replacementDecoyScreenTank ?? replacementDecoyFinalScreenTarget,
+        replacementDecoyScreenTank ? 0 : MODIFIER_ALT, 30);
+    }
+  }
+  if (replacementDecoyCanCapture
+    && snapshot.tick - state.engineer.replacementDecoyLastOrderTick >= 60) {
+    queueMissionEightContext(commands, [replacementDecoy], decoyFact);
+    state.engineer.replacementDecoyLastOrderTick = snapshot.tick;
+    state.engineer.captureOrders.push({
+      tick: snapshot.tick,
+      strength: replacementDecoy.strength,
+      cellX: replacementDecoy.cellX,
+      cellY: replacementDecoy.cellY,
+      factStrength: decoyFact.strength,
+      decoy: true,
+    });
+  } else if (replacementDecoy && replacementDecoyWaypoint
+    && snapshot.tick - state.engineer.replacementDecoyLastOrderTick >= 60) {
+    const screenStaging = state.engineer.replacementDecoyStage >= 11
+      && state.engineer.replacementDecoyScreenReadyTick === undefined;
+    queueMissionEightContext(commands, replacementDecoyFinalScreenTarget
+      ? [replacementDecoy]
+      : [replacementDecoy, ...replacementDecoyEscorts.slice(0, 9)],
+    screenStaging ? { cellX: 4, cellY: 22 } : replacementDecoyWaypoint, MODIFIER_ALT);
+    state.engineer.replacementDecoyLastOrderTick = snapshot.tick;
+  }
+  if (replacementDecoyKey !== undefined && state.engineer.key === replacementDecoyKey) return;
+
+  const stagedBehindReplacementDecoy = engineer
+    && state.engineer.key === state.engineer.secondReplacementKey
+    && replacementDecoy
+    && state.engineer.replacementDecoyStage < 7;
+  if (stagedBehindReplacementDecoy) {
+    queueMissionEightRole(commands, "east-a-capture-engineer-staging",
+      [engineer], { cellX: 45, cellY: 55 }, MODIFIER_ALT, 90);
+    return;
+  }
+
+  if (state.engineer.unloadedTick === undefined) {
+    if (state.engineer.sealedTick === undefined) {
+      if (engineer && transport && snapshot.tick - state.engineer.lastOrderTick >= 90) {
+        queueMissionEightContext(commands, [engineer], transport);
+        state.engineer.loadIssuedTick ??= snapshot.tick;
+        state.engineer.lastOrderTick = snapshot.tick;
+      }
+      return;
+    }
+    if (!transport) return;
+    const easternSamDead = !hostiles.some((hostile) => (
+      hostile.typeName === "SAM" && hostile.cellX === 33 && hostile.cellY === 18
+    ));
+    if (!easternSamDead) return;
+    const northernSamAlive = hostiles.some((hostile) => (
+      hostile.typeName === "SAM" && hostile.cellX === 16 && hostile.cellY === 7
+    ));
+    const finalTransportStage = missionEightEastAEngineerTransportRoute.length - 1;
+    while (state.engineer.transportRouteStage < finalTransportStage) {
+      const stage = state.engineer.transportRouteStage;
+      const transportWaypoint = missionEightEastAEngineerTransportRoute[stage];
+      if (missionEightDistance(transport, transportWaypoint) > 2
+        || (stage === 3 && northernSamAlive)) break;
+      state.engineer.transportRouteProgress.push({
+        tick: snapshot.tick,
+        stage,
+        label: transportWaypoint.label,
+        cellX: transportWaypoint.cellX,
+        cellY: transportWaypoint.cellY,
+      });
+      state.engineer.transportRouteStage += 1;
+    }
+    const transportWaypoint = missionEightEastAEngineerTransportRoute[
+      state.engineer.transportRouteStage
+    ];
+    const northernSam = hostiles.find((hostile) => (
+      hostile.typeName === "SAM" && hostile.cellX === 16 && hostile.cellY === 7
+    ));
+    if (state.engineer.transportRouteStage === 3 && northernSam
+      && missionEightDistance(transport, northernSam) <= 5) {
+      if (snapshot.tick - state.engineer.lastOrderTick >= 60) {
+        queueMissionEightContext(commands, [transport], northernSam);
+        state.engineer.lastOrderTick = snapshot.tick;
+      }
+      return;
+    }
+    let transportTarget = transportWaypoint;
+    let capturing = false;
+    if (state.engineer.transportRouteStage === finalTransportStage
+      && (missionEightDistance(transport, transportWaypoint) <= 2
+        || state.engineer.transportCounterattackTick !== undefined)) {
+      if (state.postSamCounterattackLaunchTick === undefined) return;
+      state.engineer.transportCounterattackTick ??= snapshot.tick;
+      const westernGun = hostiles.find((hostile) => (
+        hostile.typeName === "GUN" && hostile.cellX === 21 && hostile.cellY === 19
+      ));
+      if (state.postSamCounterattackStage
+        < missionEightEastAPostSamFirstTargetStage) {
+        transportTarget = missionEightEastAPostSamCounterattackRoute[
+          state.postSamCounterattackStage
+        ];
+      } else if (westernGun) {
+        // Let the infantry and airstrike remove the turret while the loaded
+        // APC waits outside its range. The engineer is the mission-critical
+        // payload, not another member of the assault wave.
+        transportTarget = missionEightEastAEngineerTransportReserve;
+      }
+      else {
+        transportTarget = missionEightEastAEngineerUnloadApproach;
+        capturing = true;
+      }
+    }
+    if (capturing && missionEightDistance(transport, transportTarget) <= 1) {
+      state.engineer.unloadApproachTick ??= snapshot.tick;
+      if (state.engineer.unloadStagedTick === undefined) {
+        queueMissionSevenStop(commands, [transport]);
+        state.engineer.unloadStagedTick = snapshot.tick;
+        state.engineer.lastOrderTick = snapshot.tick;
+      } else if (snapshot.tick >= state.engineer.unloadStagedTick + 60
+        && snapshot.tick - state.engineer.lastOrderTick >= 90) {
+        queueMissionEightContext(commands, [transport], {
+          cellX: transport.cellX,
+          cellY: transport.cellY,
+          worldX: Math.round(transport.centerX * CELL_PIXELS / 256),
+          worldY: Math.round(transport.centerY * CELL_PIXELS / 256),
+        });
+        state.engineer.unloadIssuedTick ??= snapshot.tick;
+        state.engineer.lastOrderTick = snapshot.tick;
+      }
+    } else if (missionEightDistance(transport, transportTarget) <= 1) {
+      // A context click on an occupied APC is its deploy action, so holding
+      // waypoints must remain command-free while the engineer is still cargo.
+      return;
+    } else if (snapshot.tick - state.engineer.lastOrderTick >= 90) {
+      queueMissionEightContext(commands, [transport], transportTarget,
+        transportTarget.typeName ? 0 : MODIFIER_ALT);
+      state.engineer.lastOrderTick = snapshot.tick;
+    }
+    return;
+  }
+
+  if (state.engineer.footEscortInitializedTick === undefined) {
+    state.engineer.footEscortInitializedTick = snapshot.tick;
+    const emergencySupport = state.engineer.unloadedTick !== undefined && engineer
+      ? friendly.filter((object) => (
+        (object.type === 1 || object.type === 2)
+        && object.typeName !== "E6"
+        && objectKey(object) !== state.engineer.transportKey
+        && missionEightDistance(object, engineer) <= 8
+      )).toSorted((left, right) => (
+        Number(left.typeName !== "E3") - Number(right.typeName !== "E3")
+        || missionEightDistance(left, engineer) - missionEightDistance(right, engineer)
+        || right.strength / right.maxStrength - left.strength / left.maxStrength
+        || right.strength - left.strength
+        || left.id - right.id
+      )).slice(0, 10)
+      : [];
+    const support = emergencySupport.length > 0 ? emergencySupport
+      : friendly.filter((object) => (
+        object.type === 1 && state.baseGuardKeys.has(objectKey(object))
+      )).toSorted((left, right) => (
+        right.strength / right.maxStrength - left.strength / left.maxStrength
+        || right.strength - left.strength
+        || left.id - right.id
+      )).slice(0, 10);
+    for (const unit of support) {
+      const key = objectKey(unit);
+      clearMissionEightUnitRoleKey(key);
+      state.engineer.footEscortKeys.add(key);
+    }
+  }
+  const footEscorts = friendly.filter((object) => (
+    state.engineer.footEscortKeys.has(objectKey(object))
+  ));
+  const footDecoys = friendly.filter((object) => (
+    state.engineer.footDecoyKeys.has(objectKey(object))
+  ));
+  const footDecoyRoute = missionEightEastASouthTransitRoute.slice(0, 10);
+  while (state.engineer.footDecoyStage < footDecoyRoute.length && footDecoys.length > 0) {
+    const decoyWaypoint = footDecoyRoute[state.engineer.footDecoyStage];
+    const arrivals = footDecoys.filter((unit) => (
+      missionEightDistance(unit, decoyWaypoint) <= 3
+    )).length;
+    if (arrivals < Math.max(1, Math.ceil(footDecoys.length * 0.5))) break;
+    state.engineer.footDecoyProgress.push({
+      tick: snapshot.tick,
+      stage: state.engineer.footDecoyStage,
+      label: decoyWaypoint.label,
+      cellX: decoyWaypoint.cellX,
+      cellY: decoyWaypoint.cellY,
+      arrivals,
+    });
+    state.engineer.footDecoyStage += 1;
+  }
+  const footDecoyWaypoint = footDecoyRoute[
+    Math.min(state.engineer.footDecoyStage, footDecoyRoute.length - 1)
+  ];
+  for (let index = 0; index < footDecoys.length; index += 10) {
+    queueMissionEightRole(commands, `east-a-engineer-foot-decoy-${index / 10}`,
+      footDecoys.slice(index, index + 10), footDecoyWaypoint, MODIFIER_ALT, 45);
+  }
+  if (footDecoys.length > 0 && state.engineer.footDecoyStage < 7) {
+    if (engineer) {
+      queueMissionEightRole(commands, "east-a-engineer-north-staging",
+        [engineer, ...footEscorts], { cellX: 45, cellY: 50 }, MODIFIER_ALT, 90);
+    }
+    return;
+  }
+
+  const emergencyFootIngress = state.engineer.unloadedTick !== undefined
+    && state.engineer.transportDeathTick !== undefined;
+  const armoredDelivery = state.engineer.unloadedTick !== undefined
+    && state.engineer.transportDeathTick === undefined;
+  const engineerCaptureRoute = armoredDelivery ? [] : emergencyFootIngress
+    ? missionEightEastAEmergencyEngineerRoute : missionEightEastAEngineerRoute;
+  const stageProperty = emergencyFootIngress ? "emergencyIngressStage" : "transitStage";
+  while (state.engineer[stageProperty] < engineerCaptureRoute.length) {
+    const waypoint = engineerCaptureRoute[state.engineer[stageProperty]];
+    if (!engineer || missionEightDistance(engineer, waypoint) > 2) break;
+    const progress = {
+      tick: snapshot.tick,
+      stage: state.engineer[stageProperty],
+      label: waypoint.label,
+      cellX: waypoint.cellX,
+      cellY: waypoint.cellY,
+    };
+    state.engineer.transitProgress.push(progress);
+    if (emergencyFootIngress) state.engineer.emergencyIngressProgress.push(progress);
+    state.engineer[stageProperty] += 1;
+  }
+
+  const finalEngineerScreenHold = { cellX: 21, cellY: 17 };
+  const finalScreenThreat = emergencyFootIngress && engineer
+    ? hostiles.filter((hostile) => (
+      (hostile.type === 1 || hostile.type === 2)
+      && missionEightDistance(hostile,
+        missionEightEastAEmergencyEngineerRoute.at(-1)) <= 4
+    )).toSorted((left, right) => (
+      (missionEightEastAWestScreenPriorities.get(left.typeName) ?? 99)
+        - (missionEightEastAWestScreenPriorities.get(right.typeName) ?? 99)
+      || missionEightDistance(left, engineer) - missionEightDistance(right, engineer)
+      || left.strength - right.strength
+      || left.id - right.id
+    ))[0]
+    : undefined;
+  if (finalScreenThreat && footEscorts.length > 0) {
+    const finalScreenThreatVisible = snapshot.shroud.isVisible(
+      finalScreenThreat.cellX, finalScreenThreat.cellY,
+    );
+    const finalScreenTarget = finalScreenThreatVisible
+      ? finalScreenThreat : missionEightEastAEmergencyEngineerRoute[0];
+    for (let index = 0; index < footEscorts.length; index += 10) {
+      queueMissionEightRole(commands, `east-a-engineer-final-screen-${index / 10}`,
+        footEscorts.slice(index, index + 10), finalScreenTarget, 0, 30);
+    }
+    // STOP does not cancel an infantry path that is already committed in the
+    // classic simulation. Pull the engineer back onto the cleared approach
+    // instead, buying the rifle screen enough time to eliminate the artillery.
+    queueMissionEightRole(commands, "east-a-engineer-final-hold",
+      [engineer], finalEngineerScreenHold, MODIFIER_ALT, 30);
+    state.engineer.lastOrderTick = snapshot.tick;
+    return;
+  }
+
+  const waypoint = engineerCaptureRoute[state.engineer[stageProperty]];
+  if (waypoint) {
+    const pursuitThreat = engineer ? hostiles.filter((hostile) => (
+      (hostile.type === 1 || hostile.type === 2)
+      && missionEightDistance(hostile, engineer) <= 10
+    )).toSorted((left, right) => (
+      missionEightDistance(left, engineer) - missionEightDistance(right, engineer)
+      || (missionEightEastAWestScreenPriorities.get(left.typeName) ?? 99)
+        - (missionEightEastAWestScreenPriorities.get(right.typeName) ?? 99)
+      || left.strength - right.strength
+      || left.id - right.id
+    ))[0] : undefined;
+    if (pursuitThreat && footEscorts.length > 0) {
+      for (let index = 0; index < footEscorts.length; index += 10) {
+        queueMissionEightRole(commands, `east-a-engineer-rear-screen-${index / 10}`,
+          footEscorts.slice(index, index + 10), pursuitThreat, 0, 30);
+      }
+    }
+    if (engineer && (snapshot.tick === state.engineer.unloadedTick
+      || snapshot.tick - state.engineer.lastOrderTick >= 90)) {
+      queueMissionEightContext(commands, pursuitThreat ? [engineer] : [engineer, ...footEscorts.slice(0, 9)],
+        waypoint, MODIFIER_ALT);
+      for (let index = pursuitThreat ? footEscorts.length : 9;
+        index < footEscorts.length; index += 10) {
+        queueMissionEightContext(commands, footEscorts.slice(index, index + 10),
+          waypoint, MODIFIER_ALT);
+      }
+      state.engineer.lastOrderTick = snapshot.tick;
+    }
+    return;
+  }
+
+  const fact = hostiles.find((object) => (
+    object.type === 4 && object.typeName === "FACT"
+    && object.cellX === 8 && object.cellY === 11
+  ));
+  if (engineer && fact && snapshot.shroud.isVisible(fact.cellX, fact.cellY)
+    && snapshot.tick - state.engineer.lastOrderTick >= 60) {
+    queueMissionEightContext(commands, [engineer], fact);
+    state.engineer.lastOrderTick = snapshot.tick;
+    state.engineer.captureOrderTick ??= snapshot.tick;
+    state.engineer.captureOrders.push({
+      tick: snapshot.tick,
+      strength: engineer.strength,
+      cellX: engineer.cellX,
+      cellY: engineer.cellY,
+      factStrength: fact.strength,
+    });
+  }
+}
+
+function missionEightAssignRoles(snapshot, attackers) {
+  const state = missionEightState;
+  for (const keys of [
+    state.villageGuardKeys,
+    state.baseGuardKeys,
+    state.scoutKeys,
+    state.strikeKeys,
+    state.northHoldKeys,
+    state.postSamNorthFlankKeys,
+    state.southReadyKeys,
+    state.southRearGuardKeys,
+    state.secondWaveKeys,
+    state.thirdWaveKeys,
+    state.northReinforcementKeys,
+    state.engineer.footEscortKeys,
+    state.engineer.footDecoyKeys,
+    state.postFactHomeDefenseKeys,
+    state.postSamCounterattackKeys,
+    state.postSamNorthSupportKeys,
+  ]) {
+    for (const key of keys) if (!attackers.some((attacker) => objectKey(attacker) === key)) keys.delete(key);
+  }
+  const unassigned = attackers.filter((attacker) => (
+    !state.villageGuardKeys.has(objectKey(attacker))
+    && !state.baseGuardKeys.has(objectKey(attacker))
+    && !state.scoutKeys.has(objectKey(attacker))
+    && !state.strikeKeys.has(objectKey(attacker))
+    && !state.northHoldKeys.has(objectKey(attacker))
+    && !state.southReadyKeys.has(objectKey(attacker))
+    && !state.southRearGuardKeys.has(objectKey(attacker))
+    && !state.secondWaveKeys.has(objectKey(attacker))
+    && !state.thirdWaveKeys.has(objectKey(attacker))
+    && !state.northReinforcementKeys.has(objectKey(attacker))
+    && !state.engineer.footEscortKeys.has(objectKey(attacker))
+    && !state.engineer.footDecoyKeys.has(objectKey(attacker))
+    && !state.engineer.replacementDecoyEscortKeys.has(objectKey(attacker))
+    && !state.postFactHomeDefenseKeys.has(objectKey(attacker))
+    && !state.postSamCounterattackKeys.has(objectKey(attacker))
+    && !state.postSamNorthSupportKeys.has(objectKey(attacker))
+    && !(mission.variant === "east-b" && state.assaultTick === undefined
+      && state.eastBProducedTankKeys.has(objectKey(attacker)))
+  ));
+  if (mission.variant === "east-b") {
+    for (const attacker of unassigned) {
+      if (state.baseGuardKeys.size < 8) state.baseGuardKeys.add(objectKey(attacker));
+      else if (state.villageGuardKeys.size < 8) state.villageGuardKeys.add(objectKey(attacker));
+      else if (state.assaultTick !== undefined) state.strikeKeys.add(objectKey(attacker));
+    }
+  } else if (state.assaultTick !== undefined) {
+    for (const attacker of unassigned) {
+      if (state.baseGuardReleaseTick === undefined && state.baseGuardKeys.size < 10) {
+        state.baseGuardKeys.add(objectKey(attacker));
+      }
+      else if (state.secondWaveLaunchTick !== undefined && state.thirdWaveJoinTick === undefined) {
+        state.thirdWaveKeys.add(objectKey(attacker));
+      }
+      else state.strikeKeys.add(objectKey(attacker));
+    }
+  }
+
+  const builtAssets = new Set(snapshot.objects.filter((object) => (
+    object.owner === HOUSE_GDI && object.subObject === 0 && object.type === 4 && object.strength > 0
+  )).map((object) => object.typeName));
+  const stagedEastBTanks = mission.variant === "east-b" ? attackers.filter((attacker) => (
+    attacker.typeName === "MTNK"
+    && state.eastBProducedTankKeys.has(objectKey(attacker))
+    && attacker.strength >= Math.ceil(attacker.maxStrength * 0.75)
+    && missionEightDistance(attacker, missionEightEastBTankReserve) <= 3
+  )) : [];
+  const assaultReady = mission.variant === "east-a"
+    ? state.vehicleRepairCompleteTick !== undefined
+      && snapshot.tick >= 5_400 && attackers.length >= 54
+    : builtAssets.has("PROC") && builtAssets.has("WEAP")
+      && state.minimumNeutralUnits >= state.initialNeutralUnitKeys.size - 8
+      && stagedEastBTanks.length >= 6;
+  if (state.assaultTick === undefined && assaultReady) {
+    state.assaultTick = snapshot.tick;
+    state.assaultWave = 1;
+    if (mission.variant === "east-a") {
+      const strongest = (candidates) => candidates.toSorted((left, right) => (
+        right.strength / right.maxStrength - left.strength / left.maxStrength
+        || right.strength - left.strength
+        || left.id - right.id
+      ));
+      const infantryReserve = strongest(attackers.filter((attacker) => attacker.type === 1)).slice(0, 10);
+      state.baseGuardKeys.clear();
+      for (const guard of infantryReserve) {
+        state.baseGuardKeys.add(objectKey(guard));
+      }
+      const reserve = new Set(state.baseGuardKeys);
+      const assaultCandidates = attackers.filter((attacker) => !reserve.has(objectKey(attacker)))
+        .toSorted((left, right) => (
+          (left.type === 2 ? 0 : 1) - (right.type === 2 ? 0 : 1)
+          || right.strength / right.maxStrength - left.strength / left.maxStrength
+          || left.id - right.id
+        ));
+      const northernVehicles = [
+        ...strongest(assaultCandidates.filter((attacker) => attacker.typeName === "MTNK")).slice(0, 1),
+        ...strongest(assaultCandidates.filter((attacker) => attacker.typeName === "MSAM")).slice(0, 2),
+        ...strongest(assaultCandidates.filter((attacker) => attacker.typeName === "APC")).slice(0, 1),
+        ...strongest(assaultCandidates.filter((attacker) => attacker.typeName === "JEEP")).slice(0, 1),
+      ];
+      for (const vehicle of strongest(assaultCandidates.filter((attacker) => attacker.type === 2))) {
+        if (northernVehicles.length === 5) break;
+        if (!northernVehicles.includes(vehicle)) northernVehicles.push(vehicle);
+      }
+      const northernVehicleKeys = new Set(northernVehicles.map(objectKey));
+      const southernVehicles = assaultCandidates.filter((attacker) => (
+        attacker.type === 2 && !northernVehicleKeys.has(objectKey(attacker))
+      ));
+      const southernVehicleKeys = new Set(southernVehicles.map(objectKey));
+      const northernCandidates = assaultCandidates.filter((attacker) => (
+        !southernVehicleKeys.has(objectKey(attacker))
+      ));
+      for (const attacker of northernCandidates.slice(0, 26)) {
+        state.strikeKeys.add(objectKey(attacker));
+      }
+      for (const attacker of [...southernVehicles, ...northernCandidates.slice(26)]) {
+        state.secondWaveKeys.add(objectKey(attacker));
+      }
+    } else {
+      const reserve = new Set([
+        ...state.villageGuardKeys,
+        ...state.baseGuardKeys,
+        ...state.scoutKeys,
+      ]);
+      for (const attacker of attackers) {
+        const key = objectKey(attacker);
+        if (!reserve.has(key)) state.strikeKeys.add(key);
+      }
+    }
+    state.routeStageStartedTick = snapshot.tick;
+  }
+  if (mission.variant === "east-a" && state.assaultTick !== undefined
+    && state.secondWaveLaunchTick === undefined && state.secondWaveKeys.size > 0
+    && (state.samDeathTicks.size >= 2
+      || state.routeStage >= 8
+      || (state.routeStage >= 7 && state.strikeKeys.size <= 6)
+      || (state.samDeathTicks.size >= 1 && state.strikeKeys.size === 0))) {
+    state.secondWaveLaunchTick = snapshot.tick;
+    state.assaultWave = 2;
+    if (state.routeStage >= 7 && state.strikeKeys.size <= 6) {
+      const secondWave = attackers.filter((attacker) => (
+        state.secondWaveKeys.has(objectKey(attacker))
+      ));
+      const strongest = (candidates) => candidates.toSorted((left, right) => (
+        right.strength / right.maxStrength - left.strength / left.maxStrength
+        || right.strength - left.strength
+        || left.id - right.id
+      ));
+      const northReinforcements = [
+        ...attackers.filter((attacker) => state.baseGuardKeys.has(objectKey(attacker))),
+        ...strongest(secondWave.filter((attacker) => attacker.typeName === "MTNK")).slice(0, 1),
+      ];
+      for (const reinforcement of northReinforcements) {
+        const key = objectKey(reinforcement);
+        state.secondWaveKeys.delete(key);
+        state.baseGuardKeys.delete(key);
+        state.northReinforcementKeys.add(key);
+        state.secondWaveCohortKeys.add(key);
+      }
+      if (northReinforcements.length > 0) state.northReinforcementTick = snapshot.tick;
+    }
+  }
+  if (mission.variant === "east-a" && state.thirdWaveLaunchTick === undefined
+    && state.baseGuardKeys.size < 10 && state.thirdWaveKeys.size > 0) {
+    const needed = 10 - state.baseGuardKeys.size;
+    const replacements = attackers.filter((attacker) => (
+      state.thirdWaveKeys.has(objectKey(attacker))
+    )).toSorted((left, right) => (
+      right.strength / right.maxStrength - left.strength / left.maxStrength
+      || left.id - right.id
+    )).slice(0, needed);
+    for (const replacement of replacements) {
+      const key = objectKey(replacement);
+      state.thirdWaveKeys.delete(key);
+      state.baseGuardKeys.add(key);
+    }
+  }
+  if (mission.variant === "east-a" && state.secondWaveLaunchTick !== undefined
+    && state.thirdWaveLaunchTick === undefined && state.thirdWaveKeys.size >= 18
+    && snapshot.tick >= state.secondWaveLaunchTick + 3_000) {
+    state.thirdWaveLaunchTick = snapshot.tick;
+    state.assaultWave = 3;
+  }
+  if (mission.variant !== "east-a" && state.assaultTick !== undefined && state.strikeKeys.size < 6) {
+    const reinforcements = attackers.filter((attacker) => (
+      !state.villageGuardKeys.has(objectKey(attacker))
+      && !state.baseGuardKeys.has(objectKey(attacker))
+      && !state.scoutKeys.has(objectKey(attacker))
+    ));
+    if (reinforcements.length >= 8) {
+      state.assaultWave += 1;
+      for (const attacker of reinforcements) state.strikeKeys.add(objectKey(attacker));
+    }
+  }
+}
+
+function missionEightRouteTarget(snapshot, hostiles, waypoint) {
+  if (!waypoint.typeName) return undefined;
+  const targetCellX = waypoint.targetCellX ?? waypoint.cellX;
+  const targetCellY = waypoint.targetCellY ?? waypoint.cellY;
+  return hostiles.find((hostile) => (
+    hostile.typeName === waypoint.typeName
+    && hostile.cellX === targetCellX && hostile.cellY === targetCellY
+    && snapshot.shroud.isVisible(hostile.cellX, hostile.cellY)
+  ));
+}
+
+function missionEightAssaultTarget(snapshot, strike, hostiles, waypoint, offset = 0) {
+  const routeTarget = missionEightRouteTarget(snapshot, hostiles, waypoint);
+  const demolitionPhase = missionEightState.allSamsDeadTick !== undefined;
+  const local = hostiles.filter((hostile) => (
+    snapshot.shroud.isVisible(hostile.cellX, hostile.cellY)
+    && (missionEightDistance(hostile, waypoint) <= (mission.variant === "east-a" ? 4 : 9)
+      || strike.some((attacker) => missionEightDistance(attacker, hostile)
+        <= (mission.variant === "east-a" ? 3 : 6)))
+  ));
+  const priorities = demolitionPhase
+    ? new Map([
+      ["ARTY", 0], ["LTNK", 1], ["BGGY", 2], ["E4", 3], ["E3", 4], ["E1", 5],
+      ["GUN", 6], ["SAM", 7], ["FACT", 8], ["HAND", 9], ["AFLD", 10], ["PROC", 11],
+      ["NUKE", 12], ["SILO", 13],
+    ])
+    : new Map([
+      ["E4", 0], ["ARTY", 1], ["E3", 2], ["LTNK", 3], ["BGGY", 4], ["E1", 5], ["GUN", 6],
+      ["SAM", 7], ["FACT", 8], ["HAND", 9], ["AFLD", 10], ["PROC", 11],
+    ]);
+  const distanceToGroup = (hostile) => Math.min(
+    ...strike.map((attacker) => missionEightDistance(attacker, hostile)),
+  );
+  const rank = (candidates) => candidates.toSorted((left, right) => (
+    demolitionPhase
+      ? (priorities.get(left.typeName) ?? 20) - (priorities.get(right.typeName) ?? 20)
+        || distanceToGroup(left) - distanceToGroup(right)
+      : distanceToGroup(left) - distanceToGroup(right)
+        || (priorities.get(left.typeName) ?? 20) - (priorities.get(right.typeName) ?? 20)
+    || left.strength - right.strength
+    || left.id - right.id
+  ))[Math.min(offset, Math.max(0, candidates.length - 1))];
+  const localThreats = local.filter((hostile) => (
+    hostile.type === 1 || hostile.type === 2 || hostile.typeName === "GUN"
+  ));
+  if (mission.variant === "east-a" && !demolitionPhase) {
+    return rank(localThreats) ?? routeTarget;
+  }
+  return rank(local) ?? routeTarget ?? (missionEightState.routeStage >= missionEightRoutes[mission.variant].length
+    ? rank(hostiles)
+    : undefined);
+}
+
+function queueMissionEightTransitWave(snapshot, attackers, commands, {
+  keys,
+  stageProperty,
+  progressProperty,
+  joinProperty,
+  role,
+  transitRoute = missionEightRoutes["east-a"].slice(0, 7),
+  joinKeys = missionEightState.strikeKeys,
+  companionStage = missionEightState[stageProperty],
+  arrivalFraction = 0.9,
+}) {
+  const state = missionEightState;
+  const transit = attackers.filter((attacker) => keys.has(objectKey(attacker)));
+  if (transit.length === 0) return;
+  const transitWaypoint = transitRoute[state[stageProperty]];
+  if (transitWaypoint) {
+    const arrivals = transit.filter((attacker) => (
+      missionEightDistance(attacker, transitWaypoint) <= 3
+    )).length;
+    const required = Math.min(transit.length,
+      Math.max(1, Math.ceil(transit.length * arrivalFraction)));
+    if (arrivals >= required) {
+      state[progressProperty].push({
+        tick: snapshot.tick,
+        stage: state[stageProperty],
+        label: transitWaypoint.label,
+        cellX: transitWaypoint.cellX,
+        cellY: transitWaypoint.cellY,
+        arrivals,
+      });
+      state[stageProperty] += 1;
+    }
+  }
+  if (state[stageProperty] > companionStage) {
+    const syncPoint = transitRoute[Math.max(0, state[stageProperty] - 1)];
+    const syncGroups = Array.from({ length: Math.ceil(transit.length / 10) }, (_, index) => (
+      transit.slice(index * 10, index * 10 + 10)
+    ));
+    for (let index = 0; index < syncGroups.length; index += 1) {
+      queueMissionEightRole(commands, `${role}-stage-sync-${index}`,
+        syncGroups[index], syncPoint, MODIFIER_ALT, 45);
+    }
+    return;
+  }
+  const nextTransitWaypoint = transitRoute[state[stageProperty]];
+  if (!nextTransitWaypoint) {
+    state[joinProperty] = snapshot.tick;
+    for (const key of keys) joinKeys.add(key);
+    keys.clear();
+    return;
+  }
+  const transitGroups = Array.from({ length: Math.ceil(transit.length / 10) }, (_, index) => (
+    transit.slice(index * 10, index * 10 + 10)
+  ));
+  for (let index = 0; index < transitGroups.length; index += 1) {
+    queueMissionEightRole(commands, `${role}-transit-${index}`,
+      transitGroups[index], nextTransitWaypoint, MODIFIER_ALT, 45);
+  }
+}
+
+function completeMissionEightSouthTransit(snapshot, combined) {
+  const state = missionEightState;
+  const mainRoute = missionEightRoutes["east-a"];
+  const factStage = mainRoute.findIndex((waypoint) => waypoint.typeName === "FACT");
+  assert.ok(factStage > 0, "Mission 8 east-a FACT stage is missing");
+  if (state.routeStage < factStage) {
+    assert.equal(state.routeStage, factStage - 1,
+      "Mission 8 east-a north front was not waiting at the western ridge crossing");
+    const crossing = mainRoute[state.routeStage];
+    state.routeProgress.push({
+      tick: snapshot.tick,
+      stage: state.routeStage,
+      label: crossing.label,
+      cellX: crossing.cellX,
+      cellY: crossing.cellY,
+      arrivals: combined.filter((attacker) => missionEightDistance(attacker, crossing) <= 1).length,
+      secondCohort: combined.filter((attacker) => (
+        state.secondWaveKeys.has(objectKey(attacker))
+      )).length,
+      thirdCohort: combined.filter((attacker) => (
+        state.thirdWaveKeys.has(objectKey(attacker))
+      )).length,
+    });
+    state.routeStage = factStage;
+    state.routeStageStartedTick = snapshot.tick;
+  }
+  state.secondWaveJoinTick ??= snapshot.tick;
+  state.thirdWaveJoinTick ??= snapshot.tick;
+  for (const key of state.secondWaveKeys) {
+    state.secondWaveCohortKeys.add(key);
+    state.southReadyKeys.add(key);
+  }
+  for (const key of state.thirdWaveKeys) {
+    state.thirdWaveCohortKeys.add(key);
+    state.southReadyKeys.add(key);
+  }
+  state.northReleaseTick ??= snapshot.tick;
+  for (const key of state.northHoldKeys) {
+    state.northReleaseKeys.add(key);
+    state.southReadyKeys.add(key);
+  }
+  state.northHoldKeys.clear();
+  state.secondWaveKeys.clear();
+  state.thirdWaveKeys.clear();
+}
+
+function queueMissionEightSouthTransit(snapshot, hostiles, attackers, commands) {
+  const state = missionEightState;
+  const secondWave = state.secondWaveLaunchTick === undefined ? [] : attackers.filter((attacker) => (
+    state.secondWaveKeys.has(objectKey(attacker))
+  ));
+  const thirdWave = state.thirdWaveLaunchTick === undefined ? [] : attackers.filter((attacker) => (
+    state.thirdWaveKeys.has(objectKey(attacker))
+  ));
+  const combined = [...secondWave, ...thirdWave];
+  if (combined.length === 0) return;
+  const route = missionEightEastASouthTransitRoute;
+  if (state.southTransitStage >= route.length) {
+    completeMissionEightSouthTransit(snapshot, combined);
+    return;
+  }
+
+  const stage = state.southTransitStage;
+  const waypoint = route[stage];
+  const previousWaypoint = route[Math.max(0, stage - 1)];
+  const targetKey = state.southTransitTargetKeys.get(stage);
+  const authoredTarget = targetKey
+    ? hostiles.find((hostile) => objectKey(hostile) === targetKey)
+    : waypoint.typeName ? hostiles.find((hostile) => (
+        hostile.typeName === waypoint.typeName
+        && hostile.cellX === (waypoint.targetCellX ?? waypoint.cellX)
+        && hostile.cellY === (waypoint.targetCellY ?? waypoint.cellY)
+      )) : undefined;
+  const visibleAuthoredTarget = authoredTarget
+    && snapshot.shroud.isVisible(authoredTarget.cellX, authoredTarget.cellY)
+    ? authoredTarget
+    : undefined;
+  const completedSamGate = waypoint.typeName === "SAM" && targetKey && !authoredTarget;
+  const finalAssembly = waypoint.label === "southern strike assembly";
+  const bypassLabels = new Set([
+    "southwest corridor descent",
+    "southwest corridor floor",
+    "southwest ridge return",
+    "western base approach",
+  ]);
+  const finalAdjacentThreatPriority = new Map([
+    ["BGGY", 0], ["LTNK", 1], ["E4", 2], ["E3", 3],
+    ["E2", 4], ["E1", 5], ["ARTY", 6],
+  ]);
+  const finalRemoteThreatPriority = new Map([
+    ["ARTY", 0], ["BGGY", 1], ["LTNK", 2], ["E4", 3],
+    ["E3", 4], ["E2", 5], ["E1", 6],
+  ]);
+  const threatPriority = finalAssembly
+    ? finalAdjacentThreatPriority
+    : waypoint.typeName === "SAM"
+    ? new Map([
+        ["LTNK", 0], ["BGGY", 1], ["ARTY", 2], ["E4", 3],
+        ["E3", 4], ["E2", 5], ["E1", 6],
+      ])
+    : new Map([
+        ["E4", 0], ["ARTY", 1], ["E3", 2], ["E2", 3],
+        ["E1", 4], ["LTNK", 5], ["BGGY", 6], ["GUN", 7],
+      ]);
+  const combatRadius = finalAssembly ? 8 : stage === 1 || waypoint.typeName === "SAM" ? 10 : 6;
+  const inFinalCorridor = (hostile) => [previousWaypoint, waypoint].some((anchor) => (
+    missionEightDistance(anchor, hostile) <= combatRadius
+  ));
+  if (finalAssembly && !state.southFinalGateInitialized) {
+    state.southFinalGateInitialized = true;
+    state.southFinalGateEnteredTick = snapshot.tick;
+    for (const hostile of hostiles.filter((candidate) => (
+      threatPriority.has(candidate.typeName)
+      && snapshot.shroud.isVisible(candidate.cellX, candidate.cellY)
+      && inFinalCorridor(candidate)
+    ))) {
+      const key = objectKey(hostile);
+      state.southFinalGateBlockerKeys.add(key);
+      state.southFinalGateBlockers.set(key, {
+        key,
+        typeName: hostile.typeName,
+        id: hostile.id,
+        strength: hostile.strength,
+        cellX: hostile.cellX,
+        cellY: hostile.cellY,
+      });
+    }
+  }
+  if (finalAssembly) {
+    for (const key of [...state.southFinalGateBlockerKeys]) {
+      const blocker = hostiles.find((hostile) => objectKey(hostile) === key);
+      if (!blocker || !inFinalCorridor(blocker)) {
+        state.southFinalGateBlockerKeys.delete(key);
+        state.southFinalGateBlockerDrops.push({
+          tick: snapshot.tick,
+          key,
+          reason: blocker ? "left-corridor" : "destroyed",
+          ...(blocker ? {
+            typeName: blocker.typeName,
+            strength: blocker.strength,
+            cellX: blocker.cellX,
+            cellY: blocker.cellY,
+          } : {}),
+        });
+      }
+    }
+  }
+  const finalThreatDistance = (hostile) => Math.min(...combined.map((attacker) => (
+    missionEightDistance(attacker, hostile)
+  )));
+  const localThreat = stage > 0 && !bypassLabels.has(waypoint.label) && !completedSamGate
+    ? hostiles.filter((hostile) => (
+        threatPriority.has(hostile.typeName)
+        && (!finalAssembly || state.southFinalGateBlockerKeys.has(objectKey(hostile)))
+        && snapshot.shroud.isVisible(hostile.cellX, hostile.cellY)
+        && ([previousWaypoint, waypoint].some((anchor) => (
+          missionEightDistance(anchor, hostile) <= combatRadius
+        )) || (waypoint.typeName === "SAM"
+          && combined.some((attacker) => missionEightDistance(attacker, hostile) <= 8)))
+      )).toSorted((left, right) => (
+        (finalAssembly
+          ? Number(finalThreatDistance(left) > 3) - Number(finalThreatDistance(right) > 3)
+          : 0)
+        || (finalAssembly
+          ? ((finalThreatDistance(left) <= 3
+              ? finalAdjacentThreatPriority : finalRemoteThreatPriority).get(left.typeName) ?? 20)
+            - ((finalThreatDistance(right) <= 3
+              ? finalAdjacentThreatPriority : finalRemoteThreatPriority).get(right.typeName) ?? 20)
+          : (threatPriority.get(left.typeName) ?? 20)
+            - (threatPriority.get(right.typeName) ?? 20))
+        || (finalAssembly ? left.strength - right.strength
+          : Math.min(missionEightDistance(previousWaypoint, left), missionEightDistance(waypoint, left))
+            - Math.min(missionEightDistance(previousWaypoint, right), missionEightDistance(waypoint, right)))
+        || left.strength - right.strength
+        || left.id - right.id
+      ))[0]
+    : undefined;
+  const combatThreat = waypoint.typeName === "SAM"
+    ? localThreat ?? visibleAuthoredTarget
+    : visibleAuthoredTarget ?? localThreat;
+  if (finalAssembly && combatThreat) {
+    const combatThreatKey = objectKey(combatThreat);
+    if (!state.southWithdrawalTargets.has(combatThreatKey)) {
+      state.southWithdrawalTargets.set(combatThreatKey, {
+        key: combatThreatKey,
+        engagedTick: snapshot.tick,
+        typeName: combatThreat.typeName,
+        id: combatThreat.id,
+        strength: combatThreat.strength,
+        cellX: combatThreat.cellX,
+        cellY: combatThreat.cellY,
+      });
+    }
+  }
+  state.southTransitFocus = {
+    tick: snapshot.tick,
+    role: "east-a-south-combined",
+    stage,
+    target: combatThreat ? {
+      typeName: combatThreat.typeName,
+      id: combatThreat.id,
+      strength: combatThreat.strength,
+      cellX: combatThreat.cellX,
+      cellY: combatThreat.cellY,
+    } : undefined,
+  };
+
+  if (completedSamGate) {
+    const secondArrivals = secondWave.filter((attacker) => (
+      missionEightDistance(attacker, waypoint) <= 3
+    )).length;
+    const thirdArrivals = thirdWave.filter((attacker) => (
+      missionEightDistance(attacker, waypoint) <= 3
+    )).length;
+    const progress = {
+      tick: snapshot.tick,
+      stage,
+      label: waypoint.label,
+      cellX: waypoint.cellX,
+      cellY: waypoint.cellY,
+      secondArrivals,
+      thirdArrivals,
+    };
+    state.southTransitProgress.push(progress);
+    state.secondWaveTransitProgress.push({ ...progress, arrivals: secondArrivals });
+    state.thirdWaveTransitProgress.push({ ...progress, arrivals: thirdArrivals });
+    state.southTransitStage += 1;
+    state.secondWaveTransitStage = state.southTransitStage;
+    state.thirdWaveTransitStage = state.southTransitStage;
+    state.southTransitInfantryScreenKeys.clear();
+    state.southSamDemolitionKeys.clear();
+    const retreat = route[state.southTransitStage];
+    for (let index = 0; index < combined.length; index += 10) {
+      queueMissionEightRole(commands, `east-a-south-sam-exit-${index / 10}`,
+        combined.slice(index, index + 10), retreat, MODIFIER_ALT, 30);
+    }
+    return;
+  }
+
+  if (combatThreat) {
+    const vehicles = combined.filter((attacker) => attacker.type === 2);
+    const samGate = waypoint.typeName === "SAM" && authoredTarget;
+    for (const key of state.southTransitInfantryScreenKeys) {
+      if (!combined.some((attacker) => objectKey(attacker) === key)) {
+        state.southTransitInfantryScreenKeys.delete(key);
+      }
+    }
+    const infantryScreenTarget = finalAssembly
+      ? Math.min(12, combined.length)
+      : samGate
+      ? Math.max(0, 8 - vehicles.length)
+      : vehicles.length === 0 ? 8 : 0;
+    if (state.southTransitInfantryScreenKeys.size < infantryScreenTarget) {
+      const screenPriority = new Map([["E3", 0], ["E2", 1], ["E1", 2]]);
+      const candidates = combined.filter((attacker) => (
+        attacker.type === 1
+        && !state.southTransitInfantryScreenKeys.has(objectKey(attacker))
+        && !state.southSamDemolitionKeys.has(objectKey(attacker))
+      )).toSorted((left, right) => (
+        (screenPriority.get(left.typeName) ?? 10) - (screenPriority.get(right.typeName) ?? 10)
+        || right.strength / right.maxStrength - left.strength / left.maxStrength
+        || left.id - right.id
+      ));
+      const needed = infantryScreenTarget - state.southTransitInfantryScreenKeys.size;
+      for (const candidate of candidates.slice(0, needed)) {
+        state.southTransitInfantryScreenKeys.add(objectKey(candidate));
+      }
+    }
+    const infantryScreen = combined.filter((attacker) => (
+      state.southTransitInfantryScreenKeys.has(objectKey(attacker))
+    ));
+    const screen = samGate
+      ? [...vehicles, ...infantryScreen].slice(0, 8)
+      : vehicles.length > 0 ? vehicles
+      : combined.filter((attacker) => (
+          state.southTransitInfantryScreenKeys.has(objectKey(attacker))
+        ));
+    const screenKeys = new Set(screen.map(objectKey));
+    if (samGate) {
+      for (const key of state.southSamDemolitionKeys) {
+        if (!combined.some((attacker) => objectKey(attacker) === key)) {
+          state.southSamDemolitionKeys.delete(key);
+        }
+      }
+      if (!state.southSamDemolitionInitialized) {
+        const demolitionPriority = new Map([["E3", 0], ["E2", 1], ["E1", 2]]);
+        const candidates = combined.filter((attacker) => (
+          attacker.type === 1 && !screenKeys.has(objectKey(attacker))
+        )).toSorted((left, right) => (
+          (demolitionPriority.get(left.typeName) ?? 10)
+            - (demolitionPriority.get(right.typeName) ?? 10)
+          || right.strength / right.maxStrength - left.strength / left.maxStrength
+          || left.id - right.id
+        ));
+        for (const candidate of candidates.slice(0, 10)) {
+          state.southSamDemolitionKeys.add(objectKey(candidate));
+        }
+        state.southSamDemolitionInitialized = true;
+      }
+    }
+    const demolition = samGate && visibleAuthoredTarget
+      ? combined.filter((attacker) => state.southSamDemolitionKeys.has(objectKey(attacker)))
+      : [];
+    const demolitionKeys = new Set(demolition.map(objectKey));
+    const held = combined.filter((attacker) => (
+      !screenKeys.has(objectKey(attacker)) && !demolitionKeys.has(objectKey(attacker))
+    ));
+    state.southTransitFocus.screen = {
+      vehiclesAlive: vehicles.length > 0,
+      infantryFallback: state.southTransitInfantryScreenKeys.size,
+      demolition: demolition.length,
+    };
+    for (let index = 0; index < screen.length; index += 10) {
+      queueMissionEightRole(commands, `east-a-south-combat-${index / 10}`,
+        screen.slice(index, index + 10), combatThreat, 0, 30);
+    }
+    for (let index = 0; index < demolition.length; index += 10) {
+      queueMissionEightRole(commands, `east-a-south-sam-demolition-${index / 10}`,
+        demolition.slice(index, index + 10), visibleAuthoredTarget, 0, 30);
+    }
+    const spreadOffsets = [
+      { x: -2, y: 0 }, { x: 2, y: 0 }, { x: -2, y: 2 },
+      { x: 2, y: 2 }, { x: 0, y: 2 }, { x: 0, y: 0 },
+    ];
+    for (let index = 0; index < held.length; index += 6) {
+      const offset = spreadOffsets[(index / 6) % spreadOffsets.length];
+      queueMissionEightRole(commands, `east-a-south-screen-hold-${index / 6}`,
+        held.slice(index, index + 6), {
+          cellX: previousWaypoint.cellX + offset.x,
+          cellY: previousWaypoint.cellY + offset.y,
+        }, MODIFIER_ALT, 45);
+    }
+    return;
+  }
+
+  state.southTransitInfantryScreenKeys.clear();
+  const arrivalRadius = waypoint.label === "southern strike assembly" ? 1 : 3;
+  const arrivals = (wave) => wave.filter((attacker) => (
+    missionEightDistance(attacker, waypoint) <= arrivalRadius
+  )).length;
+  const secondArrivals = arrivals(secondWave);
+  const thirdArrivals = arrivals(thirdWave);
+  const required = (wave) => Math.min(wave.length, Math.max(1, Math.ceil(wave.length * 0.7)));
+  if (!authoredTarget
+    && secondArrivals >= required(secondWave) && thirdArrivals >= required(thirdWave)) {
+    const progress = {
+      tick: snapshot.tick,
+      stage,
+      label: waypoint.label,
+      cellX: waypoint.cellX,
+      cellY: waypoint.cellY,
+      secondArrivals,
+      thirdArrivals,
+    };
+    state.southTransitProgress.push(progress);
+    state.secondWaveTransitProgress.push({ ...progress, arrivals: secondArrivals });
+    state.thirdWaveTransitProgress.push({ ...progress, arrivals: thirdArrivals });
+    state.southTransitStage += 1;
+    state.secondWaveTransitStage = state.southTransitStage;
+    state.thirdWaveTransitStage = state.southTransitStage;
+    if (state.southTransitStage >= route.length) {
+      completeMissionEightSouthTransit(snapshot, combined);
+      return;
+    }
+    for (let index = 0; index < combined.length; index += 10) {
+      queueMissionEightRole(commands, `east-a-south-stage-hold-${index / 10}`,
+        combined.slice(index, index + 10), waypoint, MODIFIER_ALT, 45);
+    }
+    return;
+  }
+  for (let index = 0; index < combined.length; index += 10) {
+    queueMissionEightRole(commands, `east-a-south-transit-${index / 10}`,
+      combined.slice(index, index + 10), waypoint, MODIFIER_ALT, 45);
+  }
+}
+
+function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
+  const state = missionEightState;
+  if (mission.variant !== "east-a" || state.factDeathTick === undefined) return false;
+  state.westCleanupStartedTick ??= snapshot.tick;
+
+  while (state.westCleanupStage < missionEightEastAWestCleanupTargets.length) {
+    const stage = state.westCleanupStage;
+    const cleanupStrike = strike;
+    // This guard belongs inside the loop: destroying stage 2 advances to stage
+    // 3 in the same turn, and an outer guard would leak one production-turret
+    // order before the next snapshot. Keep that pre-launch force moving west,
+    // where it cannot draw Nod's production armor toward the GDI home base.
+    if (stage >= 3 && state.postFactCleanupLaunchTick === undefined) {
+      const westernReserve = hostiles.find((hostile) => (
+        hostile.typeName === "NUKE" && hostile.cellX === 6 && hostile.cellY === 8
+      ));
+      for (let index = 0; index < cleanupStrike.length; index += 10) {
+        queueMissionEightRole(commands, `east-a-west-prelaunch-${index / 10}`,
+          cleanupStrike.slice(index, index + 10), westernReserve ?? { cellX: 10, cellY: 10 },
+          westernReserve ? 0 : MODIFIER_ALT, westernReserve ? 30 : 90);
+      }
+      return true;
+    }
+    const site = missionEightEastAWestCleanupTargets[stage];
+    const target = hostiles.find((hostile) => (
+      hostile.typeName === site.typeName
+      && hostile.cellX === site.cellX && hostile.cellY === site.cellY
+    ));
+    if (!target) {
+      const engagement = state.westCleanupTarget?.stage === stage
+        ? state.westCleanupTarget : undefined;
+      state.westCleanupProgress.push({
+        tick: snapshot.tick,
+        stage,
+        ...site,
+        engagedTick: engagement?.engagedTick,
+        targetKey: engagement?.targetKey,
+        initialStrength: engagement?.initialStrength,
+        minimumStrength: engagement?.minimumStrength ?? 0,
+        absentAtStart: engagement === undefined,
+      });
+      state.westCleanupStage += 1;
+      state.westCleanupTarget = undefined;
+      continue;
+    }
+
+    if (state.westCleanupTarget?.stage !== stage
+      || state.westCleanupTarget.targetKey !== objectKey(target)) {
+      state.westCleanupTarget = {
+        stage,
+        label: site.label,
+        typeName: target.typeName,
+        targetKey: objectKey(target),
+        cellX: target.cellX,
+        cellY: target.cellY,
+        engagedTick: snapshot.tick,
+        initialStrength: target.strength,
+        minimumStrength: target.strength,
+      };
+    } else {
+      state.westCleanupTarget.minimumStrength = Math.min(
+        state.westCleanupTarget.minimumStrength,
+        target.strength,
+      );
+    }
+    const postFactCleanup = state.postFactCleanupLaunchTick === undefined || stage !== 3 ? []
+      : cleanupStrike.filter((attacker) => (
+        state.postFactCleanupCohortKeys.has(objectKey(attacker))
+      ));
+    const nearbyThreatDistance = (hostile) => Math.min(...postFactCleanup.map((attacker) => (
+      missionEightDistance(attacker, hostile)
+    )));
+    const nearbyThreat = postFactCleanup.length === 0 ? undefined : hostiles.filter((hostile) => (
+      (hostile.type === 1 || hostile.type === 2)
+      && missionEightEastAWestScreenPriorities.has(hostile.typeName)
+      && nearbyThreatDistance(hostile) <= 6
+      && snapshot.shroud.isVisible(hostile.cellX, hostile.cellY)
+    )).toSorted((left, right) => (
+      missionEightEastAWestScreenPriorities.get(left.typeName)
+        - missionEightEastAWestScreenPriorities.get(right.typeName)
+      || nearbyThreatDistance(left) - nearbyThreatDistance(right)
+      || left.strength - right.strength
+      || left.id - right.id
+    ))[0];
+    if (nearbyThreat) {
+      for (let index = 0; index < cleanupStrike.length; index += 10) {
+        queueMissionEightRole(commands,
+          `east-a-west-cleanup-screen-${objectKey(nearbyThreat)}-${index / 10}`,
+          cleanupStrike.slice(index, index + 10), nearbyThreat, 0, 60);
+      }
+      return true;
+    }
+    for (let index = 0; index < cleanupStrike.length; index += 10) {
+      queueMissionEightRole(commands, `east-a-west-cleanup-${stage}-${index / 10}`,
+        cleanupStrike.slice(index, index + 10), target, 0, 30);
+    }
+    return true;
+  }
+
+  state.westCleanupCompletedTick ??= snapshot.tick;
+  return false;
+}
+
+function queueMissionEightPostSamCounterattack(snapshot, hostiles, attackers, commands) {
+  const state = missionEightState;
+  if (mission.variant !== "east-a" || state.allSamsDeadTick === undefined) return;
+  if (state.postSamCounterattackLaunchTick === undefined && snapshot.tick >= 28_800) {
+    const defenders = attackers.filter((attacker) => (
+      state.baseGuardKeys.has(objectKey(attacker))
+      || state.postFactHomeDefenseKeys.has(objectKey(attacker))
+    )).toSorted((left, right) => (
+      Number(left.typeName !== "E3") - Number(right.typeName !== "E3")
+      || right.strength / right.maxStrength - left.strength / left.maxStrength
+      || left.id - right.id
+    ));
+    const launchCount = Math.max(0, defenders.length - 1);
+    if (launchCount >= 5) {
+      state.postSamCounterattackLaunchTick = snapshot.tick;
+      for (const attacker of defenders.slice(0, launchCount)) {
+        const key = objectKey(attacker);
+        clearMissionEightUnitRoleKey(key);
+        state.postSamCounterattackKeys.add(key);
+      }
+    }
+  }
+
+  const counterattack = attackers.filter((attacker) => (
+    state.postSamCounterattackKeys.has(objectKey(attacker))
+  ));
+  const northSupport = attackers.filter((attacker) => (
+    state.postSamNorthSupportKeys.has(objectKey(attacker))
+  ));
+  if ((counterattack.length === 0
+      && state.postSamCounterattackStage < missionEightEastAPostSamFirstTargetStage)
+    || state.postSamCounterattackCompletedTick !== undefined) return;
+
+  while (state.postSamCounterattackStage < missionEightEastAPostSamCounterattackRoute.length) {
+    const stage = state.postSamCounterattackStage;
+    const site = missionEightEastAPostSamCounterattackRoute[stage];
+    const target = site.typeName ? hostiles.find((hostile) => (
+      hostile.typeName === site.typeName
+      && hostile.cellX === site.cellX && hostile.cellY === site.cellY
+    )) : undefined;
+    if (site.typeName && target) break;
+    const engagementForce = stage >= missionEightEastAPostSamFirstTargetStage
+      ? [...counterattack, ...northSupport] : counterattack;
+    const arrivals = site.typeName ? engagementForce.length : counterattack.filter((attacker) => (
+      missionEightDistance(attacker, site) <= 3
+    )).length;
+    const required = Math.min(counterattack.length, Math.max(1,
+      Math.ceil(counterattack.length * 0.6)));
+    if (!site.typeName && arrivals < required) break;
+    const supportOrder = state.airstrike.orders.find((order) => (
+      order.tick >= state.postSamCounterattackLaunchTick
+      && order.target === "GUN" && order.cellX === 21 && order.cellY === 19
+    ));
+    if (stage === 2 && (!supportOrder || snapshot.tick < supportOrder.tick + 450)) break;
+    state.postSamCounterattackProgress.push({
+      tick: snapshot.tick,
+      stage,
+      label: site.label,
+      typeName: site.typeName,
+      cellX: site.cellX,
+      cellY: site.cellY,
+      arrivals,
+    });
+    state.postSamCounterattackStage += 1;
+  }
+
+  const site = missionEightEastAPostSamCounterattackRoute[state.postSamCounterattackStage];
+  if (!site) {
+    state.postSamCounterattackCompletedTick = snapshot.tick;
+    for (const key of new Set([
+      ...state.postSamCounterattackKeys,
+      ...state.postSamNorthSupportKeys,
+    ])) state.strikeKeys.add(key);
+    state.postSamCounterattackKeys.clear();
+    state.postSamNorthSupportKeys.clear();
+    return;
+  }
+  if (state.postSamCounterattackStage < missionEightEastAPostSamFirstTargetStage) {
+    for (let index = 0; index < northSupport.length; index += 8) {
+      queueMissionEightRole(commands, `east-a-post-sam-north-support-${index / 8}`,
+        northSupport.slice(index, index + 8), { cellX: 18, cellY: 30 }, MODIFIER_ALT, 60);
+    }
+  }
+  const engagementForce = state.postSamCounterattackStage
+    >= missionEightEastAPostSamFirstTargetStage
+    ? [...counterattack, ...northSupport] : counterattack;
+  const structureTarget = site.typeName ? hostiles.find((hostile) => (
+    hostile.typeName === site.typeName
+    && hostile.cellX === site.cellX && hostile.cellY === site.cellY
+  )) : undefined;
+  const localThreat = hostiles.filter((hostile) => (
+    hostile.type !== 4
+    && engagementForce.some((attacker) => missionEightDistance(attacker, hostile) <= 6)
+  )).toSorted((left, right) => (
+    missionEightDistance(left, site) - missionEightDistance(right, site)
+    || left.strength - right.strength
+    || left.id - right.id
+  ))[0];
+  // Once the force reaches a scripted structure, keep its fire concentrated.
+  // Chasing nearby infantry leaves the western turret alive long enough to
+  // destroy the engineer's APC and collapse the capture attempt.
+  const target = structureTarget ?? localThreat ?? site;
+  for (let index = 0; index < engagementForce.length; index += 8) {
+    queueMissionEightRole(commands,
+      `east-a-post-sam-counterattack-${state.postSamCounterattackStage}-${index / 8}`,
+      engagementForce.slice(index, index + 8), target,
+      target === site ? MODIFIER_ALT : 0, 45);
+  }
+}
+
+function queueMissionEightForces(snapshot, friendly, hostiles, attackers, commands) {
+  const state = missionEightState;
+  queueMissionEightScout(snapshot, friendly, attackers, commands);
+  missionEightAssignRoles(snapshot, attackers);
+  queueMissionEightEngineer(snapshot, friendly, hostiles, commands);
+  queueMissionEightPostSamCounterattack(snapshot, hostiles, attackers, commands);
+
+  if (mission.variant === "east-a" && state.engineer.captureTick !== undefined) {
+    const cleanup = attackers.filter((attacker) => (
+      state.postFactCleanupCohortKeys.has(objectKey(attacker))
+    ));
+    const launchSupport = state.postFactCleanupLaunchTick === undefined
+      ? attackers.filter((attacker) => (
+        !state.postFactCleanupCohortKeys.has(objectKey(attacker))
+        && !state.postFactHomeDefenseCohortKeys.has(objectKey(attacker))
+        && missionEightDistance(attacker, { cellX: 45, cellY: 50 }) <= 14
+      )).toSorted((left, right) => (
+        Number(left.typeName !== "E3") - Number(right.typeName !== "E3")
+        || right.strength / right.maxStrength - left.strength / left.maxStrength
+        || right.strength - left.strength
+        || left.id - right.id
+      ))
+      : [];
+    if (state.postFactCleanupLaunchTick === undefined
+      && state.postFactProductionCompletions.length
+        >= missionEightEastAPostFactLaunchCompletionCount
+      && state.airstrike.orders.filter((order) => (
+        order.target === "GUN" && order.cellX === 26 && order.cellY === 21
+      )).length >= 2
+      && state.airstrike.pending === undefined
+      && snapshot.tick >= 54_510) {
+      state.postFactCleanupLaunchTick = snapshot.tick;
+      const liveHomeCohort = attackers.filter((attacker) => (
+        state.postFactHomeDefenseCohortKeys.has(objectKey(attacker))
+      ));
+      const launchCandidates = [...new Map([
+        ...liveHomeCohort, ...cleanup, ...launchSupport,
+      ].map((attacker) => [objectKey(attacker), attacker])).values()];
+      const defensePriorities = new Map([
+        ["E3", 0], ["MTNK", 1], ["MSAM", 2], ["APC", 3],
+        ["JEEP", 4], ["E2", 5], ["E1", 6],
+      ]);
+      const reserveCount = Math.min(launchCandidates.length,
+        Math.max(missionEightEastAPostFactHomeDefenseCount, liveHomeCohort.length));
+      const reserveKeys = new Set(launchCandidates.toSorted((left, right) => (
+        (defensePriorities.get(left.typeName) ?? 20)
+          - (defensePriorities.get(right.typeName) ?? 20)
+        || right.strength / right.maxStrength - left.strength / left.maxStrength
+        || right.strength - left.strength
+        || left.id - right.id
+      )).slice(0, reserveCount).map(objectKey));
+      state.postFactHomeDefenseCohortKeys.clear();
+      for (const attacker of launchCandidates) {
+        const key = objectKey(attacker);
+        clearMissionEightUnitRoleKey(key);
+        if (reserveKeys.has(key)) {
+          state.postFactHomeDefenseKeys.add(key);
+          state.postFactHomeDefenseCohortKeys.add(key);
+        } else {
+          state.postFactCleanupCohortKeys.add(key);
+          state.strikeKeys.add(key);
+        }
+      }
+    } else if (state.postFactCleanupLaunchTick === undefined) {
+      for (const attacker of cleanup) {
+        const key = objectKey(attacker);
+        state.strikeKeys.delete(key);
+        state.postFactHomeDefenseKeys.add(key);
+      }
+    }
+  }
+
+  if (mission.variant === "east-a" && state.northReinforcementKeys.size > 0) {
+    queueMissionEightTransitWave(snapshot, attackers, commands, {
+      keys: state.northReinforcementKeys,
+      stageProperty: "northReinforcementStage",
+      progressProperty: "northReinforcementProgress",
+      joinProperty: "northReinforcementJoinTick",
+      role: "east-a-north-reinforcement",
+      transitRoute: missionEightRoutes["east-a"].slice(3, 9),
+      joinKeys: state.strikeKeys,
+      arrivalFraction: 0.55,
+    });
+  }
+
+  if (mission.variant === "east-a" && state.engineer.captureTick !== undefined
+    && state.northReleaseTick === undefined) {
+    state.northReleaseTick = snapshot.tick;
+    for (const key of new Set([
+      ...state.northHoldKeys,
+      ...state.southReadyKeys,
+      ...state.secondWaveKeys,
+      ...state.thirdWaveKeys,
+      ...state.engineer.footEscortKeys,
+      ...state.engineer.footDecoyKeys,
+      ...state.engineer.replacementDecoyEscortKeys,
+    ])) {
+      state.northReleaseKeys.add(key);
+      state.strikeKeys.add(key);
+    }
+    state.northHoldKeys.clear();
+    state.southReadyKeys.clear();
+    state.secondWaveKeys.clear();
+    state.thirdWaveKeys.clear();
+    state.engineer.footEscortKeys.clear();
+    state.engineer.footDecoyKeys.clear();
+    state.engineer.replacementDecoyEscortKeys.clear();
+  }
+
+  if (mission.variant === "east-a" && state.factDeathTick !== undefined
+    && state.baseGuardReleaseTick === undefined) {
+    state.baseGuardReleaseTick = snapshot.tick;
+    for (const key of state.baseGuardKeys) {
+      state.baseGuardReleaseKeys.add(key);
+      state.strikeKeys.add(key);
+    }
+    state.baseGuardKeys.clear();
+  }
+
+  const basePoint = mission.variant === "east-a" ? { cellX: 45, cellY: 51 } : { cellX: 34, cellY: 50 };
+  const baseGuard = attackers.filter((attacker) => (
+    state.baseGuardKeys.has(objectKey(attacker))
+    || state.postFactHomeDefenseKeys.has(objectKey(attacker))
+  ));
+  if (mission.variant === "east-b") {
+    const basePriorities = new Map([
+      ["ARTY", 0], ["LTNK", 1], ["BGGY", 2], ["E4", 3], ["E3", 4], ["E1", 5],
+    ]);
+    const baseThreat = hostiles.filter((hostile) => (
+      basePriorities.has(hostile.typeName)
+      && missionEightDistance(hostile, { cellX: 34, cellY: 50 }) <= 10
+    )).toSorted((left, right) => (
+      (basePriorities.get(left.typeName) ?? 20) - (basePriorities.get(right.typeName) ?? 20)
+      || missionEightDistance(left, { cellX: 34, cellY: 50 })
+        - missionEightDistance(right, { cellX: 34, cellY: 50 })
+      || left.strength - right.strength
+      || left.id - right.id
+    ))[0];
+    const baseFallback = { cellX: 27, cellY: 52 };
+    const commandedBaseGuard = baseThreat ? baseGuard : baseGuard.filter((guard) => (
+      missionEightDistance(guard, baseFallback) > 2
+    ));
+    queueMissionEightRole(commands, "east-b-base", commandedBaseGuard,
+      baseThreat ?? baseFallback, baseThreat ? 0 : MODIFIER_ALT, 45);
+  } else if (state.assaultTick !== undefined) {
+    const postSamDefense = mission.variant === "east-a" && state.allSamsDeadTick !== undefined;
+    if (postSamDefense) {
+      const defensePoint = { cellX: 43, cellY: 52 };
+      const baseThreat = missionEightThreatNear(hostiles, defensePoint, 10);
+      if (state.postFactCleanupLaunchTick === undefined
+        && state.engineer.captureTick !== undefined && baseThreat) {
+        for (let index = 0; index < baseGuard.length; index += 10) {
+          queueMissionEightRole(commands, `post-fact-base-defense-${index / 10}`,
+            baseGuard.slice(index, index + 10), baseThreat, 0, 30);
+        }
+      } else {
+        const antiArmor = baseThreat ? baseGuard.filter((guard) => (
+          guard.typeName === "E3"
+        )).toSorted((left, right) => (
+          left.strength / left.maxStrength - right.strength / right.maxStrength
+          || left.id - right.id
+        )).slice(0, 1) : [];
+        queueMissionEightRole(commands, "base-anti-armor", antiArmor,
+          baseThreat ?? defensePoint, baseThreat ? 0 : MODIFIER_ALT, 45);
+        const antiArmorKeys = new Set(antiArmor.map(objectKey));
+        const defenseAnchors = [
+          { cellX: 43, cellY: 48 }, { cellX: 45, cellY: 48 },
+          { cellX: 43, cellY: 50 }, { cellX: 45, cellY: 50 },
+          { cellX: 43, cellY: 52 }, { cellX: 45, cellY: 52 },
+          { cellX: 43, cellY: 54 }, { cellX: 45, cellY: 54 },
+          { cellX: 47, cellY: 51 }, { cellX: 47, cellY: 53 },
+        ];
+        baseGuard.filter((guard) => !antiArmorKeys.has(objectKey(guard)))
+          .toSorted((left, right) => left.id - right.id)
+          .forEach((guard, index) => {
+            queueMissionEightRole(commands, `base-hold-${objectKey(guard)}`, [guard],
+              defenseAnchors[index % defenseAnchors.length], MODIFIER_ALT, 180);
+          });
+      }
+    } else {
+      const baseThreat = missionEightThreatNear(hostiles, basePoint,
+        mission.variant === "east-a" ? 10 : 16);
+      queueMissionEightRole(commands, "base", baseGuard, baseThreat ?? basePoint, 0, 60);
+    }
+  }
+
+  if (mission.variant === "east-b") {
+    const villagePoint = { cellX: 8, cellY: 57 };
+    const villageGuard = attackers.filter((attacker) => state.villageGuardKeys.has(objectKey(attacker)));
+    const villageArmor = villageGuard.filter((guard) => guard.typeName === "MTNK");
+    const villageInfantry = villageGuard.filter((guard) => guard.typeName !== "MTNK");
+    const armorPriorities = new Map([
+      ["ARTY", 0], ["LTNK", 1], ["BGGY", 2], ["E4", 3], ["E3", 4], ["E1", 5],
+    ]);
+    const armorThreat = hostiles.filter((hostile) => (
+      (hostile.type === 1 || hostile.type === 2)
+      && armorPriorities.has(hostile.typeName)
+      && missionEightDistance(hostile, villagePoint) <= 9
+    )).toSorted((left, right) => (
+      (armorPriorities.get(left.typeName) ?? 20) - (armorPriorities.get(right.typeName) ?? 20)
+      || missionEightDistance(left, villagePoint) - missionEightDistance(right, villagePoint)
+      || left.strength - right.strength
+      || left.id - right.id
+    ))[0];
+    const infantryThreat = hostiles.filter((hostile) => (
+      (hostile.typeName === "TRAN" || hostile.typeName === "E4" || hostile.typeName === "E3")
+      && missionEightDistance(hostile, villagePoint) <= 15
+    )).toSorted((left, right) => (
+      Number(left.typeName !== "TRAN") - Number(right.typeName !== "TRAN")
+      || Number(left.typeName !== "E4") - Number(right.typeName !== "E4")
+      || missionEightDistance(left, villagePoint) - missionEightDistance(right, villagePoint)
+      || left.strength - right.strength
+      || left.id - right.id
+    ))[0];
+    const armorFallback = { cellX: 10, cellY: 52 };
+    const infantryFallback = { cellX: 8, cellY: 55 };
+    const commandedVillageArmor = armorThreat ? villageArmor : villageArmor.filter((guard) => (
+      missionEightDistance(guard, armorFallback) > 2
+    ));
+    const commandedVillageInfantry = infantryThreat ? villageInfantry : villageInfantry.filter((guard) => (
+      missionEightDistance(guard, infantryFallback) > 2
+    ));
+    queueMissionEightRole(commands, "east-b-village-armor", commandedVillageArmor,
+      armorThreat ?? armorFallback, armorThreat ? 0 : MODIFIER_ALT, 45);
+    queueMissionEightRole(commands, "east-b-village-infantry", commandedVillageInfantry,
+      infantryThreat ?? infantryFallback, infantryThreat ? 0 : MODIFIER_ALT, 45);
+  }
+
+  if (mission.variant === "east-b" && state.assaultTick === undefined) {
+    const stagedTanks = attackers.filter((attacker) => (
+      attacker.typeName === "MTNK"
+      && state.eastBProducedTankKeys.has(objectKey(attacker))
+    ));
+    const stagingPoint = snapshot.tick < 27_000
+      ? missionEightEastBTankAssembly : missionEightEastBTankReserve;
+    const movingTanks = stagedTanks.filter((attacker) => (
+      missionEightDistance(attacker, stagingPoint) > 2
+    ));
+    queueMissionEightRole(commands, "east-b-tank-staging", movingTanks,
+      stagingPoint, MODIFIER_ALT, 90);
+  }
+
+  if (state.assaultTick === undefined) {
+    if (mission.variant === "east-a") {
+      const scouts = new Set(state.scoutKeys);
+      const reserve = attackers.filter((attacker) => (
+        !scouts.has(objectKey(attacker))
+        && objectKey(attacker) !== state.vehicleRepairActiveKey
+        && objectKey(attacker) !== state.vehicleRepairClearKey
+      ));
+      const threat = state.vehicleRepairCompleteTick === undefined
+        ? undefined
+        : missionEightThreatNear(hostiles, { cellX: 41, cellY: 52 }, 7);
+      const vehicles = reserve.filter((attacker) => attacker.type === 2);
+      const infantry = reserve.filter((attacker) => attacker.type === 1);
+      if (state.vehicleRepairCompleteTick === undefined) {
+        const repairKeys = [...state.vehicleRepairKeys];
+        for (const vehicle of vehicles) {
+          const parkingIndex = Math.max(0, repairKeys.indexOf(objectKey(vehicle)));
+          queueMissionEightRole(commands, `east-a-parking-${objectKey(vehicle)}`, [vehicle], {
+            cellX: 43 + (parkingIndex % 5) * 2,
+            cellY: 55,
+          }, MODIFIER_ALT, 300);
+        }
+      } else {
+        queueMissionEightRole(commands, "east-a-vehicles", vehicles,
+          threat ?? { cellX: 43, cellY: 52 }, 0, 90);
+      }
+      queueMissionEightRole(commands, "east-a-infantry", infantry,
+        threat ?? { cellX: 42, cellY: 51 }, 0, 90);
+    }
+    return;
+  }
+
+  const route = missionEightRoutes[mission.variant];
+  if (mission.variant === "east-a" && state.secondWaveKeys.size > 0
+    && state.secondWaveLaunchTick === undefined) {
+    const held = attackers.filter((attacker) => state.secondWaveKeys.has(objectKey(attacker)));
+    const holdingPoints = [
+      { cellX: 43, cellY: 55 },
+      { cellX: 47, cellY: 55 },
+      { cellX: 51, cellY: 55 },
+    ];
+    for (let index = 0; index < held.length; index += 7) {
+      queueMissionEightRole(commands, `east-a-wave-two-${index / 7}`,
+        held.slice(index, index + 7), holdingPoints[(index / 7) % holdingPoints.length],
+        MODIFIER_ALT, 90);
+    }
+  }
+  if (mission.variant === "east-a" && state.thirdWaveKeys.size > 0
+    && state.thirdWaveLaunchTick === undefined) {
+    const held = attackers.filter((attacker) => state.thirdWaveKeys.has(objectKey(attacker)));
+    const holdingPoints = [
+      { cellX: 41, cellY: 52 },
+      { cellX: 45, cellY: 55 },
+      { cellX: 50, cellY: 53 },
+    ];
+    for (let index = 0; index < held.length; index += 7) {
+      queueMissionEightRole(commands, `east-a-wave-three-${index / 7}`,
+        held.slice(index, index + 7), holdingPoints[(index / 7) % holdingPoints.length],
+        MODIFIER_ALT, 90);
+    }
+  }
+  if (mission.variant === "east-a"
+    && ((state.secondWaveKeys.size > 0 && state.secondWaveLaunchTick !== undefined)
+      || (state.thirdWaveKeys.size > 0 && state.thirdWaveLaunchTick !== undefined))) {
+    queueMissionEightSouthTransit(snapshot, hostiles, attackers, commands);
+  }
+  if (mission.variant === "east-a") {
+    const rearGuard = attackers.filter((attacker) => (
+      state.southRearGuardKeys.has(objectKey(attacker))
+    ));
+    const rearThreatPriority = new Map([
+      ["ARTY", 0], ["LTNK", 1], ["BGGY", 2], ["E4", 3],
+      ["E3", 4], ["E2", 5], ["E1", 6],
+    ]);
+    const rearThreat = hostiles.filter((hostile) => (
+      rearThreatPriority.has(hostile.typeName)
+      && snapshot.shroud.isVisible(hostile.cellX, hostile.cellY)
+      && (missionEightDistance(hostile, { cellX: 9, cellY: 22 }) <= 12
+        || rearGuard.some((guard) => missionEightDistance(guard, hostile) <= 10))
+    )).toSorted((left, right) => (
+      (rearThreatPriority.get(left.typeName) ?? 20)
+        - (rearThreatPriority.get(right.typeName) ?? 20)
+      || Math.min(...rearGuard.map((guard) => missionEightDistance(guard, left)))
+        - Math.min(...rearGuard.map((guard) => missionEightDistance(guard, right)))
+      || left.strength - right.strength
+      || left.id - right.id
+    ))[0];
+    for (let index = 0; index < rearGuard.length; index += 10) {
+      queueMissionEightRole(commands, `east-a-south-rear-guard-${index / 10}`,
+        rearGuard.slice(index, index + 10), rearThreat ?? { cellX: 9, cellY: 22 },
+        rearThreat ? 0 : MODIFIER_ALT, 30);
+    }
+    const northHold = attackers.filter((attacker) => (
+      state.northHoldKeys.has(objectKey(attacker))
+    ));
+    const captureScreenTarget = state.allSamsDeadTick === undefined
+      && state.engineer.captureTick === undefined
+      ? hostiles.filter((hostile) => (
+          (hostile.type === 1 || hostile.type === 2)
+          && missionEightDistance(hostile, { cellX: 8, cellY: 11 }) <= 9
+        )).toSorted((left, right) => {
+          const captureThreatPriority = new Map([
+            ["E1", 0], ["E3", 1], ["E4", 2], ["ARTY", 3], ["LTNK", 4], ["BGGY", 5],
+          ]);
+          return (captureThreatPriority.get(left.typeName) ?? 20)
+            - (captureThreatPriority.get(right.typeName) ?? 20)
+          || Math.min(...northHold.map((guard) => missionEightDistance(guard, left)))
+            - Math.min(...northHold.map((guard) => missionEightDistance(guard, right)))
+          || left.strength - right.strength
+          || left.id - right.id;
+        })[0]
+      : undefined;
+    if (state.allSamsDeadTick !== undefined) {
+      if (state.postSamNorthFlankKeys.size === 0
+        && state.postSamNorthFlankProgress.length === 0) {
+        for (const attacker of northHold.filter((candidate) => (
+          candidate.type === 2 && candidate.cellY < 20
+        ))) {
+          state.postSamNorthFlankKeys.add(objectKey(attacker));
+        }
+      }
+      const northFlank = northHold.filter((attacker) => (
+        state.postSamNorthFlankKeys.has(objectKey(attacker))
+      ));
+      while (northFlank.length > 0 && state.postSamNorthFlankStage
+        < missionEightEastAPostSamNorthFlankRoute.length - 1) {
+        const waypoint = missionEightEastAPostSamNorthFlankRoute[
+          state.postSamNorthFlankStage
+        ];
+        const arrivals = northFlank.filter((attacker) => (
+          missionEightDistance(attacker, waypoint) <= 2
+        )).length;
+        const required = Math.min(northFlank.length,
+          Math.max(1, Math.ceil(northFlank.length * 0.5)));
+        if (arrivals < required) break;
+        state.postSamNorthFlankProgress.push({
+          tick: snapshot.tick,
+          stage: state.postSamNorthFlankStage,
+          ...waypoint,
+          arrivals,
+        });
+        state.postSamNorthFlankStage += 1;
+      }
+      const flankWaypoint = missionEightEastAPostSamNorthFlankRoute[
+        state.postSamNorthFlankStage
+      ];
+      for (let index = 0; index < northFlank.length; index += 8) {
+        queueMissionEightRole(commands, `east-a-north-flank-${index / 8}`,
+          northFlank.slice(index, index + 8), flankWaypoint, MODIFIER_ALT, 90);
+      }
+      const flankKeys = new Set(northFlank.map(objectKey));
+      const remoteHold = northHold.filter((attacker) => !flankKeys.has(objectKey(attacker)));
+      for (let index = 0; index < remoteHold.length; index += 8) {
+        queueMissionEightRole(commands, `east-a-north-remote-hold-${index / 8}`,
+          remoteHold.slice(index, index + 8), { cellX: 40, cellY: 30 }, MODIFIER_ALT, 120);
+      }
+    } else {
+      for (let index = 0; index < northHold.length; index += 10) {
+        queueMissionEightRole(commands, `east-a-north-hold-${index / 10}`,
+          northHold.slice(index, index + 10), captureScreenTarget ?? { cellX: 18, cellY: 7 },
+          captureScreenTarget ? 0 : MODIFIER_ALT, captureScreenTarget ? 30 : 90);
+      }
+    }
+    const southReady = attackers.filter((attacker) => (
+      state.southReadyKeys.has(objectKey(attacker))
+    ));
+    for (let index = 0; index < southReady.length; index += 10) {
+      queueMissionEightRole(commands, `east-a-south-ready-${index / 10}`,
+        southReady.slice(index, index + 10), { cellX: 12, cellY: 12 }, MODIFIER_ALT, 90);
+    }
+    const northernSamStage = route.findIndex((waypoint) => waypoint.label === "northern SAM");
+    if (state.routeStage > northernSamStage
+      && state.secondWaveJoinTick !== undefined && state.thirdWaveJoinTick !== undefined
+      && state.southReadyKeys.size > 0) {
+      for (const key of state.southReadyKeys) state.strikeKeys.add(key);
+      state.southReadyKeys.clear();
+      state.southAssaultTick ??= snapshot.tick;
+    }
+  }
+  const strike = attackers.filter((attacker) => state.strikeKeys.has(objectKey(attacker)));
+  if (strike.length === 0) return;
+  const postFactCleanupTransitRoute = [
+    { cellX: 29, cellY: 40, label: "cleanup southern crossing" },
+    { cellX: 21, cellY: 30, label: "cleanup basin assembly" },
+    { cellX: 12, cellY: 12, label: "cleanup western assembly" },
+  ];
+  if (mission.variant === "east-a" && state.postFactCleanupLaunchTick !== undefined
+    && state.postFactCleanupTransitStage < postFactCleanupTransitRoute.length) {
+    const cleanupStrike = strike.filter((attacker) => (
+      state.postFactCleanupCohortKeys.has(objectKey(attacker))
+    ));
+    const waypoint = postFactCleanupTransitRoute[state.postFactCleanupTransitStage];
+    const liveRockets = cleanupStrike.filter((attacker) => attacker.typeName === "E3");
+    const rifles = cleanupStrike.filter((attacker) => attacker.typeName !== "E3");
+    const rocketWaypoint = waypoint;
+    const arrivals = rifles.filter((attacker) => (
+      missionEightDistance(attacker, waypoint) <= 3
+    )).length;
+    const rocketsArrived = liveRockets.every((attacker) => (
+      missionEightDistance(attacker, rocketWaypoint) <= 3
+    ));
+    const required = Math.min(rifles.length,
+      Math.max(1, Math.ceil(rifles.length * 0.8)));
+    if (arrivals >= required && rocketsArrived) {
+      state.postFactCleanupTransitProgress.push({
+        tick: snapshot.tick,
+        stage: state.postFactCleanupTransitStage,
+        ...waypoint,
+        arrivals,
+        required,
+        rockets: liveRockets.length,
+      });
+      state.postFactCleanupTransitStage += 1;
+    } else {
+      for (let index = 0; index < rifles.length; index += 10) {
+        queueMissionEightRole(commands,
+          `east-a-post-fact-transit-${state.postFactCleanupTransitStage}-${index / 10}`,
+          rifles.slice(index, index + 10), waypoint, MODIFIER_ALT, 45);
+      }
+      if (liveRockets.length > 0) {
+        queueMissionEightRole(commands,
+          `east-a-post-fact-rockets-${state.postFactCleanupTransitStage}`,
+          liveRockets, rocketWaypoint, MODIFIER_ALT, 45);
+      }
+      return;
+    }
+  }
+  const factCapturePending = mission.variant === "east-a"
+    && state.engineer.key !== undefined && state.engineer.captureTick === undefined
+    && state.engineer.deathTick === undefined
+    && friendly.some((object) => (
+      objectKey(object) === state.engineer.key
+      || objectKey(object) === state.engineer.transportKey
+    ));
+  if (queueMissionEightWestCleanup(snapshot, hostiles, strike, commands)) return;
+  const waypoint = route[Math.min(state.routeStage, route.length - 1)];
+  const waitingForAssembly = false;
+  let completedNorthFront = false;
+  if (state.routeStage < route.length) {
+    const arrivals = strike.filter((attacker) => missionEightDistance(attacker, waypoint) <= 3).length;
+    const required = mission.variant === "east-a"
+      ? waypoint.label === "southern assembly"
+          ? Math.min(strike.length, Math.max(1, Math.ceil(strike.length * 0.7)))
+        : Math.min(strike.length, 24, Math.max(3, Math.ceil(strike.length * 0.6)))
+      : Math.min(strike.length, Math.max(1, Math.ceil(strike.length * 0.75)));
+    const targetCellX = waypoint.targetCellX ?? waypoint.cellX;
+    const targetCellY = waypoint.targetCellY ?? waypoint.cellY;
+    const routeTargetAlive = waypoint.typeName && hostiles.some((hostile) => (
+      hostile.typeName === waypoint.typeName
+      && hostile.cellX === targetCellX && hostile.cellY === targetCellY
+    ));
+    if (missionEightRouteTarget(snapshot, hostiles, waypoint)) {
+      state.routeTargetEngagedStages.add(state.routeStage);
+    }
+    const targetDestroyedOnStage = waypoint.typeName && !routeTargetAlive
+      && state.routeTargetEngagedStages.has(state.routeStage);
+    if (!waitingForAssembly && !routeTargetAlive
+      && (targetDestroyedOnStage || waypoint.typeName === "FACT" || arrivals >= required)) {
+      state.routeProgress.push({
+        tick: snapshot.tick,
+        stage: state.routeStage,
+        label: waypoint.label,
+        cellX: waypoint.cellX,
+        cellY: waypoint.cellY,
+        arrivals,
+        ...(mission.variant === "east-a" && waypoint.typeName === "FACT" ? {
+          secondCohort: strike.filter((attacker) => (
+            state.secondWaveCohortKeys.has(objectKey(attacker))
+          )).length,
+          thirdCohort: strike.filter((attacker) => (
+            state.thirdWaveCohortKeys.has(objectKey(attacker))
+          )).length,
+        } : {}),
+      });
+      state.routeStage += 1;
+      state.routeStageStartedTick = snapshot.tick;
+      if (mission.variant === "east-a" && waypoint.label === "northern SAM") {
+        for (const key of state.strikeKeys) state.northHoldKeys.add(key);
+        state.strikeKeys.clear();
+        state.northHoldTick = snapshot.tick;
+        completedNorthFront = true;
+      }
+    }
+  }
+  if (completedNorthFront) return;
+  const nextWaypoint = waitingForAssembly
+    ? waypoint
+    : route[Math.min(state.routeStage, route.length - 1)] ?? waypoint;
+  const routeTarget = missionEightRouteTarget(snapshot, hostiles, nextWaypoint);
+  const forceFactFocus = mission.variant === "east-a"
+    && nextWaypoint.typeName === "FACT" && routeTarget && !factCapturePending;
+  const targetCellX = nextWaypoint.targetCellX ?? nextWaypoint.cellX;
+  const targetCellY = nextWaypoint.targetCellY ?? nextWaypoint.cellY;
+  const awaitingRouteTargetVisibility = mission.variant === "east-a"
+    && nextWaypoint.typeName && !routeTarget && hostiles.some((hostile) => (
+      hostile.typeName === nextWaypoint.typeName
+      && hostile.cellX === targetCellX && hostile.cellY === targetCellY
+    ));
+  const forceMoveCorridor = mission.variant === "east-a" && !nextWaypoint.typeName
+    && (nextWaypoint.label.startsWith("southern ")
+      || nextWaypoint.label.startsWith("post-strike ")
+      || nextWaypoint.label === "production approach"
+      || nextWaypoint.label === "western ridge crossing")
+    || mission.variant === "east-b" && Boolean(nextWaypoint.forceMove);
+  let screeningStrike = strike;
+  if (mission.variant === "east-a" && nextWaypoint.typeName && routeTarget
+    && !(factCapturePending && nextWaypoint.typeName === "FACT")) {
+    const demolitionPriority = new Map([
+      ["MTNK", 0], ["MSAM", 1], ["APC", 2], ["JEEP", 3],
+      ["E3", 4], ["E2", 5], ["E1", 6],
+    ]);
+    const demolitionSize = Math.min(10, strike.length,
+      Math.max(3, Math.ceil(strike.length * 0.4)));
+    const demolitionGroup = strike.toSorted((left, right) => (
+      (demolitionPriority.get(left.typeName) ?? 20)
+        - (demolitionPriority.get(right.typeName) ?? 20)
+      || right.strength / right.maxStrength - left.strength / left.maxStrength
+      || left.id - right.id
+    )).slice(0, demolitionSize);
+    const demolitionKeys = new Set(demolitionGroup.map(objectKey));
+    screeningStrike = strike.filter((attacker) => !demolitionKeys.has(objectKey(attacker)));
+    queueMissionEightRole(commands, "strike-sam-demolition", demolitionGroup, routeTarget, 0, 30);
+  }
+  if (forceMoveCorridor) {
+    for (const key of state.corridorScreenKeys) {
+      if (!screeningStrike.some((attacker) => objectKey(attacker) === key)) {
+        state.corridorScreenKeys.delete(key);
+      }
+    }
+    const screenSize = Math.min(10, Math.max(2, Math.ceil(screeningStrike.length * 0.28)));
+    const screenPriority = new Map([["E3", 0], ["E2", 1], ["E1", 2]]);
+    const candidates = screeningStrike.filter((attacker) => (
+      !state.corridorScreenKeys.has(objectKey(attacker))
+    )).toSorted((left, right) => (
+      (screenPriority.get(left.typeName) ?? 10) - (screenPriority.get(right.typeName) ?? 10)
+      || right.strength / right.maxStrength - left.strength / left.maxStrength
+      || left.id - right.id
+    ));
+    const neededScreeners = Math.max(0, screenSize - state.corridorScreenKeys.size);
+    for (const candidate of candidates.slice(0, neededScreeners)) {
+      state.corridorScreenKeys.add(objectKey(candidate));
+    }
+    const corridorScreen = screeningStrike.filter((attacker) => (
+      state.corridorScreenKeys.has(objectKey(attacker))
+    ));
+    const threatPriority = new Map([
+      ["E4", 0], ["ARTY", 1], ["E3", 2], ["LTNK", 3], ["BGGY", 4], ["E1", 5], ["GUN", 6],
+    ]);
+    const corridorThreat = hostiles.filter((hostile) => (
+      snapshot.shroud.isVisible(hostile.cellX, hostile.cellY)
+      && (hostile.type === 1 || hostile.type === 2 || hostile.typeName === "GUN")
+      && screeningStrike.some((attacker) => missionEightDistance(attacker, hostile) <= 6)
+    )).toSorted((left, right) => (
+      (threatPriority.get(left.typeName) ?? 20) - (threatPriority.get(right.typeName) ?? 20)
+      || Math.min(...screeningStrike.map((attacker) => missionEightDistance(attacker, left)))
+        - Math.min(...screeningStrike.map((attacker) => missionEightDistance(attacker, right)))
+      || left.strength - right.strength
+      || left.id - right.id
+    ))[0];
+    queueMissionEightRole(commands, "strike-corridor-screen", corridorScreen,
+      corridorThreat ?? nextWaypoint, corridorThreat ? 0 : MODIFIER_ALT, 45);
+    const corridorScreenKeys = new Set(corridorScreen.map(objectKey));
+    screeningStrike = screeningStrike.filter((attacker) => (
+      !corridorScreenKeys.has(objectKey(attacker))
+    ));
+  }
+  const groups = Array.from({ length: Math.ceil(screeningStrike.length / 10) }, (_, index) => (
+    screeningStrike.slice(index * 10, index * 10 + 10)
+  ));
+  for (let index = 0; index < groups.length; index += 1) {
+    const forceEastBRouteTarget = mission.variant === "east-b"
+      && nextWaypoint.typeName && routeTarget;
+    let target = forceFactFocus || forceEastBRouteTarget
+      ? routeTarget
+      : waitingForAssembly || forceMoveCorridor || awaitingRouteTargetVisibility
+      ? undefined : missionEightAssaultTarget(
+      snapshot,
+      groups[index],
+      hostiles,
+      nextWaypoint,
+      state.routeStage >= 3 ? index % 3 : 0,
+    );
+    if (factCapturePending && nextWaypoint.typeName === "FACT" && target === routeTarget) {
+      target = undefined;
+    }
+    const destination = target ?? (factCapturePending && nextWaypoint.typeName === "FACT"
+      ? { cellX: 12, cellY: 12 }
+      : nextWaypoint);
+    const flags = (mission.variant === "east-a" || forceMoveCorridor) && !target
+      ? MODIFIER_ALT : 0;
+    queueMissionEightRole(commands, `strike-${index}`, groups[index], destination, flags, 45);
+  }
+}
+
+function queueMissionEightTurn(snapshot, friendly, hostiles, attackers, commands) {
+  observeMissionEightTurn(snapshot, friendly, hostiles);
+  queueMissionEightBase(snapshot, friendly, hostiles, commands);
+  queueMissionEightForces(snapshot, friendly, hostiles, attackers, commands);
+}
 const missionFourProtectedVillageCells = new Set([
   "18:44",
   "19:46",
@@ -2778,6 +6502,16 @@ try {
       `${label} campaign transition failed`,
     );
   };
+  const applyDifficulty = (label) => {
+    if (verifierDifficulty === undefined) return;
+    assert.equal(typeof engine._cnc_web_set_difficulty, "function",
+      `${label} engine has no difficulty-selection ABI`);
+    assert.equal(
+      engine._cnc_web_set_difficulty(handle, verifierDifficulty),
+      STATUS_OK,
+      `${label} ${difficultyNames[verifierDifficulty]} difficulty selection failed`,
+    );
+  };
   const handlePointer = withAllocation(4, "handle output");
   try {
     assert.equal(engine._cnc_web_create(2, handlePointer), STATUS_OK, "cnc_web_create failed");
@@ -2788,6 +6522,7 @@ try {
   }
 
   applyCampaignTransition(`classic-freeware GDI Mission ${mission.number}`);
+  applyDifficulty(`classic-freeware GDI Mission ${mission.number}`);
   const startBytes = startMessage();
   assert.equal(
     writeInput(startBytes, (pointer, length) => engine._cnc_web_start(handle, pointer, length)),
@@ -2809,6 +6544,7 @@ try {
       engine._free(replacementHandlePointer);
     }
     applyCampaignTransition(label);
+    applyDifficulty(label);
     assert.equal(
       writeInput(startBytes, (pointer, length) => engine._cnc_web_start(handle, pointer, length)),
       STATUS_OK,
@@ -2884,6 +6620,41 @@ try {
       && hostile.cellX === mission.sabotagedSite.cellX
       && hostile.cellY === mission.sabotagedSite.cellY
     )), "GDI Mission 7 started with the carried sabotaged Refinery intact");
+  }
+  if (mission.number === 8) {
+    initializeMissionEight(snapshot);
+    if (trace) {
+      console.error(JSON.stringify({
+        initialMissionEightObjects: snapshot.objects
+          .filter((object) => object.subObject === 0 && object.strength > 0)
+          .map(({ owner, type, typeName, id, cellX, cellY, strength, maxStrength, objectFlags }) => ({
+            owner, type, typeName, id, cellX, cellY, strength, maxStrength, objectFlags,
+          })),
+      }));
+    }
+    if (mission.variant === "east-a") {
+      assert.equal(initialFriendly, 35, "GDI Mission 8 east-a initial counted force changed");
+      assert.equal(initialHostiles, 61, "GDI Mission 8 east-a initial counted Nod force changed");
+      assert.equal(missionEightState.initialNeutralUnitKeys.size, 1,
+        "GDI Mission 8 east-a initial neutral unit count changed");
+      assert.equal(missionEightState.initialNeutralStructureKeys.size, 8,
+        "GDI Mission 8 east-a initial neutral structure count changed");
+    } else {
+      assert.equal(initialFriendly, 19, "GDI Mission 8 east-b initial counted force changed");
+      assert.equal(initialHostiles, 64, "GDI Mission 8 east-b initial counted Nod force changed");
+      assert.equal(missionEightState.initialNeutralUnitKeys.size, 14,
+        "GDI Mission 8 east-b initial protected civilian count changed");
+      assert.equal(missionEightState.initialNeutralStructureKeys.size, 10,
+        "GDI Mission 8 east-b initial neutral structure count changed");
+      assert.ok(snapshot.objects.some((object) => (
+        object.owner === HOUSE_GDI && object.typeName === "MOEBIUS"
+        && object.cellX === 6 && object.cellY === 60 && object.strength > 0
+      )), "GDI Mission 8 east-b did not start with Dr. Moebius at the authored site");
+      assert.ok(snapshot.objects.some((object) => (
+        object.owner === HOUSE_GDI && object.typeName === "HOSP"
+        && object.cellX === 3 && object.cellY === 60 && object.strength > 0
+      )), "GDI Mission 8 east-b did not start with the authored hospital");
+    }
   }
   assert.ok(mission.number === 6 || mission.number === 7 || initialFriendly > 0,
     `GDI Mission ${mission.number} started with no friendly combatants`);
@@ -3513,6 +7284,357 @@ try {
       assert.equal(snapshot.tick, currentTick, "snapshot tick differs from the ABI advance count");
       if (advanced === 0 && !snapshot.terminal) {
         assert.fail("Mission 7 engine stopped before reaching a terminal state");
+      }
+      continue;
+    }
+    if (mission.number === 8) {
+      queueMissionEightTurn(snapshot, friendly, hostiles, attackers, commands);
+      if (trace && snapshot.tick % (process.env.CNCWEB_VERIFY_TRACE_FINE === "1" ? 30 : 300) === 0) console.error(JSON.stringify({ missionEight: {
+        variant: mission.variant,
+        tick: snapshot.tick,
+        funds: snapshot.sidebar.credits + snapshot.sidebar.tiberium,
+        friendly: friendly.length,
+        attackers: attackers.length,
+        hostiles: hostiles.length,
+        productionStarts,
+        completions: missionEightState.productionCompletions.length,
+        vehicleRepair: mission.variant === "east-a" ? {
+          active: missionEightState.vehicleRepairActiveKey,
+          completed: missionEightState.vehicleRepairCompletedKeys.size,
+          total: missionEightState.vehicleRepairKeys.size,
+          completeTick: missionEightState.vehicleRepairCompleteTick,
+          latestOrder: missionEightState.vehicleRepairOrders.at(-1),
+          latestProgress: missionEightState.vehicleRepairProgress.at(-1),
+          vehicles: friendly.filter((object) => (
+            object.type === 2 && missionEightState.vehicleRepairKeys.has(objectKey(object))
+          )).map(({ typeName, id, strength, maxStrength, cellX, cellY }) => (
+            { typeName, id, strength, maxStrength, cellX, cellY }
+          )),
+        } : undefined,
+        scoutStage: missionEightState.scoutStage,
+        assaultTick: missionEightState.assaultTick,
+        assaultWave: missionEightState.assaultWave,
+        secondWave: mission.variant === "east-a" ? {
+          held: missionEightState.secondWaveKeys.size,
+          launchTick: missionEightState.secondWaveLaunchTick,
+          transitStage: missionEightState.secondWaveTransitStage,
+          joinTick: missionEightState.secondWaveJoinTick,
+          units: attackers.filter((object) => (
+            missionEightState.secondWaveKeys.has(objectKey(object))
+          )).map(({ typeName, strength, cellX, cellY }) => ({ typeName, strength, cellX, cellY })),
+        } : undefined,
+        thirdWave: mission.variant === "east-a" ? {
+          staged: missionEightState.thirdWaveKeys.size,
+          launchTick: missionEightState.thirdWaveLaunchTick,
+          transitStage: missionEightState.thirdWaveTransitStage,
+          joinTick: missionEightState.thirdWaveJoinTick,
+          units: attackers.filter((object) => (
+            missionEightState.thirdWaveKeys.has(objectKey(object))
+          )).map(({ typeName, strength, cellX, cellY }) => ({ typeName, strength, cellX, cellY })),
+        } : undefined,
+        cashConversion: mission.variant === "east-a" && missionEightState.cashConversion ? {
+          orderTick: missionEightState.cashConversion.orderTick,
+          goneTick: missionEightState.cashConversion.goneTick,
+          refund: missionEightState.cashConversion.refund,
+          crew: missionEightState.cashConversion.crew.length,
+        } : undefined,
+        postFactEconomy: mission.variant === "east-a" ? {
+          sales: Object.fromEntries(Object.entries(missionEightState.postFactSales)
+            .map(([typeName, sale]) => [typeName, sale ? {
+              orderTick: sale.orderTick,
+              goneTick: sale.goneTick,
+              structure: sale.structure,
+              fundsBefore: sale.fundsBefore,
+              fundsAfter: sale.fundsAfter,
+              refund: sale.refund,
+              crew: sale.crew,
+            } : undefined])),
+          productionOrders: missionEightState.postFactProductionOrders,
+          productionCompletions: missionEightState.postFactProductionCompletions,
+          cleanupLaunchTick: missionEightState.postFactCleanupLaunchTick,
+          cleanupTransitStage: missionEightState.postFactCleanupTransitStage,
+          cleanupTransitProgress: missionEightState.postFactCleanupTransitProgress,
+          homeCohort: missionEightState.postFactHomeDefenseCohortKeys.size,
+          homeAlive: attackers.filter((attacker) => (
+            missionEightState.postFactHomeDefenseKeys.has(objectKey(attacker))
+          )).length,
+          cleanupCohort: missionEightState.postFactCleanupCohortKeys.size,
+          cleanupAlive: attackers.filter((attacker) => (
+            missionEightState.postFactCleanupCohortKeys.has(objectKey(attacker))
+          )).length,
+        } : undefined,
+        engineer: mission.variant === "east-a" ? {
+          orderTick: missionEightState.engineer.orderTick,
+          observedTick: missionEightState.engineer.observedTick,
+          key: missionEightState.engineer.key,
+          unit: friendly.find((object) => (
+            objectKey(object) === missionEightState.engineer.key
+          )),
+          engineerUnits: friendly.filter((object) => (
+            object.type === 1 && object.typeName === "E6"
+          )),
+          footEscorts: friendly.filter((object) => (
+            missionEightState.engineer.footEscortKeys.has(objectKey(object))
+          )).map(({ typeName, id, strength, maxStrength, cellX, cellY }) => (
+            { typeName, id, strength, maxStrength, cellX, cellY }
+          )),
+          footDecoyStage: missionEightState.engineer.footDecoyStage,
+          footDecoys: friendly.filter((object) => (
+            missionEightState.engineer.footDecoyKeys.has(objectKey(object))
+          )).map(({ typeName, id, strength, maxStrength, cellX, cellY }) => (
+            { typeName, id, strength, maxStrength, cellX, cellY }
+          )),
+          captureThreats: hostiles.filter((object) => (
+            (object.type === 1 || object.type === 2 || object.typeName === "GUN")
+            && missionEightDistance(object, { cellX: 9, cellY: 18 }) <= 12
+          )).map(({ typeName, id, strength, maxStrength, cellX, cellY }) => (
+            { typeName, id, strength, maxStrength, cellX, cellY }
+          )),
+          nearbyThreats: (() => {
+            const unit = friendly.find((object) => (
+              objectKey(object) === missionEightState.engineer.key
+            ));
+            if (!unit) return [];
+            return hostiles.filter((object) => (
+              (object.type === 1 || object.type === 2 || object.typeName === "GUN")
+              && missionEightDistance(object, unit) <= 12
+            )).map(({ typeName, id, strength, maxStrength, cellX, cellY }) => (
+              { typeName, id, strength, maxStrength, cellX, cellY }
+            ));
+          })(),
+          initialKey: missionEightState.engineer.initialKey,
+          initialDeathTick: missionEightState.engineer.initialDeathTick,
+          replacementOrderTick: missionEightState.engineer.replacementOrderTick,
+          replacementObservedTick: missionEightState.engineer.replacementObservedTick,
+          replacementKey: missionEightState.engineer.replacementKey,
+          secondReplacementOrderTick: missionEightState.engineer.secondReplacementOrderTick,
+          secondReplacementObservedTick: missionEightState.engineer.secondReplacementObservedTick,
+          secondReplacementKey: missionEightState.engineer.secondReplacementKey,
+          secondReplacementDeathTick: missionEightState.engineer.secondReplacementDeathTick,
+          replacementDecoyKey: missionEightState.engineer.replacementDecoyKey,
+          replacementDecoyUnit: friendly.find((object) => (
+            objectKey(object) === missionEightState.engineer.replacementDecoyKey
+          )),
+          replacementDecoyEscorts: friendly.filter((object) => (
+            missionEightState.engineer.replacementDecoyEscortKeys.has(objectKey(object))
+          )).map(({ typeName, id, strength, maxStrength, cellX, cellY }) => (
+            { typeName, id, strength, maxStrength, cellX, cellY }
+          )),
+          replacementDecoyEscortInitializedTick:
+            missionEightState.engineer.replacementDecoyEscortInitializedTick,
+          replacementDecoyScreenReadyTick:
+            missionEightState.engineer.replacementDecoyScreenReadyTick,
+          replacementDecoyScreenTankKey:
+            missionEightState.engineer.replacementDecoyScreenTankKey,
+          replacementDecoyScreenTankClearedTick:
+            missionEightState.engineer.replacementDecoyScreenTankClearedTick,
+          replacementDecoyEscortKeys: [...missionEightState.engineer.replacementDecoyEscortKeys],
+          homeMobiles: friendly.filter((object) => (
+            (object.type === 1 || object.type === 2)
+            && missionEightDistance(object, { cellX: 45, cellY: 50 }) <= 14
+          )).map(({ typeName, type, id, strength, maxStrength, cellX, cellY }) => (
+            { typeName, type, id, strength, maxStrength, cellX, cellY }
+          )),
+          cashConversionCrew: missionEightState.cashConversion?.crew,
+          replacementDecoyStage: missionEightState.engineer.replacementDecoyStage,
+          replacementDecoyProgress: missionEightState.engineer.replacementDecoyProgress,
+          fallbackToDecoyTick: missionEightState.engineer.fallbackToDecoyTick,
+          deathTick: missionEightState.engineer.deathTick,
+          transportKey: missionEightState.engineer.transportKey,
+          transportUnit: friendly.find((object) => (
+            objectKey(object) === missionEightState.engineer.transportKey
+          )),
+          transportDeathTick: missionEightState.engineer.transportDeathTick,
+          transportRouteStage: missionEightState.engineer.transportRouteStage,
+          transportRouteProgress: missionEightState.engineer.transportRouteProgress,
+          transportCounterattackTick: missionEightState.engineer.transportCounterattackTick,
+          loadIssuedTick: missionEightState.engineer.loadIssuedTick,
+          sealedTick: missionEightState.engineer.sealedTick,
+          transportRetreatTick: missionEightState.engineer.transportRetreatTick,
+          unloadApproachTick: missionEightState.engineer.unloadApproachTick,
+          unloadStagedTick: missionEightState.engineer.unloadStagedTick,
+          unloadIssuedTick: missionEightState.engineer.unloadIssuedTick,
+          unloadedTick: missionEightState.engineer.unloadedTick,
+          emergencyIngressStage: missionEightState.engineer.emergencyIngressStage,
+          emergencyIngressProgress: missionEightState.engineer.emergencyIngressProgress,
+          transitStage: missionEightState.engineer.transitStage,
+          transitProgress: missionEightState.engineer.transitProgress,
+          captureOrderTick: missionEightState.engineer.captureOrderTick,
+          captureOrders: missionEightState.engineer.captureOrders,
+          captureTick: missionEightState.engineer.captureTick,
+          factSale: {
+            orderTick: missionEightState.engineer.factSale.orderTick,
+            goneTick: missionEightState.engineer.factSale.goneTick,
+            refund: missionEightState.engineer.factSale.refund,
+            crew: missionEightState.engineer.factSale.crew,
+          },
+        } : undefined,
+        routeStage: missionEightState.routeStage,
+        strike: missionEightState.strikeKeys.size,
+        fronts: mission.variant === "east-a" ? {
+          northHold: missionEightState.northHoldKeys.size,
+          northHoldTick: missionEightState.northHoldTick,
+          northFlankStage: missionEightState.postSamNorthFlankStage,
+          northFlankProgress: missionEightState.postSamNorthFlankProgress,
+          northFlankUnits: attackers.filter((attacker) => (
+            missionEightState.postSamNorthFlankKeys.has(objectKey(attacker))
+          )).map(({ typeName, id, strength, cellX, cellY }) => (
+            { typeName, id, strength, cellX, cellY }
+          )),
+          southReady: missionEightState.southReadyKeys.size,
+          southAssaultTick: missionEightState.southAssaultTick,
+          rearGuard: missionEightState.southRearGuardKeys.size,
+          rearGuardStartedTick: missionEightState.southRearGuardStartedTick,
+          finalGateEnteredTick: missionEightState.southFinalGateEnteredTick,
+          finalGateBlockers: [...missionEightState.southFinalGateBlockers.values()],
+          finalGateBlockersRemaining: [...missionEightState.southFinalGateBlockerKeys],
+          finalGateBlockerDrops: missionEightState.southFinalGateBlockerDrops,
+          northReleaseTick: missionEightState.northReleaseTick,
+          northReleased: missionEightState.northReleaseKeys.size,
+          baseGuardReleaseTick: missionEightState.baseGuardReleaseTick,
+          baseGuardsReleased: missionEightState.baseGuardReleaseKeys.size,
+          counterattackLaunchTick: missionEightState.postSamCounterattackLaunchTick,
+          counterattackStage: missionEightState.postSamCounterattackStage,
+          counterattackAlive: attackers.filter((attacker) => (
+            missionEightState.postSamCounterattackKeys.has(objectKey(attacker))
+          )).length,
+          northSupportAlive: attackers.filter((attacker) => (
+            missionEightState.postSamNorthSupportKeys.has(objectKey(attacker))
+          )).length,
+          counterattackUnits: attackers.filter((attacker) => (
+            missionEightState.postSamCounterattackKeys.has(objectKey(attacker))
+            || missionEightState.postSamNorthSupportKeys.has(objectKey(attacker))
+          )).map(({ typeName, id, strength, cellX, cellY }) => (
+            { typeName, id, strength, cellX, cellY }
+          )),
+          counterattackProgress: missionEightState.postSamCounterattackProgress,
+          counterattackCompletedTick: missionEightState.postSamCounterattackCompletedTick,
+          westCleanupStage: missionEightState.westCleanupStage,
+          westCleanupStartedTick: missionEightState.westCleanupStartedTick,
+          westCleanupCompletedTick: missionEightState.westCleanupCompletedTick,
+          westCleanupTarget: missionEightState.westCleanupTarget,
+          westCleanupProgress: missionEightState.westCleanupProgress,
+          cleanupThreats: (() => {
+            const cleanup = attackers.filter((attacker) => (
+              missionEightState.postFactCleanupCohortKeys.has(objectKey(attacker))
+            ));
+            return hostiles.filter((hostile) => (
+              hostile.type !== 4
+              && cleanup.some((attacker) => missionEightDistance(attacker, hostile) <= 12)
+            )).map(({ typeName, id, strength, cellX, cellY }) => (
+              { typeName, id, strength, cellX, cellY }
+            ));
+          })(),
+          withdrawalTargets: [...missionEightState.southWithdrawalTargets.values()],
+          withdrawalTargetDeaths: [...missionEightState.southWithdrawalTargetDeaths.values()],
+          southHealth: (() => {
+            const units = attackers.filter((object) => (
+              missionEightState.secondWaveKeys.has(objectKey(object))
+              || missionEightState.thirdWaveKeys.has(objectKey(object))
+              || missionEightState.southReadyKeys.has(objectKey(object))
+              || (missionEightState.southAssaultTick !== undefined
+                && missionEightState.strikeKeys.has(objectKey(object)))
+            ));
+            return {
+              count: units.length,
+              strength: units.reduce((sum, object) => sum + object.strength, 0),
+              minimumStrength: units.length > 0
+                ? Math.min(...units.map((object) => object.strength)) : 0,
+            };
+          })(),
+        } : undefined,
+        southTelemetry: mission.variant === "east-a"
+          && snapshot.tick >= 20_100 && snapshot.tick <= 30_000 ? (() => {
+            const southUnits = attackers.filter((object) => (
+              missionEightState.secondWaveKeys.has(objectKey(object))
+              || missionEightState.thirdWaveKeys.has(objectKey(object))
+              || missionEightState.southReadyKeys.has(objectKey(object))
+            ));
+            return {
+              focus: missionEightState.southTransitFocus,
+              units: southUnits.map(({ typeName, id, strength, cellX, cellY }) => (
+                { typeName, id, strength, cellX, cellY }
+              )),
+              visibleHostiles: hostiles.filter((hostile) => (
+                snapshot.shroud.isVisible(hostile.cellX, hostile.cellY)
+                && southUnits.some((unit) => missionEightDistance(unit, hostile) <= 12)
+              )).map(({ typeName, id, strength, cellX, cellY }) => (
+                { typeName, id, strength, cellX, cellY }
+              )),
+            };
+          })() : undefined,
+        strikeUnits: attackers.filter((object) => (
+          missionEightState.strikeKeys.has(objectKey(object))
+        )).map(({ typeName, id, strength, cellX, cellY }) => ({ typeName, id, strength, cellX, cellY })),
+        samSites: missionEightSamSites[mission.variant].map((site) => {
+          const sam = hostiles.find((object) => (
+            object.typeName === "SAM" && object.cellX === site.cellX && object.cellY === site.cellY
+          ));
+          return { ...site, strength: sam?.strength ?? 0 };
+        }),
+        airstrike: {
+          readyTicks: missionEightState.airstrike.readyTicks,
+          orders: missionEightState.airstrike.orders,
+          discharges: missionEightState.airstrike.discharges,
+          pending: missionEightState.airstrike.pending !== undefined,
+        },
+        fact: mission.variant === "east-a" ? hostiles.find((object) => (
+          object.typeName === "FACT" && object.cellX === 8 && object.cellY === 11
+        )) : undefined,
+        factTelemetry: mission.variant === "east-a" ? {
+          initialStrength: missionEightState.factInitialStrength,
+          minimumStrength: missionEightState.factMinimumStrength,
+          deathTick: missionEightState.factDeathTick,
+        } : undefined,
+        southSam: hostiles.find((object) => (
+          object.typeName === "SAM" && object.cellX === 11 && object.cellY === 20
+        )),
+        villageGuard: missionEightState.villageGuardKeys.size,
+        baseGuard: missionEightState.baseGuardKeys.size,
+        eastBStaging: mission.variant === "east-b" ? {
+          base: attackers.filter((object) => (
+            missionEightState.baseGuardKeys.has(objectKey(object))
+          )).map(({ typeName, id, strength, cellX, cellY }) => (
+            { typeName, id, strength, cellX, cellY }
+          )),
+          village: attackers.filter((object) => (
+            missionEightState.villageGuardKeys.has(objectKey(object))
+          )).map(({ typeName, id, strength, cellX, cellY }) => (
+            { typeName, id, strength, cellX, cellY }
+          )),
+          tanks: attackers.filter((object) => (
+            object.typeName === "MTNK"
+            && missionEightState.eastBProducedTankKeys.has(objectKey(object))
+          )).map(({ id, strength, cellX, cellY }) => ({ id, strength, cellX, cellY })),
+          baseThreats: hostiles.filter((object) => (
+            object.type !== 4
+            && missionEightDistance(object, { cellX: 34, cellY: 50 }) <= 12
+          )).map(({ typeName, id, strength, cellX, cellY }) => (
+            { typeName, id, strength, cellX, cellY }
+          )),
+          villageThreats: hostiles.filter((object) => (
+            object.type !== 4
+            && missionEightDistance(object, { cellX: 8, cellY: 57 }) <= 15
+          )).map(({ typeName, id, strength, cellX, cellY }) => (
+            { typeName, id, strength, cellX, cellY }
+          )),
+        } : undefined,
+        samDeaths: Object.fromEntries(missionEightState.samDeathTicks),
+        neutralMinimum: missionEightState.minimumNeutralUnits,
+        buildings: friendly.filter((object) => object.type === 4).map(({ typeName, strength, cellX, cellY }) => (
+          { typeName, strength, cellX, cellY }
+        )),
+      } }));
+      if (commands.length > 0) {
+        submitCommands(handle, snapshot.tick + 1, commands);
+        commandBatches += 1;
+      }
+      const requested = Math.min(TICKS_PER_ORDER, MAX_TICKS - snapshot.tick);
+      const advanced = advance(handle, requested);
+      snapshot = readSnapshot(handle);
+      assert.equal(snapshot.tick, currentTick, "snapshot tick differs from the ABI advance count");
+      if (advanced === 0 && !snapshot.terminal) {
+        assert.fail(`Mission 8 ${mission.variant} engine stopped before reaching a terminal state`);
       }
       continue;
     }
@@ -6924,6 +11046,85 @@ try {
     assert.ok(peakFriendly > initialFriendly,
       "GDI Mission 7 never observed its authored reinforcements and production");
   }
+  if (mission.number === 8) {
+    const state = missionEightState;
+    const route = missionEightRoutes[mission.variant];
+    assert.equal(finalHostiles, 0,
+      `GDI Mission 8 ${mission.variant} won with counted Nod combatants still present`);
+    assert.ok(finalFriendly > 0,
+      `GDI Mission 8 ${mission.variant} won without a surviving GDI force`);
+    assert.ok(state.assaultTick !== undefined,
+      `GDI Mission 8 ${mission.variant} never launched its staged assault`);
+    assert.equal(state.routeStage, route.length,
+      `GDI Mission 8 ${mission.variant} strike force did not complete its authored sweep route`);
+    assert.equal(state.routeProgress.length, route.length,
+      `GDI Mission 8 ${mission.variant} did not record every sweep-route arrival`);
+    assert.deepEqual(state.routeProgress.map(({ label, cellX, cellY }) => `${label}:${cellX}:${cellY}`),
+      route.map(({ label, cellX, cellY }) => `${label}:${cellX}:${cellY}`),
+      `GDI Mission 8 ${mission.variant} sweep-route progression changed`);
+    assert.ok(productionStarts > 0,
+      `GDI Mission 8 ${mission.variant} did not use the public production queue`);
+    assert.ok(state.productionCompletions.length > 0,
+      `GDI Mission 8 ${mission.variant} did not observe completed production`);
+    assert.equal(state.samDeathTicks.size, missionEightSamSites[mission.variant].length,
+      `GDI Mission 8 ${mission.variant} did not destroy every authored SAM site`);
+    assert.ok(state.airstrike.readyTicks.length > 0,
+      `GDI Mission 8 ${mission.variant} never exposed a ready Air Strike`);
+    assert.ok(state.airstrike.orders.length > 0,
+      `GDI Mission 8 ${mission.variant} never ordered an Air Strike`);
+    assert.ok(state.airstrike.discharges.length > 0,
+      `GDI Mission 8 ${mission.variant} never observed an Air Strike discharge`);
+    assert.ok(state.airstrike.orders[0].tick >= state.allSamsDeadTick,
+      `GDI Mission 8 ${mission.variant} ordered an Air Strike before clearing every SAM site`);
+    if (mission.variant === "east-a") {
+      assert.ok(repairOrders >= 6, "GDI Mission 8 east-a did not repair its authored damaged base");
+      assert.equal(state.scoutStage, missionEightEastAScoutRoute.length,
+        "GDI Mission 8 east-a scout did not complete the authored trigger-cancellation route");
+      assert.equal(state.scoutArrivalTicks.length, missionEightEastAScoutRoute.length,
+        "GDI Mission 8 east-a did not record every scout-route arrival");
+      assert.ok(state.delxEnteredTick !== undefined && state.delxEnteredTick < 15_300,
+        "GDI Mission 8 east-a did not enter the delx band before the XXXX timed attack");
+      assert.ok(state.delyEnteredTick !== undefined && state.delyEnteredTick < 8_100,
+        "GDI Mission 8 east-a did not enter the dely band before the YYYY timed attack");
+      assert.ok(infantryProductionStarts > 0,
+        "GDI Mission 8 east-a did not reinforce its damaged field army with infantry");
+    } else {
+      const survivingNeutralUnits = finalSnapshot.objects.filter((object) => (
+        object.owner === HOUSE_NEUTRAL && object.subObject === 0
+        && object.type === 1 && object.strength > 0
+      ));
+      const hospital = finalSnapshot.objects.find((object) => (
+        object.owner === HOUSE_GDI && object.type === 4 && object.typeName === "HOSP"
+        && object.cellX === 3 && object.cellY === 60 && object.strength > 0
+      ));
+      const moebius = finalSnapshot.objects.find((object) => (
+        object.owner === HOUSE_GDI && object.type === 1 && object.typeName === "MOEBIUS"
+        && object.cellX === 6 && object.cellY === 60 && object.strength > 0
+      ));
+      assert.ok(hospital && state.hospitalMinimumStrength > 0,
+        "GDI Mission 8 east-b won without preserving the authored hospital");
+      assert.ok(moebius && state.moebiusMinimumStrength > 0,
+        "GDI Mission 8 east-b won without preserving Dr. Moebius");
+      assert.ok(survivingNeutralUnits.length >= state.initialNeutralUnitKeys.size - 8,
+        "GDI Mission 8 east-b crossed its authored nine-civilian loss threshold");
+      assert.ok(state.minimumNeutralUnits >= state.initialNeutralUnitKeys.size - 8,
+        "GDI Mission 8 east-b temporarily crossed its authored nine-civilian loss threshold");
+      assert.ok(state.transportSightings.size >= 2,
+        "GDI Mission 8 east-b did not observe both authored timed Nod airlifts");
+      assert.ok(deploymentOrders > 0,
+        "GDI Mission 8 east-b never deployed its starting MCV");
+      assert.deepEqual(state.structureStarts.map(({ assetName }) => assetName),
+        ["NUKE", "PYLE", "PROC", "WEAP"],
+        "GDI Mission 8 east-b core construction order changed");
+      assert.deepEqual(state.placedSites.map(({ assetName }) => assetName),
+        ["NUKE", "PYLE", "PROC", "WEAP"],
+        "GDI Mission 8 east-b did not place every core structure");
+      assert.ok(infantryProductionStarts > 0 && vehicleProductionStarts > 0,
+        "GDI Mission 8 east-b did not produce both infantry and vehicles");
+    }
+    assert.ok(peakFriendly > initialFriendly,
+      `GDI Mission 8 ${mission.variant} never grew its initial force`);
+  }
   const commandTypes = mission.number === 3
     ? [
       "sidebar-start-construction",
@@ -6959,6 +11160,16 @@ try {
             "unit-stop",
             "context-command-at-position",
           ]
+          : mission.number === 8
+            ? [
+              "sidebar-start-construction",
+              ...(mission.variant === "east-b" ? ["sidebar-start-placement", "sidebar-place"] : []),
+              ...(repairOrders > 0 ? ["structure-repair"] : []),
+              "superweapon-place",
+              "clear-selection",
+              "select-object",
+              "context-command-at-position",
+            ]
       : ["clear-selection", "select-object", "context-command-at-position"];
   console.log(JSON.stringify({
     format: `cncweb-classic-freeware-mission-${mission.number === 4
@@ -6969,12 +11180,17 @@ try {
           ? "six"
           : mission.number === 7
             ? "seven"
-            : ["zero", "one", "two", "three"][mission.number]}-acceptance`,
+            : mission.number === 8
+              ? `eight-${mission.variant}`
+              : ["zero", "one", "two", "three"][mission.number]}-acceptance`,
     version: 1,
     packageId: manifest.package_id,
     packageRevision,
     missionId: mission.id,
     scenarioRoot: outcome.text1,
+    ...(verifierDifficulty === undefined
+      ? {}
+      : { difficulty: difficultyNames[verifierDifficulty] }),
     won: true,
     terminal: true,
     tick: finalSnapshot.tick,
@@ -7126,6 +11342,77 @@ try {
       routeProgress: missionSevenState.routeProgress,
       factDestroyedTick: missionSevenState.factDestroyedTick,
       airstripDestroyedTick: missionSevenState.airstripDestroyedTick,
+    } : {}),
+    ...(mission.number === 8 ? {
+      variant: mission.variant,
+      deploySite: missionEightState.deploySite,
+      structureStarts: missionEightState.structureStarts,
+      placedSites: missionEightState.placedSites,
+      productionOrders: missionEightState.productionOrders,
+      productionCompletions: missionEightState.productionCompletions,
+      repairs: missionEightState.repairedIds.size,
+      scout: mission.variant === "east-a" ? {
+        arrivalTicks: missionEightState.scoutArrivalTicks,
+        delxEnteredTick: missionEightState.delxEnteredTick,
+        delyEnteredTick: missionEightState.delyEnteredTick,
+      } : undefined,
+      protection: mission.variant === "east-b" ? {
+        initialNeutralUnits: missionEightState.initialNeutralUnitKeys.size,
+        minimumNeutralUnits: missionEightState.minimumNeutralUnits,
+        hospitalMinimumStrength: missionEightState.hospitalMinimumStrength,
+        moebiusMinimumStrength: missionEightState.moebiusMinimumStrength,
+        transportSightings: [...missionEightState.transportSightings.values()],
+      } : undefined,
+      assaultTick: missionEightState.assaultTick,
+      assaultWaves: missionEightState.assaultWave,
+      southTransit: mission.variant === "east-a" ? {
+        progress: missionEightState.southTransitProgress,
+        secondWaveProgress: missionEightState.secondWaveTransitProgress,
+        thirdWaveProgress: missionEightState.thirdWaveTransitProgress,
+        finalGateEnteredTick: missionEightState.southFinalGateEnteredTick,
+        finalGateBlockers: [...missionEightState.southFinalGateBlockers.values()],
+        finalGateBlockerDrops: missionEightState.southFinalGateBlockerDrops,
+        northReleaseTick: missionEightState.northReleaseTick,
+        northReleased: missionEightState.northReleaseKeys.size,
+        baseGuardReleaseTick: missionEightState.baseGuardReleaseTick,
+        baseGuardsReleased: missionEightState.baseGuardReleaseKeys.size,
+        westCleanupStartedTick: missionEightState.westCleanupStartedTick,
+        westCleanupCompletedTick: missionEightState.westCleanupCompletedTick,
+        westCleanupProgress: missionEightState.westCleanupProgress,
+        targets: [...missionEightState.southWithdrawalTargets.values()],
+        targetDeaths: [...missionEightState.southWithdrawalTargetDeaths.values()],
+      } : undefined,
+      routeProgress: missionEightState.routeProgress,
+      samDestroyedTicks: Object.fromEntries(missionEightState.samDeathTicks),
+      allSamsDeadTick: missionEightState.allSamsDeadTick,
+      fact: mission.variant === "east-a" ? {
+        initialStrength: missionEightState.factInitialStrength,
+        minimumStrength: missionEightState.factMinimumStrength,
+        deathTick: missionEightState.factDeathTick,
+      } : undefined,
+      postFactEconomy: mission.variant === "east-a" ? {
+        sales: Object.fromEntries(Object.entries(missionEightState.postFactSales)
+          .map(([typeName, sale]) => [typeName, sale ? {
+            orderTick: sale.orderTick,
+            goneTick: sale.goneTick,
+            structure: sale.structure,
+            fundsBefore: sale.fundsBefore,
+            fundsAfter: sale.fundsAfter,
+            refund: sale.refund,
+            crew: sale.crew,
+          } : undefined])),
+        productionOrders: missionEightState.postFactProductionOrders,
+        productionCompletions: missionEightState.postFactProductionCompletions,
+        homeDefenseCohort: [...missionEightState.postFactHomeDefenseCohortKeys],
+        homeDefenseAlive: missionEightState.postFactHomeDefenseKeys.size,
+        cleanupCohort: [...missionEightState.postFactCleanupCohortKeys],
+      } : undefined,
+      airstrike: {
+        readyTicks: missionEightState.airstrike.readyTicks,
+        orders: missionEightState.airstrike.orders,
+        discharges: missionEightState.airstrike.discharges,
+        pending: missionEightState.airstrike.pending !== undefined,
+      },
     } : {}),
     commandTypes,
     forces: {

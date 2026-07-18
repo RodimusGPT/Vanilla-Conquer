@@ -73,6 +73,16 @@ CNC_WEB_EXPORT cnc_web_status_t cnc_web_set_campaign_transition(cnc_web_handle_t
                                                                  int32_t carry_over_money,
                                                                  uint32_t nuke_pieces);
 
+/*
+ * Selects the original single-player scenario difficulty without changing
+ * the persistent StartV1 wire layout. difficulty is 0 (easy), 1 (normal), or
+ * 2 (hard). This optional companion may be called before cnc_web_start; it is
+ * rejected after the instance has started and when the following start is
+ * not campaign mode.
+ */
+CNC_WEB_EXPORT cnc_web_status_t cnc_web_set_difficulty(cnc_web_handle_t handle,
+                                                        uint32_t difficulty);
+
 /* start_config is a CNC_WEB_MESSAGE_START_V1 message. */
 CNC_WEB_EXPORT cnc_web_status_t cnc_web_start(cnc_web_handle_t handle,
                                                const uint8_t* start_config,

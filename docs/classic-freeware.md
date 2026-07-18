@@ -69,13 +69,28 @@ cd web
 corepack pnpm test:classic-freeware:release
 ```
 
-The release gate proves one archive download, real Wasm mission startup,
+A passing release gate proves one archive download, real Wasm mission startup,
 manual save/load and online/offline resume, exclusion from the Cache API,
 coarse-pointer portrait play, the winter mission, and reuse of the installed
-OPFS revision. Its engine verifiers mount the same package and produce
-deterministic public-ABI victories for GDI Missions 1–7, including all three
-Mission 4 and Mission 5 variants, Mission 6's Commando sabotage path, and
-Mission 7's carried-state base-building operation.
+OPFS revision. Its engine-verifier stage mounts the same package and requires
+deterministic public-ABI victories for GDI Missions 1–8, including all three
+Mission 4 and Mission 5 variants, Mission 6's Commando sabotage path, Mission
+7's carried-state base-building operation, and both Mission 8 variants. Retained
+green verifier evidence currently covers Missions 1–7. Both Mission 8 variants
+are wired into the gate but remain under route hardening, so either failure
+correctly blocks a release.
+
+Campaign starts expose **Easy**, **Normal**, and **Hard**, with Normal as the
+default. Because the browser engine is a `REMASTER_BUILD`, its host installs
+the classic standalone difficulty table through `CNC_Config` before scenario
+startup, then applies the selected profile to the campaign player. Easy uses
+the classic 0.8 cost and 0.6 build-speed biases; Normal retains 1.0; Hard uses
+the classic 0.9 firepower/ground/air-speed and 1.05 armor/rate-of-fire biases.
+The selected value is retained by restart, campaign continuation, save/session
+restoration, and offline reload. `test:classic-freeware:difficulty` starts the
+real TD Wasm engine at all three levels and proves the exported Minigunner cost
+is 80 on Easy and 100 on Normal/Hard.
+
 Missions 1–3 use public production, placement, repair,
 clear-selection, select-object, and contextual-order commands. Mission 1
 reaches terminal victory at tick 2,137 after 13 Nod kills and two GDI losses.
@@ -113,8 +128,8 @@ through destruction or capture while GDI remains operational. Its correlated
 terminal events retain nuke bits 5 and carry no pending sabotage.
 
 Run the Mission 3 verifier, the complete Mission 4 and Mission 5 variant
-suites, the Mission 6 sabotage verifier, or the Mission 7 verifier independently
-with:
+suites, the Mission 6 sabotage verifier, the Mission 7 verifier, or the
+Mission 8 variant suite independently with:
 
 ```sh
 cd web
@@ -123,15 +138,17 @@ corepack pnpm verify:classic-freeware:mission-four
 corepack pnpm verify:classic-freeware:mission-five
 corepack pnpm verify:classic-freeware:mission-six
 corepack pnpm verify:classic-freeware:mission-seven
+corepack pnpm verify:classic-freeware:mission-eight
 ```
 
 The Mission 3 alias selects canonical `SCG03EA`; the Mission 4 alias exercises
 canonical `SCG04WA`, `SCG04WB`, and `SCG04EA`; the Mission 5 alias exercises
 canonical `SCG05EA`, `SCG05WA`, and `SCG05WB`; and the Mission 6 alias selects
-canonical `SCG06EA`. The Mission 7 alias selects canonical `SCG07EA` in the shared
+canonical `SCG06EA`. The Mission 7 alias selects canonical `SCG07EA`; the
+Mission 8 alias exercises canonical `SCG08EA` and `SCG08EB` in the shared
 `web/scripts/verify-classic-freeware-mission-one.mjs` verifier.
 
-The browser also displays exact reviewed rules for Missions 1–7. Mission 3's
+The browser also displays exact reviewed rules for Missions 1–8. Mission 3's
 canonical orders are:
 
 - **Eliminate the Nod force:** “Destroy every counted Nod unit and structure in
@@ -185,9 +202,25 @@ Mission 7's canonical orders are:
   transport/cargo aircraft, and A-10 strike aircraft alone do not prevent
   defeat.
 
-Missions 1–3, Mission 5, and Mission 7 use combat totals as progress context.
-Missions 4 and 6 display cause-neutral state for conditions that cannot be inferred from
-sidebar totals. In every reviewed mission, the engine's terminal result alone
+Mission 8's canonical orders are:
+
+- **East A — Eliminate the Nod force:** remove every counted unit and structure
+  from Nod control by destroying units and destroying or capturing structures.
+  Nod production can add targets, while timed and autocreated teams organize
+  later attacks. The operation fails if every counted GDI unit and structure
+  is destroyed; repairing the heavily damaged opening force is briefing
+  guidance, not a separate completion condition.
+- **East B — Eliminate Nod and protect the village:** remove every counted unit
+  and structure from Nod control while keeping GDI operational. Nod production and
+  transport reinforcements can add targets. Dr. Moebius and the hospital must
+  both survive, and the ninth neutral civilian-unit death immediately fails
+  the operation. The map starts with 14 protected neutral civilians, so at
+  most eight may be lost.
+
+Missions 1–3, Mission 5, Mission 7, and Mission 8 use combat totals as
+elimination progress context. Missions 4 and 6, plus Mission 8 East B's
+protected-object and civilian conditions, display cause-neutral state for
+conditions that cannot be inferred from sidebar totals. In every reviewed mission, the engine's terminal result alone
 decides success or failure. In Mission 1 the browser-visible deploy
 acceptance selects the real MCV, consumes its engine-authored deploy action, and
 uses **Deploy** until Construction Yard production is available. In Mission 2 it trains a
@@ -253,11 +286,12 @@ and is not fabricated from missing data.
 The mirror strips mission briefing prose, so the catalog uses a neutral
 non-story instruction while preserving each original scenario INI/BIN for
 simulation. The browser supplies exact objective prose only for the reviewed,
-canonical Mission 1–7 identities. Missions 1–3, Mission 5, and Mission 7 use engine-exported
-combat totals as progress context; Missions 4 and 6 use cause-neutral state for
-conditions that sidebar totals cannot prove. Completion/failure comes only from
-the engine result. Mission 8 and later retain the neutral
-instruction until their rules are authored and reviewed.
+canonical Mission 1–8 identities. Missions 1–3, Mission 5, Mission 7, and
+Mission 8 use engine-exported combat totals as elimination progress context;
+Missions 4 and 6, plus Mission 8 East B's protected-object and civilian
+conditions, use cause-neutral state where sidebar totals cannot prove the
+rule. Completion/failure comes only from the engine result. Mission 9 and later
+retain the neutral instruction until their rules are authored and reviewed.
 The mirror also omits winter-specific icon data; the current MVP aliases
 the verified temperate icon archive for the two winter missions. Authentic
 winter icons or fully original replacement art are the presentation follow-up.

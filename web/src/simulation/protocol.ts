@@ -25,6 +25,12 @@ export enum GameMode {
   Skirmish = 2,
 }
 
+export enum Difficulty {
+  Easy = 0,
+  Normal = 1,
+  Hard = 2,
+}
+
 export interface CampaignTransition {
   carryOverCredits: number;
   nukePieces: number;
@@ -46,6 +52,8 @@ export interface StartConfiguration {
   contentIdHash: bigint;
   /** Applied before a continued campaign mission starts; not part of StartV1. */
   campaignTransition?: CampaignTransition;
+  /** Applied through a companion ABI call; not part of StartV1. */
+  difficulty?: Difficulty;
 }
 
 export interface ContentMountFile {

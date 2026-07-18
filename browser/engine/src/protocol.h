@@ -43,6 +43,8 @@ struct StartConfig
         , has_campaign_transition(false)
         , carry_over_money(0)
         , nuke_pieces(0u)
+        , has_difficulty(false)
+        , difficulty(1u)
     {
     }
 
@@ -62,6 +64,8 @@ struct StartConfig
     bool has_campaign_transition;
     int32_t carry_over_money;
     uint32_t nuke_pieces;
+    bool has_difficulty;
+    uint32_t difficulty;
 };
 
 struct Command

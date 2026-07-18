@@ -1,6 +1,64 @@
 import { describe, expect, it } from "vitest";
-import { CNC_WEB_MAGIC_MESSAGE, MessageKind, SIMULATION_PROTOCOL_VERSION } from "./protocol";
+import type { StartConfiguration } from "./protocol";
+import { CNC_WEB_ABI_VERSION, CNC_WEB_MAGIC_MESSAGE, Difficulty, Faction, GameMode, MessageKind, SIMULATION_PROTOCOL_VERSION } from "./protocol";
 import { advancedOneTick, assertWasmStatus, isFatalWasmCoreError, parseWasmEvent, resolveEmscriptenModuleUrl, WasmCore } from "./WasmCore";
+
+function wasmCoreHarness(includeDifficulty = true): { core: WasmCore; calls: string[]; startBytes: Uint8Array[] } {
+  const memory = new ArrayBuffer(4096);
+  const calls: string[] = [];
+  const startBytes: Uint8Array[] = [];
+  let nextPointer = 64;
+  const runtime: Record<string, unknown> = {
+    memoryBuffer: () => memory,
+    malloc: (size: number) => {
+      const pointer = nextPointer;
+      nextPointer += Math.max(size, 4);
+      return pointer;
+    },
+    free: (_pointer: number) => undefined,
+    cnc_web_abi_version: () => CNC_WEB_ABI_VERSION,
+    cnc_web_create: (_version: number, outHandle: number) => {
+      new DataView(memory).setUint32(outHandle, 37, true);
+      return 0;
+    },
+    cnc_web_destroy: (_handle: number) => 0,
+    cnc_web_start: (_handle: number, data: number, length: number) => {
+      calls.push("start");
+      startBytes.push(new Uint8Array(memory, data, length).slice());
+      return 0;
+    },
+    cnc_web_submit_commands: () => 0,
+    cnc_web_advance: () => 0,
+    cnc_web_snapshot_size: () => 0,
+    cnc_web_write_snapshot: () => 0,
+  };
+  if (includeDifficulty) {
+    runtime.cnc_web_set_difficulty = (_handle: number, difficulty: number) => {
+      calls.push(`difficulty:${difficulty}`);
+      return 0;
+    };
+  }
+  const construct = WasmCore as unknown as {
+    fromRuntime(raw: Record<string, unknown>, memoryBuffer: () => ArrayBuffer): WasmCore;
+  };
+  return { core: construct.fromRuntime(runtime, () => memory), calls, startBytes };
+}
+
+const wasmStart: StartConfiguration = {
+  game: "tiberian-dawn",
+  seed: 7,
+  scenario: 1,
+  variation: 0,
+  direction: 0,
+  buildLevel: 1,
+  sabotagedStructure: -1,
+  faction: Faction.Gdi,
+  gameMode: GameMode.Campaign,
+  playerId: 0n,
+  contentDirectory: "/content",
+  overrideMapName: "",
+  contentIdHash: 1n,
+};
 
 function eventBuffer(eventType: number, flags: number, args: number[], text1 = "", text2 = ""): ArrayBuffer {
   const encoder = new TextEncoder();
@@ -71,6 +129,42 @@ describe("Wasm status failures", () => {
     expect(isFatalWasmCoreError(statusError(99))).toBe(true);
     expect(isFatalWasmCoreError(statusError(Number.NaN))).toBe(true);
     expect(() => assertWasmStatus(0, "load save")).not.toThrow();
+  });
+});
+
+describe("Wasm start companions", () => {
+  it("sets explicit campaign difficulty before sending unchanged StartV1 bytes", () => {
+    const { core, calls, startBytes } = wasmCoreHarness();
+    core.start({ ...wasmStart, difficulty: Difficulty.Easy });
+
+    expect(calls).toEqual(["difficulty:0", "start"]);
+    expect(startBytes).toHaveLength(1);
+    expect(new DataView(startBytes[0].buffer).getUint32(8, true)).toBe(startBytes[0].byteLength);
+    core.destroy();
+  });
+
+  it("requires the companion export only when difficulty is explicit", () => {
+    const withoutDifficulty = wasmCoreHarness(false);
+    expect(() => withoutDifficulty.core.start(wasmStart)).not.toThrow();
+    withoutDifficulty.core.destroy();
+
+    const explicitDifficulty = wasmCoreHarness(false);
+    expect(() => explicitDifficulty.core.start({ ...wasmStart, difficulty: Difficulty.Normal }))
+      .toThrow("does not support difficulty selection");
+    explicitDifficulty.core.destroy();
+  });
+
+  it("rejects invalid and non-campaign difficulty before crossing the ABI", () => {
+    const invalid = wasmCoreHarness();
+    expect(() => invalid.core.start({ ...wasmStart, difficulty: 3 as Difficulty })).toThrow(RangeError);
+    expect(invalid.calls).toEqual([]);
+    invalid.core.destroy();
+
+    const skirmish = wasmCoreHarness();
+    expect(() => skirmish.core.start({ ...wasmStart, gameMode: GameMode.Skirmish, difficulty: Difficulty.Hard }))
+      .toThrow("only available in campaign mode");
+    expect(skirmish.calls).toEqual([]);
+    skirmish.core.destroy();
   });
 });
 

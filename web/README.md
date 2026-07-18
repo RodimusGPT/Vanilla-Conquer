@@ -33,6 +33,8 @@ corepack pnpm verify:classic-freeware:mission-four
 corepack pnpm verify:classic-freeware:mission-five
 corepack pnpm verify:classic-freeware:mission-six
 corepack pnpm verify:classic-freeware:mission-seven
+corepack pnpm verify:classic-freeware:mission-eight
+corepack pnpm test:classic-freeware:difficulty
 corepack pnpm build
 corepack pnpm check:bundle-budget
 ```
@@ -208,7 +210,7 @@ cannot be preserved, the old build remains available and play resumes.
   opens **Controls & tutorial**, where the player can resume, restart in a fresh
   Mission 1, or end the tutorial while retaining the complete controls
   reference.
-- Canonical GDI Missions 1–7 show exact reviewed objectives. Mission 1
+- Canonical GDI Missions 1–8 show exact reviewed objectives. Mission 1
   eliminates the Nod force while retaining a GDI ground force; Mission 2
   eliminates the Nod occupation while retaining a GDI force; Mission 3
   eliminates every counted Nod unit and structure while requiring at least one
@@ -231,8 +233,16 @@ cannot be preserved, the old build remains available and play resumes.
   every counted unit and structure from Nod control through destruction or
   capture, and must retain counted GDI infantry, ground units, structures, or
   regular aircraft. Landing craft, transport/cargo aircraft, and A-10 strike
-  aircraft alone do not prevent defeat. Mission 8 and later do not receive
+  aircraft alone do not prevent defeat. Mission 8 East A must remove every
+  counted unit and structure from Nod control while retaining a counted GDI unit or
+  structure. East B has those same elimination and GDI-survival conditions and
+  additionally fails if Dr. Moebius or the hospital is destroyed, or when the
+  ninth neutral civilian unit is lost. Mission 9 and later do not receive
   inferred rules.
+- Campaign mission starts offer Easy, Normal, and Hard (Normal by default).
+  The selected classic bias profile survives restart, campaign continuation,
+  session/save restoration, and offline reload; the real-Wasm difficulty gate
+  verifies its applied sidebar economy values rather than only UI state.
 - Q selects, E enters contextual order mode, and X or **Stop** stops selected
   units.
 - When one deployable unit is selected, the engine-authored contextual action
@@ -266,7 +276,7 @@ coarse-pointer mobile devices.
   excluded from the distributable freeware profile; any future music must be
   original or independently licensed.
 - Production, placement, repair, sell, targeted superweapons, battle telemetry,
-  control groups, and exact Mission 1–7 objectives are connected. Mission 8 and
+  control groups, and exact Mission 1–8 objectives are connected. Mission 9 and
   later still need reviewed objective rules, and the mission panel's live
   downsampled classic surface is not yet a semantic radar implementation.
 - The engine sends one full indexed-surface bootstrap after start/load, then

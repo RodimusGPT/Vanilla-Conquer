@@ -47,6 +47,8 @@ struct Instance
         , has_campaign_transition(false)
         , carry_over_money(0)
         , nuke_pieces(0u)
+        , has_difficulty(false)
+        , difficulty(1u)
         , terminal(false)
         , event_tick(0u)
         , queued_command_count(0u)
@@ -69,6 +71,8 @@ struct Instance
     bool has_campaign_transition;
     int32_t carry_over_money;
     uint32_t nuke_pieces;
+    bool has_difficulty;
+    uint32_t difficulty;
     bool terminal;
     uint32_t event_tick;
     uint32_t queued_command_count;
@@ -384,6 +388,21 @@ cnc_web_status_t cnc_web_set_campaign_transition(cnc_web_handle_t handle,
     return CNC_WEB_OK;
 }
 
+cnc_web_status_t cnc_web_set_difficulty(cnc_web_handle_t handle, uint32_t difficulty)
+{
+    using namespace cnc::web;
+    Instance* instance = Find(handle);
+    if (instance == NULL || difficulty > 2u) {
+        return CNC_WEB_INVALID_ARGUMENT;
+    }
+    if (instance->started) {
+        return CNC_WEB_INVALID_STATE;
+    }
+    instance->has_difficulty = true;
+    instance->difficulty = difficulty;
+    return CNC_WEB_OK;
+}
+
 cnc_web_status_t cnc_web_start(cnc_web_handle_t handle, const uint8_t* start_config, uint32_t start_config_size)
 {
     using namespace cnc::web;
@@ -398,12 +417,15 @@ cnc_web_status_t cnc_web_start(cnc_web_handle_t handle, const uint8_t* start_con
     if (!DecodeStartConfig(start_config, start_config_size, config)) {
         return CNC_WEB_INVALID_ARGUMENT;
     }
-    if (instance->has_campaign_transition && config.game_mode != CNC_WEB_GAME_CAMPAIGN) {
+    if ((instance->has_campaign_transition || instance->has_difficulty)
+        && config.game_mode != CNC_WEB_GAME_CAMPAIGN) {
         return CNC_WEB_INVALID_ARGUMENT;
     }
     config.has_campaign_transition = instance->has_campaign_transition;
     config.carry_over_money = instance->carry_over_money;
     config.nuke_pieces = instance->nuke_pieces;
+    config.has_difficulty = instance->has_difficulty;
+    config.difficulty = instance->difficulty;
     /* A campaign boundary carries the live scenario RNG bit-for-bit. Zero is
      * a valid live state even though a standalone zero means "choose a seed"
      * to the legacy startup path. */

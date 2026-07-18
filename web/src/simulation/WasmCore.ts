@@ -1,7 +1,7 @@
 import type { SimulationCore } from "./core";
 import { mountPreparedContent, type EmscriptenModuleWithFs, type PreparedContentMount } from "./contentMount";
 import type { DecodedCommandBatch, SimulationEvent, StartConfiguration } from "./protocol";
-import { CNC_WEB_ABI_VERSION, CNC_WEB_MAGIC_MESSAGE, encodeCommandBatch, encodeStartConfiguration, MessageKind, SIMULATION_PROTOCOL_VERSION } from "./protocol";
+import { CNC_WEB_ABI_VERSION, CNC_WEB_MAGIC_MESSAGE, encodeCommandBatch, encodeStartConfiguration, GameMode, MessageKind, SIMULATION_PROTOCOL_VERSION } from "./protocol";
 import { WasmScratchBuffers } from "./WasmScratchBuffers";
 
 interface CncWasmExports {
@@ -12,6 +12,7 @@ interface CncWasmExports {
   cnc_web_create(version: number, outHandle: number): number;
   cnc_web_destroy(handle: number): number;
   cnc_web_set_campaign_transition?(handle: number, carryOverCredits: number, nukePieces: number): number;
+  cnc_web_set_difficulty?(handle: number, difficulty: number): number;
   cnc_web_start(handle: number, data: number, length: number): number;
   cnc_web_submit_commands(handle: number, data: number, length: number): number;
   cnc_web_advance(handle: number, tickCount: number, outAdvanced: number): number;
@@ -206,6 +207,7 @@ export class WasmCore implements SimulationCore {
       cnc_web_create: pick<(version: number, outHandle: number) => number>("cnc_web_create"),
       cnc_web_destroy: pick<(handle: number) => number>("cnc_web_destroy"),
       cnc_web_set_campaign_transition: pick<(handle: number, carryOverCredits: number, nukePieces: number) => number>("cnc_web_set_campaign_transition"),
+      cnc_web_set_difficulty: pick<(handle: number, difficulty: number) => number>("cnc_web_set_difficulty"),
       cnc_web_start: pick<(handle: number, data: number, length: number) => number>("cnc_web_start"),
       cnc_web_submit_commands: pick<(handle: number, data: number, length: number) => number>("cnc_web_submit_commands"),
       cnc_web_advance: pick<(handle: number, tickCount: number, outAdvanced: number) => number>("cnc_web_advance"),
@@ -232,6 +234,14 @@ export class WasmCore implements SimulationCore {
       }
       if (!this.exports.cnc_web_set_campaign_transition) throw new Error("Wasm core does not support campaign transitions");
       assertWasmStatus(this.exports.cnc_web_set_campaign_transition(this.handle, carryOverCredits, nukePieces), "set campaign transition");
+    }
+    if (configuration.difficulty !== undefined) {
+      if (!Number.isInteger(configuration.difficulty) || configuration.difficulty < 0 || configuration.difficulty > 2) {
+        throw new RangeError("Difficulty is out of range");
+      }
+      if (configuration.gameMode !== GameMode.Campaign) throw new RangeError("Difficulty is only available in campaign mode");
+      if (!this.exports.cnc_web_set_difficulty) throw new Error("Wasm core does not support difficulty selection");
+      assertWasmStatus(this.exports.cnc_web_set_difficulty(this.handle, configuration.difficulty), "set difficulty");
     }
     this.withBytes(new Uint8Array(encodeStartConfiguration(configuration)), (pointer, length) => {
       assertWasmStatus(this.exports.cnc_web_start(this.handle, pointer, length), "start");

@@ -70,6 +70,17 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     target_compile_features(test_cnc_web_td_save_state PRIVATE cxx_std_11)
     add_test(NAME cnc_web_td_save_state COMMAND test_cnc_web_td_save_state)
 
+    add_executable(test_cnc_web_td_difficulty
+        src/td_difficulty.cpp
+        tests/td_difficulty_test.cpp
+    )
+    target_include_directories(test_cnc_web_td_difficulty PRIVATE ${CMAKE_SOURCE_DIR} src)
+    target_compile_features(test_cnc_web_td_difficulty PRIVATE cxx_std_11)
+    if(NOT MSVC)
+        target_compile_options(test_cnc_web_td_difficulty PRIVATE -fms-extensions -fpermissive)
+    endif()
+    add_test(NAME cnc_web_td_difficulty COMMAND test_cnc_web_td_difficulty)
+
     add_executable(test_cnc_web_td_legacy_input_guards
         tests/td_legacy_input_guards_test.cpp
     )
@@ -90,6 +101,7 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
             test_cnc_web_determinism
             test_cnc_web_static_map_delta
             test_cnc_web_td_save_state
+            test_cnc_web_td_difficulty
             test_cnc_web_td_legacy_input_guards
             test_cnc_web_c_header
         )

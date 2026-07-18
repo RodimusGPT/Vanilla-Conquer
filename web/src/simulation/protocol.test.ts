@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CommandType, Faction, GameMode, InputRequest, decodeCommandBatch, encodeCommandBatch, encodeStartConfiguration, resolveImmediateCommandTick } from "./protocol";
+import { CommandType, Difficulty, Faction, GameMode, InputRequest, decodeCommandBatch, encodeCommandBatch, encodeStartConfiguration, resolveImmediateCommandTick } from "./protocol";
 
 describe("command batches", () => {
   it("round-trips normalized commands in little-endian form", () => {
@@ -40,6 +40,7 @@ describe("command batches", () => {
       game: "tiberian-dawn", seed: 7, scenario: 1, variation: 0, direction: -1, buildLevel: 2,
       sabotagedStructure: -1, faction: Faction.Gdi, gameMode: GameMode.Campaign, playerId: 42n,
       contentDirectory: "/content", overrideMapName: "map", contentIdHash: 0x1122334455667788n,
+      difficulty: Difficulty.Easy,
     });
     const view = new DataView(buffer);
     expect(view.getUint32(8, true)).toBe(72 + 8 + 3);

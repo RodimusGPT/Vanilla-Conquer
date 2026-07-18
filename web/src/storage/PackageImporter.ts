@@ -1,4 +1,4 @@
-import { BlobReader, BlobWriter, TextWriter, ZipReader, type Entry, type FileEntry } from "@zip.js/zip.js";
+import { BlobReader, BlobWriter, TextWriter, ZipReader, type Entry, type FileEntry } from "@zip.js/zip.js/lib/zip.js";
 import { ContentStore, type ContentManifest, validateContentManifest, validateContentPath } from "./ContentStore";
 import { checkStorageReadiness } from "./helpers";
 

@@ -203,6 +203,7 @@ if(BUILD_WEBTD)
         sidebarglyphx.cpp
         ${TIBDAWN_SRC}
         ${CMAKE_SOURCE_DIR}/browser/engine/src/determinism.cpp
+        ${CMAKE_SOURCE_DIR}/browser/engine/src/td_difficulty.cpp
         ${CMAKE_SOURCE_DIR}/browser/engine/src/td_backend.cpp
     )
     target_compile_definitions(TiberianDawnWeb PRIVATE
@@ -244,7 +245,7 @@ if(BUILD_WEBTD)
         -sEXIT_RUNTIME=0
         -sWASM_BIGINT=1
         "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','HEAPU8','HEAPU32']"
-        "SHELL:-sEXPORTED_FUNCTIONS=['_malloc','_free','_cnc_web_abi_version','_cnc_web_create','_cnc_web_destroy','_cnc_web_set_campaign_transition','_cnc_web_start','_cnc_web_submit_commands','_cnc_web_advance','_cnc_web_snapshot_size','_cnc_web_write_snapshot','_cnc_web_event_size','_cnc_web_poll_event','_cnc_web_save_size','_cnc_web_write_save','_cnc_web_load_save','_cnc_web_state_hash','_CNC_Web_Acceptance_Force_Victory']"
+        "SHELL:-sEXPORTED_FUNCTIONS=['_malloc','_free','_cnc_web_abi_version','_cnc_web_create','_cnc_web_destroy','_cnc_web_set_campaign_transition','_cnc_web_set_difficulty','_cnc_web_start','_cnc_web_submit_commands','_cnc_web_advance','_cnc_web_snapshot_size','_cnc_web_write_snapshot','_cnc_web_event_size','_cnc_web_poll_event','_cnc_web_save_size','_cnc_web_write_save','_cnc_web_load_save','_cnc_web_state_hash','_CNC_Web_Acceptance_Force_Victory']"
         -lworkerfs.js
         $<$<CONFIG:Release>:-g0>
     )

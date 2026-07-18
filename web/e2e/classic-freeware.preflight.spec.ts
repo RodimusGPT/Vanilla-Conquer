@@ -1,8 +1,18 @@
-import { expect, test, type Page } from "@playwright/test";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { dismissBattlefieldGuide, expectCompositedBattlefield } from "./compositedPixels";
 
 const enabled = process.env.CNCWEB_CLASSIC_FREEWARE_PREFLIGHT === "1";
 const packageId = "classic-freeware-gdi-v1";
+if (enabled) {
+  const distribution = fileURLToPath(new URL("../dist/", import.meta.url));
+  const requiredSidecars = ["classic-freeware-v1.json", "classic-freeware-gdi-v1.cncweb"];
+  const missing = requiredSidecars.filter((name) => !existsSync(`${distribution}${name}`));
+  if (missing.length > 0) {
+    throw new Error(`Missing generated classic-freeware sidecars in web/dist: ${missing.join(", ")}. Run ./scripts/build-classic-freeware.sh web/dist after pnpm build.`);
+  }
+}
 
 async function currentTick(page: Page): Promise<number> {
   const label = await page.locator(".runtime-status").getAttribute("aria-label");
@@ -77,6 +87,21 @@ async function expectMissionObjectives(page: Page, expected: readonly ExpectedMi
     await expect(item.getByText(expected[index].label, { exact: true })).toBeVisible();
     await expect(item.getByText(expected[index].description, { exact: true })).toBeVisible();
     await expect(item.locator("small")).toHaveText(expected[index].progress);
+  }
+}
+
+async function clickQuickPlace(button: Locator): Promise<"clicked" | "disappeared"> {
+  try {
+    // Keep a disappearing placement tool from consuming the test's entire
+    // eight-minute budget under a heavily loaded software-WebGL renderer.
+    // If the engine resolves the completed structure while Playwright is
+    // waiting for actionability, the mission-specific unlock asserted after
+    // this loop remains the authoritative placement proof.
+    await button.click({ timeout: 15_000 });
+    return "clicked";
+  } catch (error) {
+    if (await button.count() === 0) return "disappeared";
+    throw error;
   }
 }
 
@@ -253,6 +278,54 @@ async function selectMissionSevenOpeningReinforcements(page: Page): Promise<void
   throw new Error("Mission 7's six opening infantry reinforcements could not be box-selected");
 }
 
+async function repairMissionEightEastAStructure(page: Page): Promise<void> {
+  const expand = page.getByRole("button", { name: "Expand mission panel", exact: true });
+  if (await expand.isVisible()) await expand.click();
+  const repair = page.getByRole("button", { name: "Repair", exact: true });
+  const notice = page.locator(".notice-strip");
+  await expect(repair).toBeEnabled();
+  await repair.click();
+  await expect(notice).toHaveText("Repair tool active · tap a damaged friendly structure");
+
+  const battlefield = page.getByLabel("Real-time strategy battlefield");
+  await expect(expand).toBeVisible();
+  // Let the 220 ms sidebar transition finish before deriving canvas-relative
+  // coordinates. Repair clicks re-resolve the target from the current snapshot,
+  // so this search exercises the actual player action without depending on the
+  // placement overlay's requestAnimationFrame cadence.
+  await page.waitForTimeout(250);
+  const bounds = await battlefield.boundingBox();
+  expect(bounds).not.toBeNull();
+  // Activating Repair intentionally collapses the mission panel. That widens
+  // the battlefield and shifts the same authored southeast base left. Search
+  // the matching rendered region, ordered from its center, while retaining the
+  // open-panel range for responsive layouts that keep the panel visible.
+  const panelCollapsed = await expand.isVisible();
+  const center = panelCollapsed ? { x: 0.67, y: 0.84 } : { x: 0.89, y: 0.88 };
+  const xs = panelCollapsed
+    ? Array.from({ length: 17 }, (_, index) => 0.48 + index * 0.02)
+    : Array.from({ length: 12 }, (_, index) => 0.76 + index * 0.02);
+  const ys = panelCollapsed
+    ? Array.from({ length: 20 }, (_, index) => 0.6 + index * 0.02)
+    : Array.from({ length: 11 }, (_, index) => 0.78 + index * 0.02);
+  const candidates = ys.flatMap((y) => xs.map((x) => ({ x, y })))
+    .sort((left, right) => (
+      Math.hypot(left.x - center.x, left.y - center.y)
+      - Math.hypot(right.x - center.x, right.y - center.y)
+    ))
+    .map(({ x, y }) => ({ x: bounds!.width * x, y: bounds!.height * y }));
+  let repaired = false;
+  for (const candidate of candidates) {
+    await battlefield.click({ position: candidate, force: true });
+    if ((await notice.textContent())?.startsWith("Repairing ")) {
+      repaired = true;
+      break;
+    }
+  }
+  expect(repaired, "Mission 8 East A exposed no damaged repairable structure in its opening base view").toBe(true);
+  await expect(notice).toHaveText(/^Repairing /);
+}
+
 test.describe("real classic-freeware bootstrap", () => {
   test.skip(!enabled, "Set CNCWEB_CLASSIC_FREEWARE_PREFLIGHT=1 after building the real sidecar into web/dist");
   test.setTimeout(8 * 60_000);
@@ -323,7 +396,7 @@ test.describe("real classic-freeware bootstrap", () => {
     await expect(objectives.getByText("Eliminate the Nod force", { exact: true })).toBeVisible();
     await expect(objectives.getByText("Keep a GDI ground force operational", { exact: true })).toBeVisible();
     await expect(objectives).toContainText(/\d+ units and \d+ structures destroyed/);
-    await expect(objectives).toContainText(/\d+ losses recorded/);
+    await expect(objectives).toContainText(/\d+ (?:loss|losses) recorded/);
 
     const tutorial = page.getByRole("region", { name: "Battlefield tutorial", exact: true });
     await expect(tutorial.getByRole("heading", { name: "Move the battlefield", exact: true })).toBeVisible();
@@ -396,8 +469,10 @@ test.describe("real classic-freeware bootstrap", () => {
     const quickPlace = page.getByRole("button", { name: "Quick-place Power Plant at a legal site", exact: true });
     let structurePlaced = false;
     for (let attempt = 0; attempt < 5 && !structurePlaced; attempt += 1) {
-      await expect(quickPlace).toBeEnabled({ timeout: 15_000 });
-      await quickPlace.click();
+      if (await clickQuickPlace(quickPlace) === "disappeared") {
+        structurePlaced = true;
+        break;
+      }
       await expect.poll(
         () => page.locator(".notice-strip").textContent(),
         { timeout: 30_000 },
@@ -429,20 +504,26 @@ test.describe("real classic-freeware bootstrap", () => {
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await waitForFreewareMission(page);
+    const difficulty = page.getByRole("combobox", { name: "Difficulty", exact: true });
+    await expect(difficulty).toHaveValue("1");
+    await difficulty.selectOption({ label: "Easy" });
     await page.locator(".mission-picker select").nth(1).selectOption("gdi-02-east-a");
     await page.getByRole("button", { name: "Start new mission", exact: true }).click();
     await waitForFreewareMission(page, "gdi-02-east-a", "GDI Mission 2 (East A)");
+    await expect(difficulty).toHaveValue("0");
 
     const objectives = page.locator(".mission-objectives");
     await expect(objectives).toBeVisible();
     await expect(objectives.getByText("Eliminate the Nod occupation", { exact: true })).toBeVisible();
     await expect(objectives.getByText("Keep a GDI force operational", { exact: true })).toBeVisible();
     await expect(objectives).toContainText(/\d+ units and \d+ structures destroyed/);
-    await expect(objectives).toContainText(/\d+ losses recorded/);
+    await expect(objectives).toContainText(/\d+ (?:loss|losses) recorded/);
 
     const production = page.getByLabel("Construction and production");
     await expect(production).toBeVisible();
     await expect(production).toContainText("Minigunner");
+    const minigunner = production.locator(".production-entry").filter({ hasText: "Minigunner" }).first();
+    await expect(minigunner.locator(".production-entry-heading span")).toHaveText("80");
     const build = page.getByRole("button", { name: "Build Minigunner", exact: true });
     await expect(build).toBeEnabled();
     const creditsBefore = Number((await production.locator(".production-heading strong").textContent() ?? "0").replace(/\D/g, ""));
@@ -510,8 +591,10 @@ test.describe("real classic-freeware bootstrap", () => {
     const quickPlace = page.getByRole("button", { name: "Quick-place Power Plant at a legal site", exact: true });
     let structurePlaced = false;
     for (let attempt = 0; attempt < 5 && !structurePlaced; attempt += 1) {
-      await expect(quickPlace).toBeEnabled({ timeout: 15_000 });
-      await quickPlace.click();
+      if (await clickQuickPlace(quickPlace) === "disappeared") {
+        structurePlaced = true;
+        break;
+      }
       await expect.poll(
         () => notice.textContent(),
         { timeout: 30_000 },
@@ -790,6 +873,72 @@ test.describe("real classic-freeware bootstrap", () => {
     expect(pageErrors).toEqual([]);
   });
 
+  test("shows both Mission 8 rule sets and repairs East A's damaged base", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await waitForFreewareMission(page);
+    const missionPicker = page.locator(".mission-picker select").nth(1);
+    const variants = [
+      {
+        id: "gdi-08-east-a",
+        title: "GDI Mission 8 (East A)",
+        objectives: [
+          {
+            label: "Eliminate the Nod force",
+            description: "Remove every counted unit and structure from Nod control. Destroy units; destroy or capture structures. Production can add targets.",
+            progress: /^\d+ (?:unit|units) and \d+ (?:structure|structures) destroyed$/,
+          },
+          {
+            label: "Keep GDI operational",
+            description: "Repairing the damaged opening force is advised; lose if no counted GDI unit or structure remains.",
+            progress: /^\d+ (?:loss|losses) recorded$/,
+          },
+        ],
+      },
+      {
+        id: "gdi-08-east-b",
+        title: "GDI Mission 8 (East B)",
+        objectives: [
+          {
+            label: "Eliminate the Nod force",
+            description: "Remove every counted unit and structure from Nod control. Destroy units; destroy or capture structures. Production and transport reinforcements can add targets.",
+            progress: /^\d+ (?:unit|units) and \d+ (?:structure|structures) destroyed$/,
+          },
+          {
+            label: "Protect Dr. Moebius and the hospital",
+            description: "Dr. Moebius and the hospital must survive; losing either fails.",
+            progress: "Both protected",
+          },
+          {
+            label: "Limit civilian casualties",
+            description: "The ninth death among 14 neutral civilians fails; at most eight may be lost.",
+            progress: "Limit active",
+          },
+          {
+            label: "Keep GDI operational",
+            description: "Also lose if no counted GDI unit or structure remains.",
+            progress: "GDI active",
+          },
+        ],
+      },
+    ] as const;
+
+    for (const variant of variants) {
+      const expand = page.getByRole("button", { name: "Expand mission panel", exact: true });
+      if (await expand.isVisible()) await expand.click();
+      await missionPicker.selectOption(variant.id);
+      await page.getByRole("button", { name: "Start new mission", exact: true }).click();
+      await waitForFreewareMission(page, variant.id, variant.title);
+      await expectMissionObjectives(page, variant.objectives);
+      if (variant.id === "gdi-08-east-a") await repairMissionEightEastAStructure(page);
+      await expect(page.locator(".error-banner, .diagnostic-error")).toHaveCount(0);
+    }
+
+    expect(pageErrors).toEqual([]);
+  });
+
   test("presents fog-safe contextual actions through the rendered battlefield", async ({ page }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -907,6 +1056,12 @@ test.describe("real classic-freeware bootstrap", () => {
     await page.goto(`/?acceptance=${acceptanceSession}`, { waitUntil: "domcontentloaded" });
     await waitForFreewareMission(page);
     expect(archiveRequests).toHaveLength(1);
+    const difficulty = page.getByRole("combobox", { name: "Difficulty", exact: true });
+    await expect(difficulty).toHaveValue("1");
+    await difficulty.selectOption({ label: "Hard" });
+    await page.getByRole("button", { name: "Start new mission", exact: true }).click();
+    await waitForFreewareMission(page);
+    await expect(difficulty).toHaveValue("2");
     await pauseAtStableTick(page);
     await page.evaluate(async () => {
       if (!window.__cncwebAcceptance) throw new Error("Loopback release-acceptance API is unavailable");
@@ -926,11 +1081,13 @@ test.describe("real classic-freeware bootstrap", () => {
     const pendingSession = await page.evaluate(() => JSON.parse(localStorage.getItem("theater.runtime-session.v1") ?? "null") as {
       missionId?: string;
       runId?: string;
+      difficulty?: number;
       pendingVictory?: { gameOver?: { tick?: number }; outcome?: { tick?: number; scenarioRoot?: string; scenario?: number; house?: number } };
     });
     expect(pendingSession).toMatchObject({
       missionId: "gdi-01-east-a",
       runId: expect.stringMatching(/^campaign-/),
+      difficulty: 2,
       pendingVictory: {
         gameOver: { tick: expect.any(Number) },
         outcome: { tick: expect.any(Number), scenarioRoot: "SCG01EA", scenario: 1, house: 0 },
@@ -941,6 +1098,7 @@ test.describe("real classic-freeware bootstrap", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator(".mission-picker select").first()).toHaveValue(packageId, { timeout: 3 * 60_000 });
     await expect(page.locator(".mission-picker select").nth(1)).toHaveValue("gdi-01-east-a");
+    await expect(page.locator(".mission-picker select").nth(2)).toHaveValue("2");
     await expect(page.locator(".notice-strip")).toHaveText("GDI Mission 1 victory restored · choose the next operation");
     await expect(page.locator(".game-over").getByRole("heading", { name: "Victory", exact: true })).toBeVisible();
     expect(archiveRequests).toHaveLength(1);
@@ -958,6 +1116,7 @@ test.describe("real classic-freeware bootstrap", () => {
       mode: "mission",
       missionId: "gdi-02-east-a",
       runId: pendingSession.runId,
+      difficulty: 2,
       incomingTransition: {
         carryOverCredits: expect.any(Number),
         nukePieces: expect.any(Number),
@@ -969,6 +1128,7 @@ test.describe("real classic-freeware bootstrap", () => {
 
     await page.reload({ waitUntil: "domcontentloaded" });
     await waitForFreewareMission(page, "gdi-02-east-a", "GDI Mission 2 (East A)");
+    await expect(page.getByRole("combobox", { name: "Difficulty", exact: true })).toHaveValue("2");
     expect(archiveRequests).toHaveLength(1);
     await expect.poll(() => serviceWorkerControlled(page), { timeout: 2 * 60_000 }).toBe(true);
     await context.setOffline(true);

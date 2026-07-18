@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type InputHTMLAttributes, type RefObject } from "react";
 import { RuntimeAudio } from "./audio/RuntimeAudio";
 import { bootstrapClassicFreeware } from "./bootstrap/classicFreewareBootstrap";
+import { CampaignDifficultySelect } from "./campaign/CampaignDifficultySelect";
 import { isTdCampaignFinalMission, nextTdCampaignMissions, tdCampaignCarryState } from "./campaign/tdCampaign";
 import { TouchController, type ScreenPoint } from "./input/TouchController";
 import {
@@ -67,7 +68,7 @@ import { clampCameraTransform, focusCameraTransform, pointToWorld, presentationV
 import { SimulationClient } from "./simulation/SimulationClient";
 import { localAcceptanceSession } from "./simulation/acceptanceHooks";
 import { domTelemetryRefreshDue, minimapRefreshDue } from "./simulation/domTelemetryCadence";
-import { Faction, GameMode, type CampaignTransition, type ContentMountProgress, type SimulationEvent, type StartConfiguration } from "./simulation/protocol";
+import { Difficulty, Faction, GameMode, type CampaignTransition, type ContentMountProgress, type SimulationEvent, type StartConfiguration } from "./simulation/protocol";
 import { loadRuntimeLibrary, type CompatibleRuntimePack, type RuntimeLibrary } from "./simulation/runtimeLibrary";
 import { missionStartConfiguration, type RuntimeMissionV1 } from "./simulation/runtimeCatalog";
 import { MAP_CELL_PIXELS, SnapshotContextualAction, SnapshotObjectType, type SnapshotObject, type SnapshotSidebar, type SnapshotSidebarEntry, type SnapshotView } from "./simulation/snapshot";
@@ -107,6 +108,7 @@ interface MissionLaunch {
   seed: number;
   pack: CompatibleRuntimePack;
   mission: RuntimeMissionV1;
+  difficulty: Difficulty;
   start: StartConfiguration;
   resumeSaveId?: string;
   runId?: string;
@@ -289,6 +291,7 @@ function demoLaunch(seed = randomSeed(), resumeSaveId?: string): DemoLaunch {
 
 interface MissionLaunchOptions {
   seed?: number;
+  difficulty?: Difficulty;
   resumeSaveId?: string;
   runId?: string;
   incomingTransition?: PersistedCampaignTransitionV2;
@@ -297,7 +300,9 @@ interface MissionLaunchOptions {
 
 function missionLaunch(pack: CompatibleRuntimePack, mission: RuntimeMissionV1, options: MissionLaunchOptions = {}): MissionLaunch {
   const seed = options.seed ?? randomSeed();
+  const difficulty = options.difficulty ?? Difficulty.Normal;
   const start = missionStartConfiguration(pack.descriptor, pack.catalog, mission, seed);
+  start.difficulty = difficulty;
   if (options.incomingTransition) {
     const campaignTransition: CampaignTransition = {
       carryOverCredits: options.incomingTransition.carryOverCredits,
@@ -314,6 +319,7 @@ function missionLaunch(pack: CompatibleRuntimePack, mission: RuntimeMissionV1, o
     seed,
     pack,
     mission,
+    difficulty,
     resumeSaveId: options.resumeSaveId,
     runId: options.runId ?? newCampaignRunId(),
     incomingTransition: options.incomingTransition,
@@ -341,6 +347,7 @@ function persistedSession(launch: Launch, resumeSaveId?: string, pendingVictory?
     missionId: launch.mission.id,
     seed: launch.seed,
     runId: launch.runId,
+    difficulty: launch.difficulty,
     ...(resumeSaveId ? { resumeSaveId } : {}),
     ...(launch.acceptLegacyResume && resumeSaveId === launch.resumeSaveId ? { legacyResume: true as const } : {}),
     ...(launch.incomingTransition ? { incomingTransition: launch.incomingTransition } : {}),
@@ -732,6 +739,7 @@ export default function App() {
   const [libraryReady, setLibraryReady] = useState(false);
   const [selectedPackId, setSelectedPackId] = useState("");
   const [selectedMissionId, setSelectedMissionId] = useState("");
+  const [selectedDifficulty, setSelectedDifficulty] = useState(Difficulty.Normal);
   const [launch, setLaunch] = useState<Launch>();
   const [mountProgress, setMountProgress] = useState<ContentMountProgress>();
   const [launching, setLaunching] = useState(false);
@@ -1621,7 +1629,7 @@ export default function App() {
     setCampaignOutcome(undefined);
     setMissionStats(undefined);
     setMissionStatsLaunchKey(undefined);
-    const next = missionLaunch(pack, mission);
+    const next = missionLaunch(pack, mission, { difficulty: selectedDifficulty });
     sessionEpochRef.current += 1;
     rememberSession(next);
     missionGraphicsLockedRef.current = true;
@@ -1654,6 +1662,7 @@ export default function App() {
     const next = active?.kind === "mission"
       ? missionLaunch(active.pack, active.mission, {
         seed: active.seed,
+        difficulty: active.difficulty,
         runId: active.runId,
         incomingTransition: active.incomingTransition,
       })
@@ -1770,6 +1779,7 @@ export default function App() {
     const incomingTransition: PersistedCampaignTransitionV2 = tdCampaignCarryState(active.mission, selected, outcome);
     const next = missionLaunch(active.pack, selected, {
       seed: outcome.randomSeed,
+      difficulty: active.difficulty,
       runId: active.runId,
       incomingTransition,
     });
@@ -1781,6 +1791,7 @@ export default function App() {
     setGameOver(undefined);
     setDiagnostics([]);
     setError(undefined);
+    setSelectedDifficulty(active.difficulty);
     setSelectedMissionId(selected.id);
     setLaunch(next);
     setNotice(`Continuing campaign · ${selected.title}`);
@@ -1932,6 +1943,7 @@ export default function App() {
           const rememberedV2 = rememberedMission && remembered?.mode === "mission" && remembered.version === 2 ? remembered : undefined;
           const probe = missionLaunch(pack, mission, {
             seed,
+            difficulty: rememberedV2?.difficulty,
             resumeSaveId: rememberedV2?.resumeSaveId,
             runId: rememberedV2?.runId,
             incomingTransition: rememberedV2?.incomingTransition,
@@ -1951,6 +1963,7 @@ export default function App() {
           const newestSave = resume.save?.metadata;
           nextLaunch = missionLaunch(pack, mission, {
             seed,
+            difficulty: probe.difficulty,
             resumeSaveId: newestSave?.id,
             runId: probe.runId,
             incomingTransition: probe.incomingTransition,
@@ -1958,6 +1971,7 @@ export default function App() {
           });
           setSelectedPackId(pack.descriptor.id);
           setSelectedMissionId(mission.id);
+          setSelectedDifficulty(nextLaunch.difficulty);
           const skippedIds = new Set(resume.issues.flatMap((issue) => issue.id ? [issue.id] : []));
           const retainedSaves = matchingSaves.filter((save) => !skippedIds.has(save.id));
           setSaveCount(retainedSaves.length);
@@ -2596,7 +2610,7 @@ export default function App() {
     setSelectedMissionId(mission.id);
     setDiagnostics([]);
     setError(undefined);
-    const next = missionLaunch(pack, mission);
+    const next = missionLaunch(pack, mission, { difficulty: selectedDifficulty });
     missionGraphicsLockedRef.current = true;
     modeRef.current = "classic";
     setMode("classic");
@@ -2639,6 +2653,7 @@ export default function App() {
     const restored = previous.kind === "mission"
       ? missionLaunch(previous.pack, previous.mission, {
         seed: previous.seed,
+        difficulty: previous.difficulty,
         resumeSaveId,
         runId: previous.runId,
         incomingTransition: previous.incomingTransition,
@@ -2815,6 +2830,7 @@ export default function App() {
                 <p className="eyebrow">Installed content</p>
                 <label>Package<select value={selectedPackId} disabled={importing || launching || loading} onChange={(event) => selectPack(event.currentTarget.value)}>{library.compatible.map((pack) => <option key={`${pack.descriptor.id}:${pack.descriptor.revision}`} value={pack.descriptor.id}>{pack.descriptor.id} · {pack.descriptor.revision.slice(0, 8)}</option>)}</select></label>
                 <label>Mission<select value={selectedMission?.id ?? ""} disabled={importing || launching || loading} onChange={(event) => setSelectedMissionId(event.currentTarget.value)}>{selectedPack?.catalog.missions.map((mission) => <option key={mission.id} value={mission.id}>{mission.title}</option>)}</select></label>
+                <CampaignDifficultySelect value={selectedDifficulty} disabled={importing || launching || loading} onChange={setSelectedDifficulty} />
                 <button className="launch-mission" onClick={startSelectedMission} disabled={!selectedMission || importing || launching || loading || saving}>Start new mission</button>
               </section>
               <section><p className="eyebrow">Briefing</p><h2>{selectedMission?.title}</h2><p className="mission-briefing">{selectedMission?.briefing}</p></section>

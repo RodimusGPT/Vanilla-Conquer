@@ -151,6 +151,19 @@ SnapshotClock ReadSnapshotClock(const std::vector<uint8_t>& snapshot)
     return clock;
 }
 
+uint64_t DifficultyStateHash(const std::vector<uint8_t>& start, uint32_t difficulty)
+{
+    cnc_web_handle_t handle = CNC_WEB_INVALID_HANDLE;
+    assert(cnc_web_create(CNC_WEB_ABI_VERSION, &handle) == CNC_WEB_OK);
+    assert(cnc_web_set_difficulty(handle, difficulty) == CNC_WEB_OK);
+    assert(cnc_web_start(handle, &start[0], static_cast<uint32_t>(start.size())) == CNC_WEB_OK);
+    uint64_t hash = 0u;
+    assert(cnc_web_state_hash(handle, &hash) == CNC_WEB_OK);
+    assert(hash != 0u);
+    assert(cnc_web_destroy(handle) == CNC_WEB_OK);
+    return hash;
+}
+
 } // namespace
 
 int main()
@@ -176,6 +189,10 @@ int main()
     assert(cnc_web_advance(handle, 1u, NULL) == CNC_WEB_INVALID_STATE);
     assert(cnc_web_set_campaign_transition(CNC_WEB_INVALID_HANDLE, 0, 0u) == CNC_WEB_INVALID_ARGUMENT);
     assert(cnc_web_set_campaign_transition(handle, 0, 8u) == CNC_WEB_INVALID_ARGUMENT);
+    assert(cnc_web_set_difficulty(CNC_WEB_INVALID_HANDLE, 0u) == CNC_WEB_INVALID_ARGUMENT);
+    assert(cnc_web_set_difficulty(handle, 3u) == CNC_WEB_INVALID_ARGUMENT);
+    assert(cnc_web_set_difficulty(handle, 0u) == CNC_WEB_OK);
+    assert(cnc_web_set_difficulty(handle, 2u) == CNC_WEB_OK);
     assert(cnc_web_set_campaign_transition(handle, INT32_MIN, 5u) == CNC_WEB_OK);
     assert(cnc_web_set_campaign_transition(handle, 0, 0u) == CNC_WEB_INVALID_STATE);
 
@@ -212,12 +229,31 @@ int main()
     assert((failed_flags & CNC_WEB_DIAGNOSTIC_ERROR) != 0u);
     assert(failed_code == CNC_WEB_DIAGNOSTIC_CONTENT_ERROR && failed_status == CNC_WEB_CONTENT_MISMATCH);
     assert(cnc_web_destroy(handle) == CNC_WEB_OK);
+
+    /* Difficulty is a campaign-only companion and never changes StartV1. */
+    assert(cnc_web_create(CNC_WEB_ABI_VERSION, &handle) == CNC_WEB_OK);
+    assert(cnc_web_set_difficulty(handle, 1u) == CNC_WEB_OK);
+    assert(cnc_web_start(handle, &skirmish_start[0], static_cast<uint32_t>(skirmish_start.size()))
+           == CNC_WEB_INVALID_ARGUMENT);
+    assert(cnc_web_destroy(handle) == CNC_WEB_OK);
+
+    /* Difficulty is hidden deterministic state: identical public snapshot
+     * fields must not let distinct campaign profiles share a state hash. */
+    const uint64_t easy_difficulty_hash = DifficultyStateHash(start, 0u);
+    const uint64_t normal_difficulty_hash = DifficultyStateHash(start, 1u);
+    const uint64_t hard_difficulty_hash = DifficultyStateHash(start, 2u);
+    assert(easy_difficulty_hash != normal_difficulty_hash);
+    assert(easy_difficulty_hash != hard_difficulty_hash);
+    assert(normal_difficulty_hash != hard_difficulty_hash);
+
     assert(cnc_web_create(CNC_WEB_ABI_VERSION, &handle) == CNC_WEB_OK);
 
     assert(cnc_web_set_campaign_transition(handle, 1234, 5u) == CNC_WEB_OK);
+    assert(cnc_web_set_difficulty(handle, 0u) == CNC_WEB_OK);
     assert(cnc_web_start(handle, &start[0], static_cast<uint32_t>(start.size() - 1u)) == CNC_WEB_INVALID_ARGUMENT);
     assert(cnc_web_start(handle, &start[0], static_cast<uint32_t>(start.size())) == CNC_WEB_OK);
     assert(cnc_web_set_campaign_transition(handle, 0, 0u) == CNC_WEB_INVALID_STATE);
+    assert(cnc_web_set_difficulty(handle, 1u) == CNC_WEB_INVALID_STATE);
     assert(cnc_web_start(handle, &start[0], static_cast<uint32_t>(start.size())) == CNC_WEB_INVALID_STATE);
 
     std::vector<uint8_t> commands = CommandMessage(1u);
@@ -265,7 +301,7 @@ int main()
     for (uint32_t index = 0u; index < 6u; ++index) assert(start_event_reader.I32(start_event_args[index]));
     assert(start_event_tick == 0u && start_event_type == CNC_WEB_EVENT_DEBUG);
     assert(start_event_args[0] == 1 && start_event_args[1] == 1234 && start_event_args[2] == 5
-           && start_event_args[3] == 0);
+           && start_event_args[3] == 0 && start_event_args[4] == 1 && start_event_args[5] == 0);
     assert(cnc_web_event_size(handle, &event_size) == CNC_WEB_OK && event_size == 0u);
 
     uint32_t save_size = 0u;

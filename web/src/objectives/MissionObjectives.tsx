@@ -22,9 +22,47 @@ export interface MissionObjectivePresentation {
   items: readonly MissionObjectiveItem[];
 }
 
+const [
+  OPERATION_ORDERS,
+  ELIMINATE_NOD_ID,
+  PRESERVE_GDI_ID,
+  ELIMINATE_NOD_FORCE,
+  KEEP_GDI_OPERATIONAL,
+  GDI_FORCE_SURVIVED,
+  ENGINE_OPERATION_FAILED,
+  ALL_GDI_UNITS_AND_STRUCTURES_LOST,
+] = [
+  "Operation orders",
+  "eliminate-nod",
+  "preserve-gdi",
+  "Eliminate the Nod force",
+  "Keep GDI operational",
+  "GDI force survived",
+  "Engine-confirmed operation failed",
+  "All counted GDI units and structures were lost",
+] as const;
+
+function objectiveItem(
+  status: MissionObjectiveStatus,
+  id: string,
+  label: string,
+  description: string,
+  progress: string,
+): MissionObjectiveItem {
+  return { id, label, description, progress, status };
+}
+
+function operationOrders(
+  status: MissionObjectiveStatus,
+  items: readonly MissionObjectiveItem[],
+): MissionObjectivePresentation {
+  return { title: OPERATION_ORDERS, status, items };
+}
+
 type MissionFour = "4-west-a" | "4-west-b" | "4-east-a";
 type MissionFive = "5-east-a" | "5-west-a" | "5-west-b";
-type ReviewedGdiMission = 1 | 2 | 3 | 6 | 7 | MissionFour | MissionFive;
+type MissionEight = "8-east-a" | "8-east-b";
+type ReviewedGdiMission = 1 | 2 | 3 | 6 | 7 | MissionFour | MissionFive | MissionEight;
 
 function reviewedGdiMission(mission: RuntimeMissionV1): ReviewedGdiMission | undefined {
   if (mission.faction !== "gdi") return undefined;
@@ -83,6 +121,10 @@ function reviewedGdiMission(mission: RuntimeMissionV1): ReviewedGdiMission | und
     && mission.direction === 1
     && mission.buildLevel === 5
   ) return "5-west-b";
+  if (mission.scenario === 8 && mission.direction === 0 && mission.buildLevel === 8) {
+    if (mission.id === "gdi-08-east-a" && mission.scenarioRoot === "SCG08EA" && mission.variation === 0) return "8-east-a";
+    if (mission.id === "gdi-08-east-b" && mission.scenarioRoot === "SCG08EB" && mission.variation === 1) return "8-east-b";
+  }
   return undefined;
 }
 
@@ -103,7 +145,7 @@ function survivalProgress(
   result: MissionObjectiveResult | undefined,
   failed = "All counted GDI ground forces were lost",
 ): string {
-  if (result?.won) return "GDI force survived";
+  if (result?.won) return GDI_FORCE_SURVIVED;
   if (result && !result.won) return failed;
   const losses = (stats?.unitsLost ?? 0) + (stats?.buildingsLost ?? 0);
   return `${losses.toLocaleString()} ${losses === 1 ? "loss" : "losses"} recorded`;
@@ -115,7 +157,7 @@ function engineRuleProgress(
   complete = "Engine-confirmed objective complete",
 ): string {
   if (!result) return active;
-  return result.won ? complete : "Engine-confirmed operation failed";
+  return result.won ? complete : ENGINE_OPERATION_FAILED;
 }
 
 function missionFourPresentation(
@@ -124,54 +166,46 @@ function missionFourPresentation(
 ): MissionObjectivePresentation {
   const status = resultStatus(result);
   if (mission === "4-west-b") {
-    return {
-      title: "Operation orders",
-      status,
-      items: [
-        {
-          id: "eliminate-nod",
-          label: "Eliminate the Nod force",
-          description: "Destroy every counted Nod unit in the operation area. Triggered Nod assault groups become additional targets.",
-          progress: engineRuleProgress(result, "Nod elimination objective active"),
-          status,
-        },
-        {
-          id: "preserve-village",
-          label: "Preserve the protected village",
-          description: "The operation fails if all four protected village structures are destroyed.",
-          progress: engineRuleProgress(result, "Village protection condition active", "Engine-confirmed protection condition satisfied"),
-          status,
-        },
-        {
-          id: "preserve-gdi",
-          label: "Keep GDI operational",
-          description: "The operation fails if every counted GDI infantry unit and ground vehicle is destroyed.",
-          progress: engineRuleProgress(result, "GDI survival condition active", "GDI force survived"),
-          status,
-        },
-      ],
-    };
+    return operationOrders(status, [
+      objectiveItem(
+        status,
+        ELIMINATE_NOD_ID,
+        ELIMINATE_NOD_FORCE,
+        "Destroy every counted Nod unit in the operation area. Triggered Nod assault groups become additional targets.",
+        engineRuleProgress(result, "Nod elimination objective active"),
+      ),
+      objectiveItem(
+        status,
+        "preserve-village",
+        "Preserve the protected village",
+        "The operation fails if all four protected village structures are destroyed.",
+        engineRuleProgress(result, "Village protection condition active", "Engine-confirmed protection condition satisfied"),
+      ),
+      objectiveItem(
+        status,
+        PRESERVE_GDI_ID,
+        KEEP_GDI_OPERATIONAL,
+        "The operation fails if every counted GDI infantry unit and ground vehicle is destroyed.",
+        engineRuleProgress(result, "GDI survival condition active", GDI_FORCE_SURVIVED),
+      ),
+    ]);
   }
-  return {
-    title: "Operation orders",
-    status,
-    items: [
-      {
-        id: "recover-crate",
-        label: "Recover the GDI crate",
-        description: "Reach the marked recovery area. The operation completes when a GDI unit enters the crate cell; destroying Nod is not required.",
-        progress: engineRuleProgress(result, "Crate recovery objective active"),
-        status,
-      },
-      {
-        id: "preserve-gdi",
-        label: "Keep the recovery force operational",
-        description: "The operation fails if every counted GDI infantry unit and ground vehicle is destroyed. A transport aircraft alone does not prevent defeat.",
-        progress: engineRuleProgress(result, "Recovery force condition active", "GDI recovery force survived"),
-        status,
-      },
-    ],
-  };
+  return operationOrders(status, [
+    objectiveItem(
+      status,
+      "recover-crate",
+      "Recover the GDI crate",
+      "Reach the marked recovery area. The operation completes when a GDI unit enters the crate cell; destroying Nod is not required.",
+      engineRuleProgress(result, "Crate recovery objective active"),
+    ),
+    objectiveItem(
+      status,
+      PRESERVE_GDI_ID,
+      "Keep the recovery force operational",
+      "The operation fails if every counted GDI infantry unit and ground vehicle is destroyed. A transport aircraft alone does not prevent defeat.",
+      engineRuleProgress(result, "Recovery force condition active", "GDI recovery force survived"),
+    ),
+  ]);
 }
 
 function missionFivePresentation(
@@ -179,59 +213,51 @@ function missionFivePresentation(
   stats: SnapshotSidebar | undefined,
 ): MissionObjectivePresentation {
   const status = resultStatus(result);
-  return {
-    title: "Operation orders",
-    status,
-    items: [
-      {
-        id: "eliminate-nod",
-        label: "Eliminate the Nod force",
-        description: "Destroy every counted Nod unit and structure in the operation area. Nod production, rebuilt structures, patrols, and timed attack teams can add targets.",
-        progress: destroyedProgress(stats, result),
-        status,
-      },
-      {
-        id: "relieve-base",
-        label: "Relieve the separated GDI base",
-        description: "Move GDI units through both authored relief zones. Until each zone is crossed, losing the last member of its protected starting group—field force or base structures—immediately fails the operation.",
-        progress: engineRuleProgress(result, "Base-relief conditions active", "Engine-confirmed relief conditions satisfied"),
-        status,
-      },
-      {
-        id: "preserve-gdi",
-        label: "Keep GDI operational",
-        description: "The operation also fails if every counted GDI unit and structure is destroyed.",
-        progress: engineRuleProgress(result, "GDI survival condition active", "GDI force survived"),
-        status,
-      },
-    ],
-  };
+  return operationOrders(status, [
+    objectiveItem(
+      status,
+      ELIMINATE_NOD_ID,
+      ELIMINATE_NOD_FORCE,
+      "Destroy every counted Nod unit and structure in the operation area. Nod production, rebuilt structures, patrols, and timed attack teams can add targets.",
+      destroyedProgress(stats, result),
+    ),
+    objectiveItem(
+      status,
+      "relieve-base",
+      "Relieve the separated GDI base",
+      "Move GDI units through both authored relief zones. Until each zone is crossed, losing the last member of its protected starting group—field force or base structures—immediately fails the operation.",
+      engineRuleProgress(result, "Base-relief conditions active", "Engine-confirmed relief conditions satisfied"),
+    ),
+    objectiveItem(
+      status,
+      PRESERVE_GDI_ID,
+      KEEP_GDI_OPERATIONAL,
+      "The operation also fails if every counted GDI unit and structure is destroyed.",
+      engineRuleProgress(result, "GDI survival condition active", GDI_FORCE_SURVIVED),
+    ),
+  ]);
 }
 
 function missionSixPresentation(
   result: MissionObjectiveResult | undefined,
 ): MissionObjectivePresentation {
   const status = resultStatus(result);
-  return {
-    title: "Operation orders",
-    status,
-    items: [
-      {
-        id: "sabotage-nod",
-        label: "Sabotage the Nod base",
-        description: "Use the Commando's C4 to demolish the Airstrip, Construction Yard, Hand of Nod, Refinery, Silo, Power Plant, or Communications Center. Destroying every counted Nod unit and structure is an alternate victory. Sabotaging the Airstrip bypasses Mission 7; otherwise the sabotaged structure type is carried into Mission 7.",
-        progress: engineRuleProgress(result, "C4 sabotage objective active"),
-        status,
-      },
-      {
-        id: "preserve-commando",
-        label: "Keep the Commando alive",
-        description: "The operation fails if the Commando is killed. Landing craft and transport aircraft alone do not keep the GDI ground force operational.",
-        progress: engineRuleProgress(result, "Commando survival condition active", "Commando survived"),
-        status,
-      },
-    ],
-  };
+  return operationOrders(status, [
+    objectiveItem(
+      status,
+      "sabotage-nod",
+      "Sabotage the Nod base",
+      "Use the Commando's C4 to demolish the Airstrip, Construction Yard, Hand of Nod, Refinery, Silo, Power Plant, or Communications Center. Destroying every counted Nod unit and structure is an alternate victory. Sabotaging the Airstrip bypasses Mission 7; otherwise the sabotaged structure type is carried into Mission 7.",
+      engineRuleProgress(result, "C4 sabotage objective active"),
+    ),
+    objectiveItem(
+      status,
+      "preserve-commando",
+      "Keep the Commando alive",
+      "The operation fails if the Commando is killed. Landing craft and transport aircraft alone do not keep the GDI ground force operational.",
+      engineRuleProgress(result, "Commando survival condition active", "Commando survived"),
+    ),
+  ]);
 }
 
 function missionSevenPresentation(
@@ -239,28 +265,77 @@ function missionSevenPresentation(
   stats: SnapshotSidebar | undefined,
 ): MissionObjectivePresentation {
   const status = resultStatus(result);
-  return {
-    title: "Operation orders",
+  return operationOrders(status, [
+    objectiveItem(
+      status,
+      ELIMINATE_NOD_ID,
+      "Eliminate the remaining Nod force",
+      "Landing-craft reinforcements culminate in an MCV; use it to build up a base, then remove every counted unit and structure from Nod control. Destroy units; destroy or capture structures. Nod production, rebuilt structures, timed attack teams, and later autocreated teams can add targets.",
+      result && !result.won ? ENGINE_OPERATION_FAILED : destroyedProgress(stats, result),
+    ),
+    objectiveItem(
+      status,
+      PRESERVE_GDI_ID,
+      KEEP_GDI_OPERATIONAL,
+      "The operation fails if every counted GDI infantry unit, ground unit, structure, and regular aircraft is destroyed. Landing craft, transport/cargo aircraft, and A-10 strike aircraft alone do not prevent defeat.",
+      survivalProgress(stats, result, ALL_GDI_UNITS_AND_STRUCTURES_LOST),
+    ),
+  ]);
+}
+
+function missionEightPresentation(
+  mission: MissionEight,
+  result: MissionObjectiveResult | undefined,
+  stats: SnapshotSidebar | undefined,
+): MissionObjectivePresentation {
+  const status = resultStatus(result);
+  const eliminateNod = objectiveItem(
     status,
-    items: [
-      {
-        id: "eliminate-nod",
-        label: "Eliminate the remaining Nod force",
-        description: "Landing-craft reinforcements culminate in an MCV; use it to build up a base, then remove every counted unit and structure from Nod control. Destroy units; destroy or capture structures. Nod production, rebuilt structures, timed attack teams, and later autocreated teams can add targets.",
-        progress: result && !result.won
-          ? "Engine-confirmed operation failed"
-          : destroyedProgress(stats, result),
+    ELIMINATE_NOD_ID,
+    ELIMINATE_NOD_FORCE,
+    mission === "8-east-a"
+      ? "Remove every counted unit and structure from Nod control. Destroy units; destroy or capture structures. Production can add targets."
+      : "Remove every counted unit and structure from Nod control. Destroy units; destroy or capture structures. Production and transport reinforcements can add targets.",
+    result && !result.won
+      ? ENGINE_OPERATION_FAILED
+      : destroyedProgress(stats, result),
+  );
+  if (mission === "8-east-a") {
+    return operationOrders(status, [
+      eliminateNod,
+      objectiveItem(
         status,
-      },
-      {
-        id: "preserve-gdi",
-        label: "Keep GDI operational",
-        description: "The operation fails if every counted GDI infantry unit, ground unit, structure, and regular aircraft is destroyed. Landing craft, transport/cargo aircraft, and A-10 strike aircraft alone do not prevent defeat.",
-        progress: survivalProgress(stats, result, "All counted GDI units and structures were lost"),
-        status,
-      },
-    ],
-  };
+        PRESERVE_GDI_ID,
+        KEEP_GDI_OPERATIONAL,
+        "Repairing the damaged opening force is advised; lose if no counted GDI unit or structure remains.",
+        survivalProgress(stats, result, ALL_GDI_UNITS_AND_STRUCTURES_LOST),
+      ),
+    ]);
+  }
+  return operationOrders(status, [
+    eliminateNod,
+    objectiveItem(
+      status,
+      "protect-moebius",
+      "Protect Dr. Moebius and the hospital",
+      "Dr. Moebius and the hospital must survive; losing either fails.",
+      engineRuleProgress(result, "Both protected", "Both survived"),
+    ),
+    objectiveItem(
+      status,
+      "protect-civilians",
+      "Limit civilian casualties",
+      "The ninth death among 14 neutral civilians fails; at most eight may be lost.",
+      engineRuleProgress(result, "Limit active", "Limit satisfied"),
+    ),
+    objectiveItem(
+      status,
+      PRESERVE_GDI_ID,
+      KEEP_GDI_OPERATIONAL,
+      "Also lose if no counted GDI unit or structure remains.",
+      engineRuleProgress(result, "GDI active", GDI_FORCE_SURVIVED),
+    ),
+  ]);
 }
 
 /**
@@ -276,53 +351,49 @@ export function missionObjectivePresentation(
   const reviewedMission = reviewedGdiMission(mission);
   if (!reviewedMission) return undefined;
   if (typeof reviewedMission === "string") {
-    return reviewedMission.startsWith("4-")
-      ? missionFourPresentation(reviewedMission as MissionFour, result)
-      : missionFivePresentation(result, stats);
+    if (reviewedMission.startsWith("4-")) return missionFourPresentation(reviewedMission as MissionFour, result);
+    if (reviewedMission.startsWith("5-")) return missionFivePresentation(result, stats);
+    return missionEightPresentation(reviewedMission as MissionEight, result, stats);
   }
   if (reviewedMission === 6) return missionSixPresentation(result);
   if (reviewedMission === 7) return missionSevenPresentation(result, stats);
   const status = resultStatus(result);
   const missionTwo = reviewedMission === 2;
   const missionThree = reviewedMission === 3;
-  return {
-    title: "Operation orders",
-    status,
-    items: [
-      {
-        id: "eliminate-nod",
-        label: missionTwo ? "Eliminate the Nod occupation" : "Eliminate the Nod force",
-        description: missionThree
+  return operationOrders(status, [
+    objectiveItem(
+      status,
+      ELIMINATE_NOD_ID,
+      missionTwo ? "Eliminate the Nod occupation" : ELIMINATE_NOD_FORCE,
+      missionThree
           ? "Destroy every counted Nod unit and structure in the operation area. Nod production, rebuilt structures, and attack teams can add targets."
           : missionTwo
             ? "Destroy every Nod unit and structure in the occupied region. Attack teams and field reinforcements may change the force count."
             : "Destroy the Nod units and structures assigned to this operation. Reinforcements may enter the battlefield.",
-        progress: destroyedProgress(stats, result),
-        status,
-      },
-      {
-        id: "preserve-gdi",
-        label: missionThree
-          ? "Keep GDI operational"
+      destroyedProgress(stats, result),
+    ),
+    objectiveItem(
+      status,
+      PRESERVE_GDI_ID,
+      missionThree
+          ? KEEP_GDI_OPERATIONAL
           : missionTwo
             ? "Keep a GDI force operational"
             : "Keep a GDI ground force operational",
-        description: missionThree
+      missionThree
           ? "The operation fails if no counted GDI structure, infantry, or ground vehicle remains."
           : missionTwo
             ? "The operation fails if every counted GDI unit and structure is destroyed."
             : "The operation fails if every counted GDI ground force is destroyed.",
-        progress: survivalProgress(
-          stats,
-          result,
-          missionTwo || missionThree
-            ? "All counted GDI units and structures were lost"
-            : "All counted GDI ground forces were lost",
-        ),
-        status,
-      },
-    ],
-  };
+      survivalProgress(
+        stats,
+        result,
+        missionTwo || missionThree
+          ? ALL_GDI_UNITS_AND_STRUCTURES_LOST
+          : "All counted GDI ground forces were lost",
+      ),
+    ),
+  ]);
 }
 
 function statusLabel(status: MissionObjectiveStatus): string {

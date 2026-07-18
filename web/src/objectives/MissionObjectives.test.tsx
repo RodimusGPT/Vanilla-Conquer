@@ -113,6 +113,27 @@ const missionSeven: RuntimeMissionV1 = {
   title: "GDI Mission 7 (East A)",
 };
 
+const missionEightEastA: RuntimeMissionV1 = {
+  ...mission,
+  id: "gdi-08-east-a",
+  scenarioRoot: "SCG08EA",
+  scenario: 8,
+  variation: 0,
+  direction: 0,
+  buildLevel: 8,
+  title: "GDI Mission 8 (East A)",
+  theater: "winter",
+};
+
+const missionEightEastB: RuntimeMissionV1 = {
+  ...missionEightEastA,
+  id: "gdi-08-east-b",
+  scenarioRoot: "SCG08EB",
+  variation: 1,
+  title: "GDI Mission 8 (East B)",
+  theater: "temperate",
+};
+
 const stats = {
   unitsKilled: 3,
   buildingsKilled: 1,
@@ -364,6 +385,77 @@ describe("Mission 1 objectives", () => {
     ]);
   });
 
+  it("presents Mission 8 East A's exact elimination and survival rules", () => {
+    expect(missionObjectivePresentation(missionEightEastA, stats, undefined)?.items).toEqual([
+      {
+        id: "eliminate-nod",
+        label: "Eliminate the Nod force",
+        description: "Remove every counted unit and structure from Nod control. Destroy units; destroy or capture structures. Production can add targets.",
+        progress: "3 units and 1 structure destroyed",
+        status: "active",
+      },
+      {
+        id: "preserve-gdi",
+        label: "Keep GDI operational",
+        description: "Repairing the damaged opening force is advised; lose if no counted GDI unit or structure remains.",
+        progress: "2 losses recorded",
+        status: "active",
+      },
+    ]);
+  });
+
+  it("presents Mission 8 East B's exact Moebius, hospital, civilian, elimination, and survival rules", () => {
+    expect(missionObjectivePresentation(missionEightEastB, stats, undefined)?.items).toEqual([
+      {
+        id: "eliminate-nod",
+        label: "Eliminate the Nod force",
+        description: "Remove every counted unit and structure from Nod control. Destroy units; destroy or capture structures. Production and transport reinforcements can add targets.",
+        progress: "3 units and 1 structure destroyed",
+        status: "active",
+      },
+      {
+        id: "protect-moebius",
+        label: "Protect Dr. Moebius and the hospital",
+        description: "Dr. Moebius and the hospital must survive; losing either fails.",
+        progress: "Both protected",
+        status: "active",
+      },
+      {
+        id: "protect-civilians",
+        label: "Limit civilian casualties",
+        description: "The ninth death among 14 neutral civilians fails; at most eight may be lost.",
+        progress: "Limit active",
+        status: "active",
+      },
+      {
+        id: "preserve-gdi",
+        label: "Keep GDI operational",
+        description: "Also lose if no counted GDI unit or structure remains.",
+        progress: "GDI active",
+        status: "active",
+      },
+    ]);
+  });
+
+  it("keeps both Mission 8 variants terminal, with cause-neutral East B failures", () => {
+    for (const reviewedMission of [missionEightEastA, missionEightEastB]) {
+      const won = missionObjectivePresentation(reviewedMission, stats, { won: true });
+      expect(won?.status).toBe("complete");
+      expect(won?.items.every(({ status }) => status === "complete")).toBe(true);
+
+      const lost = missionObjectivePresentation(reviewedMission, stats, { won: false });
+      expect(lost?.status).toBe("failed");
+      expect(lost?.items.every(({ status }) => status === "failed")).toBe(true);
+      expect(lost?.items[0]?.progress).toBe("Engine-confirmed operation failed");
+      if (reviewedMission === missionEightEastB) {
+        expect(lost?.items.slice(1).every(({ progress }) => progress === "Engine-confirmed operation failed"))
+          .toBe(true);
+      } else {
+        expect(lost?.items[1]?.progress).toBe("All counted GDI units and structures were lost");
+      }
+    }
+  });
+
   it("fails closed for missions and variants without a reviewed rule set", () => {
     expect(missionObjectivePresentation({ ...mission, id: "forged-mission" }, stats, undefined)).toBeUndefined();
     expect(missionObjectivePresentation({ ...mission, buildLevel: 2 }, stats, undefined)).toBeUndefined();
@@ -402,6 +494,20 @@ describe("Mission 1 objectives", () => {
     expect(missionObjectivePresentation({ ...missionSeven, faction: "nod" }, stats, undefined)).toBeUndefined();
     expect(missionObjectivePresentation({ ...missionSeven, id: "forged-mission" }, stats, undefined)).toBeUndefined();
     expect(missionObjectivePresentation({ ...missionSeven, buildLevel: 8 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastA, direction: 1 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastA, variation: 1 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastA, faction: "nod" }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastA, id: "forged-mission" }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastA, scenarioRoot: "SCG08EB" }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastA, scenario: 9 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastA, buildLevel: 9 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastB, direction: 1 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastB, variation: 0 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastB, faction: "nod" }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastB, id: "forged-mission" }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastB, scenarioRoot: "SCG08EA" }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastB, scenario: 9 }, stats, undefined)).toBeUndefined();
+    expect(missionObjectivePresentation({ ...missionEightEastB, buildLevel: 9 }, stats, undefined)).toBeUndefined();
   });
 
   it("renders a semantic objective list and visible state", () => {
