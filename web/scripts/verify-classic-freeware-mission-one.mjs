@@ -5951,29 +5951,36 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             queueMissionEightRole(commands, `east-a-west-peel-hand-fire-${index / 10}`,
               handEngaged.slice(index, index + 10), hand, MODIFIER_CTRL, 30);
           }
-        } else if (peeled.length <= 4 && ticksSinceAir < 6_800) {
-          // Tiny remnant after HAND: pull back to staging and wait for the next
-          // A-10 instead of dying on AFLD armor with 1–3 rifles.
-          for (let index = 0; index < peeled.length; index += 10) {
-            queueMissionEightRole(commands, `east-a-west-prod-hold-${index / 10}`,
-              peeled.slice(index, index + 10), missionEightEastAProductionStaging,
-              MODIFIER_ALT, 30);
-          }
         } else {
-          // HAND is down — keep pressing the production chain (AFLD/PROC/NUKE).
+          // HAND is down — press AFLD/PROC immediately. Waiting for the next
+          // A-10 with a tiny remnant lets LTNK/BGGY finish the survivors before
+          // the next air window (~tick 72.9k; remnant is dead by ~66.8k).
+          const mopPriority = new Map([
+            ["AFLD", 0], ["PROC", 1], ["NUKE", 2], ["SILO", 3], ["HAND", 4],
+            ["LTNK", 5], ["BGGY", 6], ["ARTY", 7],
+          ]);
+          const mopTarget = hostiles.filter((hostile) => (
+            mopPriority.has(hostile.typeName)
+            && (hostile.type === 4
+              || peeled.some((attacker) => missionEightDistance(attacker, hostile) <= 5))
+          )).toSorted((left, right) => (
+            (mopPriority.get(left.typeName) ?? 20) - (mopPriority.get(right.typeName) ?? 20)
+            || left.strength - right.strength
+            || left.id - right.id
+          ))[0] ?? target;
           const approach = peeled.filter((attacker) => (
-            missionEightDistance(attacker, target) > 2
+            missionEightDistance(attacker, mopTarget) > 2
           ));
           const engaged = peeled.filter((attacker) => (
-            missionEightDistance(attacker, target) <= 2
+            missionEightDistance(attacker, mopTarget) <= 2
           ));
           for (let index = 0; index < approach.length; index += 10) {
             queueMissionEightRole(commands, `east-a-west-prod-attack-${stage}-${index / 10}`,
-              approach.slice(index, index + 10), target, 0, 30);
+              approach.slice(index, index + 10), mopTarget, 0, 30);
           }
           for (let index = 0; index < engaged.length; index += 10) {
             queueMissionEightRole(commands, `east-a-west-prod-fire-${stage}-${index / 10}`,
-              engaged.slice(index, index + 10), target, MODIFIER_CTRL, 30);
+              engaged.slice(index, index + 10), mopTarget, MODIFIER_CTRL, 30);
           }
         }
         return true;
