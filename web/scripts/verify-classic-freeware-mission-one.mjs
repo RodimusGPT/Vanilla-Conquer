@@ -2896,11 +2896,22 @@ const missionEightEastAPostSamNorthFlankRoute = [
 const missionEightEastAWestScreenPriorities = new Map([
   ["BGGY", 0], ["LTNK", 1], ["ARTY", 2], ["E4", 3], ["E3", 4], ["E1", 5],
 ]);
+// All rifles: 26×E1 fits the captured-FACT refund. Mixing late E3s exhausted
+// cash before launchCompletionCount and the wave never left home.
 const missionEightEastAPostFactRifleCount = 26;
 const missionEightEastAPostFactProductionCount = 26;
-const missionEightEastAPostFactHomeDefenseCount = 4;
+// Two home guards; the rest of the post-FACT wave joins the production cleanup.
+const missionEightEastAPostFactHomeDefenseCount = 2;
 const missionEightEastAPostFactLaunchCompletionCount =
   missionEightEastAPostFactProductionCount;
+// Launch once the production turret has been airstrike-softened (~tick 51k)
+// rather than waiting until 54.5k while it repairs back to full.
+const missionEightEastAPostFactLaunchMinTick = 52_000;
+// Charge only when the turret is badly softened. ~217 still wiped a 15-rifle
+// wave in ~600 ticks; wait for deeper damage or a post-hold airstrike pass.
+const missionEightEastAProductionGunSoftStrength = 150;
+const missionEightEastAProductionGunSite = { cellX: 26, cellY: 21, typeName: "GUN" };
+const missionEightEastAProductionStaging = { cellX: 14, cellY: 12 };
 const missionEightEastAScoutRoute = [
   { cellX: 30, cellY: 40 },
   { cellX: 24, cellY: 38 },
@@ -3043,6 +3054,14 @@ const missionEightState = {
   westCleanupCompletedTick: undefined,
   westCleanupTarget: undefined,
   westCleanupProgress: [],
+  productionGunMinimumStrength: undefined,
+  productionGunHoldStartedTick: undefined,
+  productionGunHoldLastStrength: undefined,
+  productionGunChargeTick: undefined,
+  productionGunChargeStrength: undefined,
+  productionHandAssaultTick: undefined,
+  westCleanupDeferredFromStage: undefined,
+  productionGunPeelKeys: new Set(),
   engineer: {
     orderTick: undefined,
     observedTick: undefined,
@@ -3111,6 +3130,8 @@ const missionEightState = {
   postFactSales: {
     PROC: undefined,
     NUKE: undefined,
+    PYLE: undefined,
+    GTWR: undefined,
   },
   postFactHomeDefenseKeys: new Set(),
   postFactHomeDefenseCohortKeys: new Set(),
@@ -3670,7 +3691,10 @@ function observeMissionEightTurn(snapshot, friendly, hostiles) {
     const discharged = airstrikeEntry && !airstrikeEntry.completed;
     const a10Observed = friendly.some((object) => object.type === 3 && object.typeName === "A10");
     const targetDamaged = !pendingTarget || pendingTarget.strength < state.airstrike.pending.targetStrength;
-    if (discharged && (a10Observed || targetDamaged)) {
+    const elapsed = snapshot.tick - state.airstrike.pending.orderTick;
+    // A-10 damage often lands after the aircraft is first observed. Wait long
+    // enough to record real softening before clearing the pending slot.
+    if (discharged && (targetDamaged || elapsed >= 120 || (a10Observed && elapsed >= 90))) {
       state.airstrike.discharges.push({
         orderTick: state.airstrike.pending.orderTick,
         effectTick: snapshot.tick,
@@ -3929,6 +3953,7 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       ));
       if (refinery) queueMissionEightPostFactSale(snapshot, friendly, commands, refinery);
     }
+
     if (state.northHoldTick !== undefined && state.cashConversion === undefined) {
       const powerPlants = friendly.filter((object) => (
         object.type === 4 && object.typeName === "NUKE" && (object.objectFlags & (1 << 5))
@@ -4222,22 +4247,75 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       && hostile.cellX === counterattackSite.cellX
       && hostile.cellY === counterattackSite.cellY
     )) : undefined;
-    const productionTurretTarget = mission.variant === "east-a"
-      && state.engineer.factSale.goneTick !== undefined
-      && state.airstrike.orders.length >= 2
+    const productionGun = mission.variant === "east-a"
       ? hostiles.find((hostile) => (
-        hostile.typeName === "GUN" && hostile.cellX === 26 && hostile.cellY === 21
+        hostile.typeName === missionEightEastAProductionGunSite.typeName
+        && hostile.cellX === missionEightEastAProductionGunSite.cellX
+        && hostile.cellY === missionEightEastAProductionGunSite.cellY
       ))
+      : undefined;
+    if (productionGun) {
+      state.productionGunMinimumStrength = Math.min(
+        state.productionGunMinimumStrength ?? productionGun.strength,
+        productionGun.strength,
+      );
+    }
+    // Once the production charge (or HAND peel) is committed, prefer A-10s on
+    // HAND/AFLD over the turret. Keep post-hold GUN soft-passes available so
+    // the charge does not walk into a fully repaired turret.
+    const peelCommitted = state.productionGunPeelKeys.size > 0
+      || state.westCleanupStage >= 8
+      || state.productionGunChargeTick !== undefined;
+    // Base armor gets priority only before the production assault is the focus.
+    const baseArmorThreat = mission.variant === "east-a" && !peelCommitted
+      ? hostiles.filter((hostile) => (
+          (hostile.typeName === "LTNK" || hostile.typeName === "BGGY" || hostile.typeName === "ARTY")
+          && missionEightDistance(hostile, baseAirstrikePoint) <= 16
+        )).toSorted((left, right) => (
+          missionEightDistance(left, baseAirstrikePoint)
+            - missionEightDistance(right, baseAirstrikePoint)
+          || left.strength - right.strength
+          || left.id - right.id
+        ))[0]
+      : undefined;
+    const productionTurretPriority = !peelCommitted
+      && (state.postFactCleanupLaunchTick !== undefined
+        || state.westCleanupStage >= 6
+        || (productionGun
+          && productionGun.strength > missionEightEastAProductionGunSoftStrength));
+    const productionTurretTarget = productionGun
+      && state.engineer.factSale.goneTick !== undefined
+      && state.westCleanupStage <= 7
+      && productionTurretPriority
+      && !baseArmorThreat
+      ? productionGun
       : undefined;
     const productionBaseTarget = mission.variant === "east-a"
       && state.postFactCleanupLaunchTick !== undefined
+      && (peelCommitted
+        || !productionGun
+        || productionGun.strength <= missionEightEastAProductionGunSoftStrength
+        || state.westCleanupStage >= 8)
       ? hostiles.filter((hostile) => (
           (hostile.typeName === "HAND" && hostile.cellX === 27 && hostile.cellY === 17)
           || (hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14)
-        )).toSorted((left, right) => (
-          Number(left.typeName !== "HAND") - Number(right.typeName !== "HAND")
-          || left.id - right.id
-        ))[0]
+          || (hostile.typeName === "PROC" && hostile.cellX === 25 && hostile.cellY === 17)
+          || ((hostile.typeName === "LTNK" || hostile.typeName === "BGGY")
+            && missionEightDistance(hostile, { cellX: 27, cellY: 17 }) <= 6)
+        )).toSorted((left, right) => {
+          const rank = (unit) => {
+            // HAND first (the only target whose kill we have reproduced), then
+            // pad armor once HAND is gone, then the rest of the production chain.
+            if (unit.typeName === "HAND") return 0;
+            if (unit.typeName === "LTNK" || unit.typeName === "BGGY") {
+              return state.westCleanupStage >= 9 ? 1 : 3;
+            }
+            if (unit.typeName === "AFLD") return 2;
+            if (unit.typeName === "PROC") return 4;
+            return 5;
+          };
+          return rank(left) - rank(right) || left.strength - right.strength || left.id - right.id;
+        })[0]
       : undefined;
     const structureTarget = hostiles.filter((hostile) => hostile.type === 4).toSorted((left, right) => (
       (priorities.get(left.typeName) ?? 20) - (priorities.get(right.typeName) ?? 20)
@@ -4246,8 +4324,12 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       || left.cellX - right.cellX
       || left.id - right.id
     ))[0];
-    const target = counterattackTarget ?? productionTurretTarget ?? productionBaseTarget
-      ?? baseAirstrikeTarget ?? structureTarget ?? withdrawalTarget ?? chooseTarget(hostiles);
+    const target = (peelCommitted
+      ? (productionBaseTarget ?? baseArmorThreat)
+      : (baseArmorThreat ?? productionTurretTarget))
+      ?? productionTurretTarget ?? counterattackTarget
+      ?? productionBaseTarget ?? baseAirstrikeTarget ?? structureTarget
+      ?? withdrawalTarget ?? chooseTarget(hostiles);
     if (target) {
       commands.push({
         type: COMMAND_SUPERWEAPON,
@@ -5478,6 +5560,17 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
   while (state.westCleanupStage < missionEightEastAWestCleanupTargets.length) {
     const stage = state.westCleanupStage;
     const cleanupStrike = strike;
+    const productionGun = hostiles.find((hostile) => (
+      hostile.typeName === missionEightEastAProductionGunSite.typeName
+      && hostile.cellX === missionEightEastAProductionGunSite.cellX
+      && hostile.cellY === missionEightEastAProductionGunSite.cellY
+    ));
+    if (productionGun) {
+      state.productionGunMinimumStrength = Math.min(
+        state.productionGunMinimumStrength ?? productionGun.strength,
+        productionGun.strength,
+      );
+    }
     // This guard belongs inside the loop: destroying stage 2 advances to stage
     // 3 in the same turn, and an outer guard would leak one production-turret
     // order before the next snapshot. Keep that pre-launch force moving west,
@@ -5492,6 +5585,66 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           westernReserve ? 0 : MODIFIER_ALT, westernReserve ? 30 : 90);
       }
       return true;
+    }
+    // After launch, do not bleed the wave clearing silos while the production
+    // turret is still healthy. Hold the full ridge force until the GUN is soft
+    // (or a post-hold airstrike has landed), then push stages 3–11 as one surge.
+    if (stage >= 3 && stage < 7 && state.postFactCleanupLaunchTick !== undefined
+      && productionGun
+      && productionGun.strength > missionEightEastAProductionGunSoftStrength) {
+      state.productionGunHoldStartedTick ??= snapshot.tick;
+      state.productionGunHoldLastStrength = productionGun.strength;
+      const holdDuration = snapshot.tick - state.productionGunHoldStartedTick;
+      const postHoldAirstrike = state.airstrike.orders.find((order) => (
+        order.target === "GUN"
+        && order.cellX === 26 && order.cellY === 21
+        && order.tick >= state.productionGunHoldStartedTick
+      ));
+      const sincePostHoldAirstrike = postHoldAirstrike
+        ? snapshot.tick - postHoldAirstrike.tick
+        : undefined;
+      // Charge once the turret is soft, a post-hold A-10 has landed, or a
+      // long timeout fires. Commit chargeTick here so stage 7 cannot re-hold
+      // if the gun repairs during the march, and so the next A-10 prefers HAND.
+      const readyToSurge = productionGun.strength <= missionEightEastAProductionGunSoftStrength
+        && (sincePostHoldAirstrike === undefined || sincePostHoldAirstrike >= 180);
+      const previouslySoft = (state.productionGunMinimumStrength ?? 999)
+        <= missionEightEastAProductionGunSoftStrength + 70;
+      const forceChargeAfterHold = holdDuration >= 10_500
+        // Post-hold soft-pass: charge once the turret is mid-health. Full-HP
+        // early charges wipe finishers; A-10-on-HAND first did not reduce HAND.
+        || (sincePostHoldAirstrike !== undefined && sincePostHoldAirstrike >= 300
+          && productionGun.strength <= 300)
+        || (previouslySoft && holdDuration >= 2_700
+          && productionGun.strength <= 280);
+      if (!forceChargeAfterHold && !readyToSurge) {
+        const holdThreat = hostiles.filter((hostile) => (
+          (hostile.type === 1 || hostile.type === 2)
+          && missionEightEastAWestScreenPriorities.has(hostile.typeName)
+          && cleanupStrike.some((attacker) => missionEightDistance(attacker, hostile) <= 3)
+        )).toSorted((left, right) => (
+          missionEightEastAWestScreenPriorities.get(left.typeName)
+            - missionEightEastAWestScreenPriorities.get(right.typeName)
+          || left.strength - right.strength
+          || left.id - right.id
+        ))[0];
+        const holdTarget = holdThreat ?? missionEightEastAProductionStaging;
+        for (let index = 0; index < cleanupStrike.length; index += 10) {
+          queueMissionEightRole(commands, `east-a-west-pregun-hold-${index / 10}`,
+            cleanupStrike.slice(index, index + 10), holdTarget,
+            holdThreat ? 0 : MODIFIER_ALT, holdThreat ? 30 : 60);
+        }
+        return true;
+      }
+      // Surge with the full ridge force straight onto the production turret.
+      // Clearing silos first bled 17 rifles down to 4 before the charge.
+      if (stage < 7) {
+        state.westCleanupDeferredFromStage ??= stage;
+        state.westCleanupStage = 7;
+        state.productionGunChargeTick ??= snapshot.tick;
+        state.productionGunChargeStrength ??= productionGun.strength;
+        continue;
+      }
     }
     const site = missionEightEastAWestCleanupTargets[stage];
     const target = hostiles.find((hostile) => (
@@ -5511,7 +5664,18 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
         minimumStrength: engagement?.minimumStrength ?? 0,
         absentAtStart: engagement === undefined,
       });
-      state.westCleanupStage += 1;
+      // After the production turret falls, keep pressing HAND/AFLD/PROC with
+      // the remaining force. Resume deferred western silos only after the
+      // production base chain (stages 8–11) is finished.
+      if (stage === 7) {
+        state.westCleanupStage = 8;
+      } else if (stage === 11 && state.westCleanupDeferredFromStage !== undefined) {
+        const resume = state.westCleanupDeferredFromStage;
+        state.westCleanupDeferredFromStage = undefined;
+        state.westCleanupStage = resume;
+      } else {
+        state.westCleanupStage += 1;
+      }
       state.westCleanupTarget = undefined;
       continue;
     }
@@ -5535,6 +5699,72 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
         target.strength,
       );
     }
+
+    // Stage 7 is the production turret. Charging it while fully healthy wipes
+    // the post-FACT wave; hold on the western ridge and let airstrikes soften it.
+    // Once chargeTick is set, never re-hold — earlier builds re-held when the
+    // gun repaired during the march and burned another A-10 on GUN.
+    const isProductionGun = stage >= 7
+      && site.typeName === missionEightEastAProductionGunSite.typeName
+      && site.cellX === missionEightEastAProductionGunSite.cellX
+      && site.cellY === missionEightEastAProductionGunSite.cellY;
+    if (isProductionGun && state.productionGunChargeTick === undefined) {
+      state.productionGunHoldStartedTick ??= snapshot.tick;
+      state.productionGunHoldLastStrength = target.strength;
+      const holdDuration = snapshot.tick - state.productionGunHoldStartedTick;
+      const postHoldAirstrike = state.airstrike.orders.find((order) => (
+        order.target === "GUN"
+        && order.cellX === 26 && order.cellY === 21
+        && order.tick >= state.productionGunHoldStartedTick
+      ));
+      const sincePostHoldAirstrike = postHoldAirstrike
+        ? snapshot.tick - postHoldAirstrike.tick
+        : undefined;
+      const softEnough = target.strength <= missionEightEastAProductionGunSoftStrength
+        && (sincePostHoldAirstrike === undefined || sincePostHoldAirstrike >= 180);
+      const previouslySoft = (state.productionGunMinimumStrength ?? 999)
+        <= missionEightEastAProductionGunSoftStrength + 70;
+      const forceChargeAfterHold = holdDuration >= 10_500
+        || (sincePostHoldAirstrike !== undefined && sincePostHoldAirstrike >= 300
+          && target.strength <= 300)
+        || (previouslySoft && holdDuration >= 2_700 && target.strength <= 280);
+      if (!forceChargeAfterHold && !softEnough) {
+        const holdThreat = hostiles.filter((hostile) => (
+          (hostile.type === 1 || hostile.type === 2)
+          && missionEightEastAWestScreenPriorities.has(hostile.typeName)
+          && cleanupStrike.some((attacker) => missionEightDistance(attacker, hostile) <= 3)
+        )).toSorted((left, right) => (
+          missionEightEastAWestScreenPriorities.get(left.typeName)
+            - missionEightEastAWestScreenPriorities.get(right.typeName)
+          || left.strength - right.strength
+          || left.id - right.id
+        ))[0];
+        const holdTarget = holdThreat ?? missionEightEastAProductionStaging;
+        for (let index = 0; index < cleanupStrike.length; index += 10) {
+          queueMissionEightRole(commands, `east-a-west-gun-hold-${index / 10}`,
+            cleanupStrike.slice(index, index + 10), holdTarget,
+            holdThreat ? 0 : MODIFIER_ALT, holdThreat ? 30 : 60);
+        }
+        return true;
+      }
+      state.productionGunChargeTick = snapshot.tick;
+      state.productionGunChargeStrength = target.strength;
+      // Commit the tiny home reserve once the production surge starts.
+      for (const reservist of snapshot.objects.filter((candidate) => (
+        candidate.owner === HOUSE_GDI && candidate.subObject === 0
+        && candidate.strength > 0
+        && state.postFactHomeDefenseKeys.has(objectKey(candidate))
+      ))) {
+        const key = objectKey(reservist);
+        state.postFactHomeDefenseKeys.delete(key);
+        state.postFactHomeDefenseCohortKeys.delete(key);
+        state.postFactCleanupCohortKeys.add(key);
+        state.strikeKeys.add(key);
+      }
+    } else if (isProductionGun) {
+      state.productionGunHoldLastStrength = target.strength;
+    }
+
     const postFactCleanup = state.postFactCleanupLaunchTick === undefined || stage !== 3 ? []
       : cleanupStrike.filter((attacker) => (
         state.postFactCleanupCohortKeys.has(objectKey(attacker))
@@ -5561,6 +5791,213 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           cleanupStrike.slice(index, index + 10), nearbyThreat, 0, 60);
       }
       return true;
+    }
+    // Production-base stages: keep a small finisher squad on the turret while
+    // the rest hold at western staging (out of arc). Prior peel at 22,14 still
+    // ate turret fire; full-wave gun charge wiped everyone before HAND.
+    if (stage >= 7) {
+      const hand = hostiles.find((hostile) => (
+        hostile.typeName === "HAND" && hostile.cellX === 27 && hostile.cellY === 17
+      ));
+      // Approach HAND from south of the production turret so peels do not walk
+      // through LTNK/BGGY north of the pad (prior direct rally wiped the peel).
+      const handRally = { cellX: 24, cellY: 22 };
+      // Drop dead peel keys.
+      for (const key of [...state.productionGunPeelKeys]) {
+        if (!cleanupStrike.some((attacker) => objectKey(attacker) === key)) {
+          state.productionGunPeelKeys.delete(key);
+        }
+      }
+      // Peel as soon as the charge is committed. Four finishers on a softened
+      // gun; the rest hold at staging so stage 8 has a healthy HAND wave.
+      if (stage === 7 && state.productionGunChargeTick !== undefined
+        && cleanupStrike.length > 8 && state.productionGunPeelKeys.size === 0) {
+        const ordered = cleanupStrike.toSorted((left, right) => (
+          // Keep the closest/healthiest on the gun; peel the farthest first.
+          missionEightDistance(left, target) - missionEightDistance(right, target)
+          || right.strength / right.maxStrength - left.strength / left.maxStrength
+          || left.id - right.id
+        ));
+        const finishers = ordered.slice(0, 4);
+        const finisherKeys = new Set(finishers.map(objectKey));
+        for (const attacker of ordered) {
+          if (!finisherKeys.has(objectKey(attacker))) {
+            state.productionGunPeelKeys.add(objectKey(attacker));
+          }
+        }
+      }
+      // After the gun is gone, everyone is a HAND attacker.
+      if (stage >= 8) {
+        for (const attacker of cleanupStrike) {
+          state.productionGunPeelKeys.add(objectKey(attacker));
+        }
+      }
+      const peeled = cleanupStrike.filter((attacker) => (
+        state.productionGunPeelKeys.has(objectKey(attacker))
+      ));
+      const working = cleanupStrike.filter((attacker) => (
+        !state.productionGunPeelKeys.has(objectKey(attacker))
+      ));
+      // Keep peels at western staging (safe ridge) until the next A-10 window,
+      // then rush HAND. Holding at 18,24 bled the wave to BGGYs before air;
+      // immediate rushes wiped ~17 rifles with HAND still ~350.
+      const lastAirTick = state.airstrike.orders.reduce((maxTick, order) => (
+        Math.max(maxTick, order.tick)
+      ), 0);
+      const ticksSinceAir = snapshot.tick - lastAirTick;
+      // Open just before A-10 ready. Latched — re-checking ticksSinceAir after
+      // the HAND order used to send the wave home mid-rush. 7100 is the only
+      // open that has reliably killed HAND; 6500–6900 dies with HAND still up.
+      if (state.productionHandAssaultTick === undefined
+        && (ticksSinceAir >= 7_100
+          || state.airstrike.pending !== undefined
+          || (hand !== undefined && hand.strength <= 500))) {
+        state.productionHandAssaultTick = snapshot.tick;
+        // Commit the home reserve into the production assault once the pad
+        // push starts — two late rifles help mop AFLD after HAND falls.
+        for (const reservist of snapshot.objects.filter((candidate) => (
+          candidate.owner === HOUSE_GDI && candidate.subObject === 0
+          && candidate.strength > 0
+          && state.postFactHomeDefenseKeys.has(objectKey(candidate))
+        ))) {
+          const key = objectKey(reservist);
+          state.postFactHomeDefenseKeys.delete(key);
+          state.postFactHomeDefenseCohortKeys.delete(key);
+          state.postFactCleanupCohortKeys.add(key);
+          state.strikeKeys.add(key);
+          state.productionGunPeelKeys.add(key);
+        }
+      }
+      const handAirWindow = state.productionHandAssaultTick !== undefined;
+      if (peeled.length > 0 && stage === 7) {
+        for (let index = 0; index < peeled.length; index += 10) {
+          queueMissionEightRole(commands, `east-a-west-peel-stage-${index / 10}`,
+            peeled.slice(index, index + 10), missionEightEastAProductionStaging,
+            MODIFIER_ALT, 30);
+        }
+      }
+      if (peeled.length > 0 && stage >= 8) {
+        if (!handAirWindow) {
+          // Screen threats that walk onto the ridge; otherwise hold staging.
+          const holdThreat = hostiles.filter((hostile) => (
+            (hostile.type === 1 || hostile.type === 2)
+            && missionEightEastAWestScreenPriorities.has(hostile.typeName)
+            && peeled.some((attacker) => missionEightDistance(attacker, hostile) <= 3)
+          )).toSorted((left, right) => (
+            missionEightEastAWestScreenPriorities.get(left.typeName)
+              - missionEightEastAWestScreenPriorities.get(right.typeName)
+            || left.strength - right.strength
+            || left.id - right.id
+          ))[0];
+          if (holdThreat) {
+            for (let index = 0; index < peeled.length; index += 10) {
+              queueMissionEightRole(commands, `east-a-west-peel-hold-screen-${index / 10}`,
+                peeled.slice(index, index + 10), holdThreat, 0, 30);
+            }
+          } else {
+            for (let index = 0; index < peeled.length; index += 10) {
+              queueMissionEightRole(commands, `east-a-west-peel-hold-stage-${index / 10}`,
+                peeled.slice(index, index + 10), missionEightEastAProductionStaging,
+                MODIFIER_ALT, 30);
+            }
+          }
+          return true;
+        }
+        // Air window open: whole wave on HAND. Only peel face-flame while HAND
+        // is still healthy — once it is nearly dead, ignore micro so the last
+        // volleys finish it with more rifles still standing for AFLD.
+        const handNearDead = hand && hand.strength <= 200;
+        const closeFlame = !handNearDead ? hostiles.filter((hostile) => (
+          hostile.typeName === "E4"
+          && peeled.some((attacker) => missionEightDistance(attacker, hostile) <= 2)
+        )).toSorted((left, right) => left.strength - right.strength || left.id - right.id)[0]
+          : undefined;
+        if (closeFlame) {
+          const threatened = peeled.filter((attacker) => (
+            missionEightDistance(attacker, closeFlame) <= 2
+          ));
+          const rest = peeled.filter((attacker) => (
+            missionEightDistance(attacker, closeFlame) > 2
+          ));
+          for (let index = 0; index < threatened.length; index += 10) {
+            queueMissionEightRole(commands, `east-a-west-hand-flame-${index / 10}`,
+              threatened.slice(index, index + 10), closeFlame, 0, 30);
+          }
+          if (rest.length > 0 && hand) {
+            for (let index = 0; index < rest.length; index += 10) {
+              queueMissionEightRole(commands, `east-a-west-hand-while-flame-${index / 10}`,
+                rest.slice(index, index + 10), hand, MODIFIER_CTRL, 30);
+            }
+          } else if (rest.length > 0 && !hand) {
+            for (let index = 0; index < rest.length; index += 10) {
+              queueMissionEightRole(commands, `east-a-west-hand-next-${index / 10}`,
+                rest.slice(index, index + 10), target, MODIFIER_CTRL, 30);
+            }
+          }
+          return true;
+        }
+        if (hand) {
+          const handEngaged = peeled.filter((attacker) => (
+            missionEightDistance(attacker, hand) <= 2
+          ));
+          const handApproach = peeled.filter((attacker) => (
+            missionEightDistance(attacker, hand) > 2
+          ));
+          for (let index = 0; index < handApproach.length; index += 10) {
+            queueMissionEightRole(commands, `east-a-west-peel-hand-attack-${index / 10}`,
+              handApproach.slice(index, index + 10), hand, 0, 30);
+          }
+          for (let index = 0; index < handEngaged.length; index += 10) {
+            queueMissionEightRole(commands, `east-a-west-peel-hand-fire-${index / 10}`,
+              handEngaged.slice(index, index + 10), hand, MODIFIER_CTRL, 30);
+          }
+        } else if (peeled.length <= 4 && ticksSinceAir < 6_800) {
+          // Tiny remnant after HAND: pull back to staging and wait for the next
+          // A-10 instead of dying on AFLD armor with 1–3 rifles.
+          for (let index = 0; index < peeled.length; index += 10) {
+            queueMissionEightRole(commands, `east-a-west-prod-hold-${index / 10}`,
+              peeled.slice(index, index + 10), missionEightEastAProductionStaging,
+              MODIFIER_ALT, 30);
+          }
+        } else {
+          // HAND is down — keep pressing the production chain (AFLD/PROC/NUKE).
+          const approach = peeled.filter((attacker) => (
+            missionEightDistance(attacker, target) > 2
+          ));
+          const engaged = peeled.filter((attacker) => (
+            missionEightDistance(attacker, target) <= 2
+          ));
+          for (let index = 0; index < approach.length; index += 10) {
+            queueMissionEightRole(commands, `east-a-west-prod-attack-${stage}-${index / 10}`,
+              approach.slice(index, index + 10), target, 0, 30);
+          }
+          for (let index = 0; index < engaged.length; index += 10) {
+            queueMissionEightRole(commands, `east-a-west-prod-fire-${stage}-${index / 10}`,
+              engaged.slice(index, index + 10), target, MODIFIER_CTRL, 30);
+          }
+        }
+        return true;
+      }
+      const gunForce = working.length > 0 ? working : cleanupStrike;
+      const approach = gunForce.filter((attacker) => (
+        missionEightDistance(attacker, target) > 3
+      ));
+      const engaged = gunForce.filter((attacker) => (
+        missionEightDistance(attacker, target) <= 3
+      ));
+      const rally = {
+        cellX: Math.max(0, target.cellX - 2),
+        cellY: Math.max(0, target.cellY),
+      };
+      for (let index = 0; index < approach.length; index += 10) {
+        queueMissionEightRole(commands, `east-a-west-approach-${stage}-${index / 10}`,
+          approach.slice(index, index + 10), rally, MODIFIER_ALT, 30);
+      }
+      for (let index = 0; index < engaged.length; index += 10) {
+        queueMissionEightRole(commands, `east-a-west-cleanup-${stage}-${index / 10}`,
+          engaged.slice(index, index + 10), target, MODIFIER_CTRL, 30);
+      }
+      if (approach.length > 0 || engaged.length > 0 || peeled.length > 0) return true;
     }
     for (let index = 0; index < cleanupStrike.length; index += 10) {
       queueMissionEightRole(commands, `east-a-west-cleanup-${stage}-${index / 10}`,
@@ -5711,9 +6148,9 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
         >= missionEightEastAPostFactLaunchCompletionCount
       && state.airstrike.orders.filter((order) => (
         order.target === "GUN" && order.cellX === 26 && order.cellY === 21
-      )).length >= 2
+      )).length >= 1
       && state.airstrike.pending === undefined
-      && snapshot.tick >= 54_510) {
+      && snapshot.tick >= missionEightEastAPostFactLaunchMinTick) {
       state.postFactCleanupLaunchTick = snapshot.tick;
       const liveHomeCohort = attackers.filter((attacker) => (
         state.postFactHomeDefenseCohortKeys.has(objectKey(attacker))
@@ -5721,12 +6158,15 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       const launchCandidates = [...new Map([
         ...liveHomeCohort, ...cleanup, ...launchSupport,
       ].map((attacker) => [objectKey(attacker), attacker])).values()];
+      // Prefer rifles for the tiny home reserve so any rockets/vehicles attack.
       const defensePriorities = new Map([
-        ["E3", 0], ["MTNK", 1], ["MSAM", 2], ["APC", 3],
-        ["JEEP", 4], ["E2", 5], ["E1", 6],
+        ["E1", 0], ["E2", 1], ["JEEP", 2], ["E3", 3],
+        ["APC", 4], ["MSAM", 5], ["MTNK", 6],
       ]);
-      const reserveCount = Math.min(launchCandidates.length,
-        Math.max(missionEightEastAPostFactHomeDefenseCount, liveHomeCohort.length));
+      const reserveCount = Math.min(
+        launchCandidates.length,
+        missionEightEastAPostFactHomeDefenseCount,
+      );
       const reserveKeys = new Set(launchCandidates.toSorted((left, right) => (
         (defensePriorities.get(left.typeName) ?? 20)
           - (defensePriorities.get(right.typeName) ?? 20)
@@ -7514,6 +7954,13 @@ try {
           westCleanupCompletedTick: missionEightState.westCleanupCompletedTick,
           westCleanupTarget: missionEightState.westCleanupTarget,
           westCleanupProgress: missionEightState.westCleanupProgress,
+          productionGun: {
+            minimumStrength: missionEightState.productionGunMinimumStrength,
+            holdStartedTick: missionEightState.productionGunHoldStartedTick,
+            holdLastStrength: missionEightState.productionGunHoldLastStrength,
+            chargeTick: missionEightState.productionGunChargeTick,
+            chargeStrength: missionEightState.productionGunChargeStrength,
+          },
           cleanupThreats: (() => {
             const cleanup = attackers.filter((attacker) => (
               missionEightState.postFactCleanupCohortKeys.has(objectKey(attacker))
@@ -11379,6 +11826,13 @@ try {
         westCleanupStartedTick: missionEightState.westCleanupStartedTick,
         westCleanupCompletedTick: missionEightState.westCleanupCompletedTick,
         westCleanupProgress: missionEightState.westCleanupProgress,
+        productionGun: {
+          minimumStrength: missionEightState.productionGunMinimumStrength,
+          holdStartedTick: missionEightState.productionGunHoldStartedTick,
+          holdLastStrength: missionEightState.productionGunHoldLastStrength,
+          chargeTick: missionEightState.productionGunChargeTick,
+          chargeStrength: missionEightState.productionGunChargeStrength,
+        },
         targets: [...missionEightState.southWithdrawalTargets.values()],
         targetDeaths: [...missionEightState.southWithdrawalTargetDeaths.values()],
       } : undefined,
