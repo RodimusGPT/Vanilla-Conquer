@@ -3169,6 +3169,12 @@ const missionEightState = {
   transportSightings: new Map(),
   hospitalMinimumStrength: Infinity,
   moebiusMinimumStrength: Infinity,
+  // East-b lose diagnosis (SCG08EB: los3 on Moebius/HOSP, civ #9 Neutral).
+  eastBNeutralUnitKeys: new Set(),
+  eastBNeutralDeaths: [],
+  eastBHospitalMissingTick: undefined,
+  eastBMoebiusMissingTick: undefined,
+  eastBLoseHint: undefined,
 };
 
 function clearMissionEightUnitRoleKey(key) {
@@ -3721,13 +3727,43 @@ function observeMissionEightTurn(snapshot, friendly, hostiles) {
     const neutralUnits = snapshot.objects.filter((object) => (
       object.owner === HOUSE_NEUTRAL && object.subObject === 0 && object.type === 1 && object.strength > 0
     ));
+    const liveNeutralKeys = new Set(neutralUnits.map(objectKey));
+    if (state.eastBNeutralUnitKeys.size === 0) {
+      for (const key of liveNeutralKeys) state.eastBNeutralUnitKeys.add(key);
+    } else {
+      for (const key of [...state.eastBNeutralUnitKeys]) {
+        if (!liveNeutralKeys.has(key)
+          && !state.eastBNeutralDeaths.some((death) => death.key === key)) {
+          state.eastBNeutralDeaths.push({ key, tick: snapshot.tick });
+        }
+      }
+      for (const key of liveNeutralKeys) state.eastBNeutralUnitKeys.add(key);
+    }
     state.minimumNeutralUnits = Math.min(state.minimumNeutralUnits, neutralUnits.length);
     const hospital = friendly.find((object) => object.type === 4 && object.typeName === "HOSP"
       && object.cellX === 3 && object.cellY === 60);
     const moebius = friendly.find((object) => object.type === 1 && object.typeName === "MOEBIUS"
       && object.cellX === 6 && object.cellY === 60);
-    if (hospital) state.hospitalMinimumStrength = Math.min(state.hospitalMinimumStrength, hospital.strength);
-    if (moebius) state.moebiusMinimumStrength = Math.min(state.moebiusMinimumStrength, moebius.strength);
+    if (hospital) {
+      state.hospitalMinimumStrength = Math.min(state.hospitalMinimumStrength, hospital.strength);
+    } else {
+      state.eastBHospitalMissingTick ??= snapshot.tick;
+    }
+    if (moebius) {
+      state.moebiusMinimumStrength = Math.min(state.moebiusMinimumStrength, moebius.strength);
+    } else {
+      state.eastBMoebiusMissingTick ??= snapshot.tick;
+    }
+    // Infer likely SCG08EB lose trigger for diagnostics.
+    if (state.eastBMoebiusMissingTick !== undefined || state.eastBHospitalMissingTick !== undefined) {
+      state.eastBLoseHint = "los3-moebius-or-hosp";
+    } else if (state.eastBNeutralDeaths.length >= 9
+      || state.minimumNeutralUnits <= state.initialNeutralUnitKeys.size - 9) {
+      state.eastBLoseHint = "civ-nine-neutral-unit-deaths";
+    } else if (friendly.filter((object) => object.type === 1 || object.type === 2 || object.type === 4)
+      .length === 0) {
+      state.eastBLoseHint = "all-destr-goodguy";
+    }
     for (const transport of hostiles.filter((object) => object.type === 3 && object.typeName === "TRAN")) {
       const key = objectKey(transport);
       if (!state.transportSightings.has(key)) state.transportSightings.set(key, {
@@ -11129,12 +11165,32 @@ try {
   }
   const gameOverEvents = events.filter((event) => event.type === EVENT_GAME_OVER);
   const outcomeEvents = events.filter((event) => event.type === EVENT_CAMPAIGN_OUTCOME);
+  const eastBLoseDiagnosis = mission.number === 8 && mission.variant === "east-b" ? {
+    loseHint: missionEightState.eastBLoseHint
+      ?? (missionEightState.eastBNeutralDeaths.length >= 9 ? "civ-nine-neutral-unit-deaths"
+        : missionEightState.eastBMoebiusMissingTick !== undefined ? "los3-moebius"
+        : missionEightState.eastBHospitalMissingTick !== undefined ? "los3-hosp"
+        : "unknown"),
+    neutralDeaths: missionEightState.eastBNeutralDeaths.length,
+    neutralDeathTicks: missionEightState.eastBNeutralDeaths.slice(0, 12),
+    minimumNeutralUnits: missionEightState.minimumNeutralUnits,
+    initialNeutralUnits: missionEightState.initialNeutralUnitKeys.size,
+    hospitalMin: missionEightState.hospitalMinimumStrength,
+    moebiusMin: missionEightState.moebiusMinimumStrength,
+    hospitalMissingTick: missionEightState.eastBHospitalMissingTick,
+    moebiusMissingTick: missionEightState.eastBMoebiusMissingTick,
+    transportSightings: missionEightState.transportSightings.size,
+    assaultTick: missionEightState.assaultTick,
+    routeStage: missionEightState.routeStage,
+    producedTanks: missionEightState.eastBProducedTankKeys.size,
+  } : undefined;
   const terminalSummary = JSON.stringify({
     tick: finalSnapshot.tick,
     productionStarts,
     repairOrders,
     credits: finalSnapshot.sidebar.credits,
     stats: finalSnapshot.stats,
+    ...(eastBLoseDiagnosis ? { eastBLoseDiagnosis } : {}),
     friendly: rootCombatants(finalSnapshot, HOUSE_GDI).map(({ typeName, id, strength, cellX, cellY }) => ({ typeName, id, strength, cellX, cellY })),
     hostile: rootCombatants(finalSnapshot, HOUSE_NOD).map(({ typeName, id, strength, cellX, cellY }) => ({ typeName, id, strength, cellX, cellY })),
   });
@@ -11144,6 +11200,19 @@ try {
   const outcome = outcomeEvents[0];
   assert.equal(gameOver.flags & 1, 0, `GDI Mission ${mission.number} unexpectedly ended as multiplayer`);
   assert.ok(gameOver.flags & 2, "game-over event does not identify the human player");
+  if (mission.number === 8 && mission.variant === "east-b" && !(gameOver.flags & 4)) {
+    console.error(JSON.stringify({
+      eastBGameOver: {
+        tick: gameOver.tick,
+        flags: gameOver.flags,
+        won: Boolean(gameOver.flags & 4),
+        movieName: gameOver.text1,
+        afterScoreMovie: gameOver.text2,
+        args: gameOver.args,
+      },
+      eastBLoseDiagnosis,
+    }));
+  }
   assert.ok(gameOver.flags & 4, `GDI Mission ${mission.number} ended without a win: ${terminalSummary}`);
   assert.ok(outcome.flags & 4, "campaign outcome is not a win");
   assert.equal(outcome.tick, gameOver.tick, "campaign outcome and game-over ticks differ");
