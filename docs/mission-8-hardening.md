@@ -168,6 +168,29 @@ build/place order, infantry + vehicle production.
 |---|---|
 | Require 8 assault tanks + 2 village tanks | Never reached cohort; no assault; earlier lose |
 | Early infantry before tank cohort | Delayed economy; base nearly wiped |
+| ARTY split-hunt + earlier assault gates | Base wipe / earlier lose (regressed) |
+
+### In-progress village-first WIP (local)
+
+Working changes (not green yet):
+
+- Prefer **village role fill before base** for unassigned units
+- Divert produced MTNKs to keep **2 village tanks** (excluded from strike)
+- Assault gate: civilian deaths ≤7, ≥2 village tanks, ≥3 free staged tanks,
+  tick ≥30k (staging radius relaxed; 6 free tanks was unreachable with village hold)
+- Hospital-ridge hold; TRAN/ARTY priority; one-tank distant-ARTY hunt
+- Limited village E3 production after WEAP with MTNK cash reserve
+
+Latest TRACE (still red):
+
+- Assault launches ~30k with 3 free tanks; western route dies by stage 6
+- Village often keeps 2 MTNKs until late; hospital usually full HP
+- Lose still `GDILOSE` with **8 tracked civilian deaths** (near `civ` threshold;
+  occasional runs hit 9). Early deaths ~5k–11k remain the leak
+- Base can still be wiped if assault never launches (cash/staging deadlock)
+
+Next village-first steps: stop the early four civilian deaths (ARTY/tank1 at
+ticks 5–11k), then grow free assault armor without stripping hospital tanks.
 
 ### East B next (ordered by confirmed fail)
 
