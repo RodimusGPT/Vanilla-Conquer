@@ -2957,16 +2957,17 @@ const missionEightStructurePreferences = new Map([
 const missionEightEastBTankAssembly = { cellX: 39, cellY: 57 };
 const missionEightEastBTankReserve = { cellX: 27, cellY: 57 };
 // Village platoon: produced tanks diverted here until this many live MTNKs
-// guard the hospital/civilians (never join the strike force). After the early
-// civil window we only top up to 1 so free armor can stage for assault.
+// guard the hospital/civilians (never join the strike force). Keep 2 through
+// the whole mission — dropping to 1 after 20k let mid-game airlifts farm civs
+// once the base vehicles left with the strike (TRACE v10: civ-nine ~40k).
 const missionEightEastBVillageTankCount = 2;
-const missionEightEastBVillageTankCountLate = 1;
-// Strike tanks free of village duty. 2 free staged is the reachable launch bar
-// once the late village hold is only 1 tank.
+const missionEightEastBVillageTankCountLate = 2;
+// Free staged tanks at launch. Base vehicles also join the strike, so 2 free
+// MTNKs + healthy base armor is the realistic cohort.
 const missionEightEastBAssaultTankCount = 2;
-// Launch once free armor is parked — waiting to 30k used to re-divert free
-// tanks back onto village as early guards bled out (TRACE: 2 free @21k, 1 @30k).
-const missionEightEastBAssaultMinTick = 22_000;
+// Launch once free armor is parked. 22k had 2 free staged; a short pad lets a
+// third tank finish more often without re-starving the village divert.
+const missionEightEastBAssaultMinTick = 24_000;
 // Prefer not to launch the western strike after this many civilian deaths
 // (SCG08EB fails on the 9th). Still allow a late push with thin margin.
 const missionEightEastBMaxCivilianDeathsBeforeAssault = 7;
@@ -4211,7 +4212,9 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
   }
 
   if (mission.variant === "east-b" && builtAssets.has("WEAP")) {
-    const vehicleAsset = !eastBTankCohortReady
+    // Prefer MTNK always for the western strike. Occasional JEEP only before
+    // assault when cash is short of another tank.
+    const vehicleAsset = !eastBTankCohortReady || missionEightState.assaultTick !== undefined
       ? "MTNK"
       : vehicleProductionStarts % 5 === 4 ? "JEEP" : "MTNK";
     const vehicle = snapshot.sidebar.entries.find((entry) => entry.assetName === vehicleAsset)
@@ -4243,19 +4246,27 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
     const structureReserve = mission.variant === "east-b" && !builtAssets.has("WEAP")
       ? 2_000
       : mission.variant === "east-b" && !eastBTankCohortReady ? 1_000
+      : mission.variant === "east-b" && missionEightState.assaultTick !== undefined
+        && (missionEightState.strikeKeys.size >= 4) ? 800
+      : mission.variant === "east-b" && missionEightState.assaultTick !== undefined ? 0
       : mission.variant === "east-a" && state.allSamsDeadTick !== undefined ? 0
         : mission.variant === "east-a" && state.secondWaveLaunchTick !== undefined ? 0 : 400;
     const infantryPattern = mission.variant === "east-a"
       ? state.allSamsDeadTick !== undefined
         ? ["E3"]
         : state.secondWaveLaunchTick !== undefined ? ["E1"] : ["E1", "E3", "E1", "E1"]
-      : eastBVillageInfantryCount < 5 ? ["E3", "E3", "E2"] : ["E3", "E2", "E3"];
+      : eastBVillageInfantryCount < 5 ? ["E3", "E3", "E2"]
+        : missionEightState.assaultTick !== undefined ? ["E3", "E3", "E2"]
+        : ["E3", "E2", "E3"];
     const infantryAsset = infantryPattern[infantryProductionStarts % infantryPattern.length];
     const infantry = snapshot.sidebar.entries.find((entry) => entry.assetName === infantryAsset)
       ?? snapshot.sidebar.entries.find((entry) => entry.assetName === "E2")
       ?? snapshot.sidebar.entries.find((entry) => entry.assetName === "E1");
-    // Keep enough cash for the next MTNK while village is still short armor.
-    const eastBInfantryReserve = mission.variant === "east-b" && !eastBTankCohortReady
+    // Keep enough cash for the next MTNK while village is still short armor /
+    // while the western strike is live (tanks are the only durable GUN/SAM DPS).
+    const eastBInfantryReserve = mission.variant === "east-b" && (
+      !eastBTankCohortReady || missionEightState.assaultTick !== undefined
+    )
       ? Math.max(structureReserve, 800)
       : structureReserve;
     if (infantry && !infantry.constructing && !infantry.completed && !infantry.onHold && !infantry.busy
@@ -4986,10 +4997,15 @@ function missionEightAssignRoles(snapshot, attackers) {
       && state.eastBProducedTankKeys.has(objectKey(attacker)))
   ));
   if (mission.variant === "east-b") {
-    // Village first — base fill used to starve hospital defense of replacements.
+    // Village first pre-assault — base fill used to starve hospital replacements.
+    // Post-assault: free armor streams to the western strike (TRACE: village size
+    // cap of 8 ate every new unit, so strike stayed at 2 MTNKs and died at stage 3).
     const villageTankTarget = snapshot.tick < 20_000
       ? missionEightEastBVillageTankCount
       : missionEightEastBVillageTankCountLate;
+    const liveVillageInfantry = attackers.filter((unit) => (
+      unit.type === 1 && state.villageGuardKeys.has(objectKey(unit))
+    )).length;
     for (const attacker of unassigned) {
       if (attacker.typeName === "MCV" || attacker.typeName === "HARV") continue;
       const key = objectKey(attacker);
@@ -5001,9 +5017,18 @@ function missionEightAssignRoles(snapshot, attackers) {
         state.villageGuardKeys.add(key);
         continue;
       }
-      if (state.villageGuardKeys.size < 8) state.villageGuardKeys.add(key);
-      else if (state.baseGuardKeys.size < 8) state.baseGuardKeys.add(key);
-      else if (state.assaultTick !== undefined) state.strikeKeys.add(key);
+      if (state.assaultTick !== undefined) {
+        if (attacker.typeName === "MTNK" || attacker.type === 2
+          || (attacker.type === 1 && liveVillageInfantry >= 6)) {
+          state.strikeKeys.add(key);
+          continue;
+        }
+      }
+      if (state.villageGuardKeys.size < (state.assaultTick !== undefined ? 6 : 8)) {
+        state.villageGuardKeys.add(key);
+      } else if (state.baseGuardKeys.size < (state.assaultTick !== undefined ? 4 : 8)) {
+        state.baseGuardKeys.add(key);
+      } else if (state.assaultTick !== undefined) state.strikeKeys.add(key);
     }
   } else if (state.assaultTick !== undefined) {
     for (const attacker of unassigned) {
@@ -5099,14 +5124,34 @@ function missionEightAssignRoles(snapshot, attackers) {
         state.secondWaveKeys.add(objectKey(attacker));
       }
     } else {
+      // East-b: free produced tanks alone die at the western gate (~route stage 3
+      // with strike=2). Commit healthy base vehicles + surplus infantry; keep
+      // village and a thin base infantry screen home. Skip half-dead base scrap
+      // (TRACE v10: 32–52 HP MSAMs died on the approach without helping).
+      const baseInfantry = attackers.filter((attacker) => (
+        attacker.type === 1 && state.baseGuardKeys.has(objectKey(attacker))
+      )).toSorted((left, right) => (
+        right.strength / right.maxStrength - left.strength / left.maxStrength
+        || left.id - right.id
+      ));
+      const baseInfantryKeep = new Set(
+        baseInfantry.slice(0, 3).map((unit) => objectKey(unit)),
+      );
       const reserve = new Set([
         ...state.villageGuardKeys,
-        ...state.baseGuardKeys,
+        ...baseInfantryKeep,
         ...state.scoutKeys,
       ]);
       for (const attacker of attackers) {
+        if (attacker.typeName === "MCV" || attacker.typeName === "HARV") continue;
         const key = objectKey(attacker);
-        if (!reserve.has(key)) state.strikeKeys.add(key);
+        if (reserve.has(key)) continue;
+        if (state.baseGuardKeys.has(key)
+          && attacker.strength < Math.ceil(attacker.maxStrength * 0.75)) {
+          continue;
+        }
+        state.baseGuardKeys.delete(key);
+        state.strikeKeys.add(key);
       }
     }
     state.routeStageStartedTick = snapshot.tick;
@@ -5163,7 +5208,36 @@ function missionEightAssignRoles(snapshot, attackers) {
     state.thirdWaveLaunchTick = snapshot.tick;
     state.assaultWave = 3;
   }
-  if (mission.variant !== "east-a" && state.assaultTick !== undefined && state.strikeKeys.size < 6) {
+  if (mission.variant === "east-b" && state.assaultTick !== undefined) {
+    // Stream free armor and surplus base units into the strike as they appear.
+    // The old "wait for 8 unassigned" gate never fired with village-first fill.
+    const liveVillageInfantry = attackers.filter((unit) => (
+      unit.type === 1 && state.villageGuardKeys.has(objectKey(unit))
+    )).length;
+    const joiners = attackers.filter((attacker) => {
+      const key = objectKey(attacker);
+      if (state.villageGuardKeys.has(key) || state.scoutKeys.has(key)
+        || state.strikeKeys.has(key)) return false;
+      if (attacker.typeName === "MCV" || attacker.typeName === "HARV") return false;
+      if (attacker.typeName === "MTNK" || attacker.type === 2) return true;
+      if (attacker.type === 1 && state.baseGuardKeys.has(key)) {
+        const baseInfantry = attackers.filter((unit) => (
+          unit.type === 1 && state.baseGuardKeys.has(objectKey(unit))
+        )).length;
+        return baseInfantry > 3;
+      }
+      return liveVillageInfantry >= 6 && !state.baseGuardKeys.has(key);
+    });
+    if (joiners.length > 0) {
+      if (state.strikeKeys.size === 0) state.assaultWave += 1;
+      for (const attacker of joiners) {
+        const key = objectKey(attacker);
+        state.baseGuardKeys.delete(key);
+        state.strikeKeys.add(key);
+      }
+    }
+  } else if (mission.variant !== "east-a" && state.assaultTick !== undefined
+    && state.strikeKeys.size < 6) {
     const reinforcements = attackers.filter((attacker) => (
       !state.villageGuardKeys.has(objectKey(attacker))
       && !state.baseGuardKeys.has(objectKey(attacker))
@@ -6969,6 +7043,33 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       || nextWaypoint.label === "western ridge crossing")
     || mission.variant === "east-b" && Boolean(nextWaypoint.forceMove);
   let screeningStrike = strike;
+  // East-b GUN/SAM: put every healthy MTNK on the authored target so scrap
+  // vehicles do not dilute focus fire (TRACE: GUN dies, SAM survives).
+  if (mission.variant === "east-b" && nextWaypoint.typeName
+    && (nextWaypoint.typeName === "GUN" || nextWaypoint.typeName === "SAM")) {
+    const focus = missionEightRouteTarget(snapshot, hostiles, nextWaypoint)
+      ?? (nextWaypoint.typeName === "GUN"
+        ? hostiles.find((hostile) => (
+          hostile.typeName === "SAM" && hostile.cellX === 13 && hostile.cellY === 16
+        ))
+        : undefined);
+    if (focus) {
+      const tanks = strike.filter((attacker) => (
+        attacker.typeName === "MTNK"
+        && attacker.strength >= Math.ceil(attacker.maxStrength * 0.35)
+      ));
+      const rest = strike.filter((attacker) => (
+        !tanks.some((tank) => objectKey(tank) === objectKey(attacker))
+      ));
+      if (tanks.length > 0) {
+        queueMissionEightRole(commands, "east-b-focus-tanks", tanks, focus, 0, 20);
+      }
+      if (rest.length > 0) {
+        queueMissionEightRole(commands, "east-b-focus-screen", rest, focus, 0, 30);
+      }
+      return;
+    }
+  }
   if (mission.variant === "east-a" && nextWaypoint.typeName && routeTarget
     && !(factCapturePending && nextWaypoint.typeName === "FACT")) {
     const demolitionPriority = new Map([
@@ -6988,6 +7089,33 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     queueMissionEightRole(commands, "strike-sam-demolition", demolitionGroup, routeTarget, 0, 30);
   }
   if (forceMoveCorridor) {
+    const threatPriority = new Map([
+      ["ARTY", 0], ["LTNK", 1], ["GUN", 2], ["BGGY", 3], ["E4", 4], ["E3", 5], ["E1", 6],
+    ]);
+    const engageRadius = mission.variant === "east-b" ? 8 : 6;
+    const corridorThreat = hostiles.filter((hostile) => (
+      snapshot.shroud.isVisible(hostile.cellX, hostile.cellY)
+      && (hostile.type === 1 || hostile.type === 2 || hostile.typeName === "GUN")
+      && screeningStrike.some((attacker) => (
+        missionEightDistance(attacker, hostile) <= engageRadius
+      ))
+    )).toSorted((left, right) => (
+      (threatPriority.get(left.typeName) ?? 20) - (threatPriority.get(right.typeName) ?? 20)
+      || Math.min(...screeningStrike.map((attacker) => missionEightDistance(attacker, left)))
+        - Math.min(...screeningStrike.map((attacker) => missionEightDistance(attacker, right)))
+      || left.strength - right.strength
+      || left.id - right.id
+    ))[0];
+    // East-b western gate: pure force-move walks 2–7 units into ARTY/LTNK fire
+    // and they die by stage 3 without ever shooting. Whole strike stops to clear
+    // local threats before advancing the corridor.
+    if (mission.variant === "east-b" && corridorThreat) {
+      for (let index = 0; index < screeningStrike.length; index += 10) {
+        queueMissionEightRole(commands, `east-b-corridor-clear-${index / 10}`,
+          screeningStrike.slice(index, index + 10), corridorThreat, 0, 30);
+      }
+      return;
+    }
     for (const key of state.corridorScreenKeys) {
       if (!screeningStrike.some((attacker) => objectKey(attacker) === key)) {
         state.corridorScreenKeys.delete(key);
@@ -7009,20 +7137,6 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     const corridorScreen = screeningStrike.filter((attacker) => (
       state.corridorScreenKeys.has(objectKey(attacker))
     ));
-    const threatPriority = new Map([
-      ["E4", 0], ["ARTY", 1], ["E3", 2], ["LTNK", 3], ["BGGY", 4], ["E1", 5], ["GUN", 6],
-    ]);
-    const corridorThreat = hostiles.filter((hostile) => (
-      snapshot.shroud.isVisible(hostile.cellX, hostile.cellY)
-      && (hostile.type === 1 || hostile.type === 2 || hostile.typeName === "GUN")
-      && screeningStrike.some((attacker) => missionEightDistance(attacker, hostile) <= 6)
-    )).toSorted((left, right) => (
-      (threatPriority.get(left.typeName) ?? 20) - (threatPriority.get(right.typeName) ?? 20)
-      || Math.min(...screeningStrike.map((attacker) => missionEightDistance(attacker, left)))
-        - Math.min(...screeningStrike.map((attacker) => missionEightDistance(attacker, right)))
-      || left.strength - right.strength
-      || left.id - right.id
-    ))[0];
     queueMissionEightRole(commands, "strike-corridor-screen", corridorScreen,
       corridorThreat ?? nextWaypoint, corridorThreat ? 0 : MODIFIER_ALT, 45);
     const corridorScreenKeys = new Set(corridorScreen.map(objectKey));
