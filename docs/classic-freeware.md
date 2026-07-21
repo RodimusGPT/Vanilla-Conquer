@@ -78,9 +78,9 @@ Mission 4 and Mission 5 variants, Mission 6's Commando sabotage path, Mission
 7's carried-state base-building operation, and both Mission 8 variants. Retained
 green verifier evidence currently covers Missions 1–7. Both Mission 8 variants
 are wired into the gate but remain under route hardening, so either failure
-correctly blocks a release. Working notes for Mission 8 (east-a HAND
-checkpoint, Design A dead-end, east-b scenario triggers) live in
-[mission-8-hardening.md](mission-8-hardening.md).
+correctly blocks a release. Working notes for Mission 8 live in
+[mission-8-hardening.md](mission-8-hardening.md); resume east-b (western SAM)
+from [mission-8-east-b-handoff.md](mission-8-east-b-handoff.md).
 
 Campaign starts expose **Easy**, **Normal**, and **Hard**, with Normal as the
 default. Because the browser engine is a `REMASTER_BUILD`, its host installs

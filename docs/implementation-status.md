@@ -392,8 +392,9 @@ local-only evidence boundary is documented in
 
 1. Finish and retain green public-ABI victory traces for both Mission 8
    variants; they already fail closed in the aggregate release gate. See
-   [mission-8-hardening.md](mission-8-hardening.md) for east-a/east-b
-   progress, closed dead-ends, and `SCG08EB` fail triggers.
+   [mission-8-east-b-handoff.md](mission-8-east-b-handoff.md) to resume east-b
+   (western SAM kill) and [mission-8-hardening.md](mission-8-hardening.md) for
+   scenario facts, east-a notes, and closed dead-ends.
 2. Publish an immutable candidate to an operator-controlled HTTPS target, run
    the staging gate, then complete physical Safari and representative
    desktop/mobile hardware review, including a human-played Mission 1 victory

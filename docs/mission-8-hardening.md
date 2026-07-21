@@ -1,12 +1,14 @@
 # Mission 8 public-ABI hardening note
 
-Status as of checkpoint `fb5b00a` on `browser-port` (pushed to
-`fork/browser-port`). Both Mission 8 variants are **mandatory** in
-`test:classic-freeware:release` and remain **red**. Missions 1–7 retain green
-public-ABI victory evidence.
+Both Mission 8 variants are **mandatory** in `test:classic-freeware:release`
+and remain **red**. Missions 1–7 retain green public-ABI victory evidence.
 
-This note records scenario facts, current verifier progress, closed dead-ends,
-and next work. It is not a release claim.
+**East-b live handoff (resume here):**
+[mission-8-east-b-handoff.md](mission-8-east-b-handoff.md) — TRACE metrics,
+code map, closed experiments, ordered next steps for another harness.
+
+This note records scenario facts, retained progress, closed dead-ends, and
+pointers. It is not a release claim.
 
 ## Shared gate criteria
 
@@ -170,47 +172,44 @@ build/place order, infantry + vehicle production.
 | Early infantry before tank cohort | Delayed economy; base nearly wiped |
 | ARTY split-hunt + earlier assault gates | Base wipe / earlier lose (regressed) |
 
-### In-progress village-first WIP (local)
+### In-progress western SAM kill WIP
 
-Working changes (not green yet):
+**Detailed resume state:** [mission-8-east-b-handoff.md](mission-8-east-b-handoff.md).
 
-- Prefer **village role fill before base** for unassigned units
-- Divert produced MTNKs to keep **2 village tanks** (excluded from strike)
-- Assault gate: civilian deaths ≤7, ≥2 village tanks, ≥3 free staged tanks,
-  tick ≥30k (staging radius relaxed; 6 free tanks was unreachable with village hold)
-- Hospital-ridge hold; TRAN/ARTY priority; one-tank distant-ARTY hunt
-- Limited village E3 production after WEAP with MTNK cash reserve
+Village-first intercept is largely **held**: early civ ≤1 by tick 20k
+(`neutralMinimum` 13), hospital/Moebius screen, 2 village MTNKs excluded from
+strike. Current blocker is the **western GUN→SAM** fight on route stage 6–7.
 
-Latest TRACE (still red):
+Implemented (still red):
 
-- Assault launches ~30k with 3 free tanks; western route dies by stage 6
-- Village often keeps 2 MTNKs until late; hospital usually full HP
-- Lose still `GDILOSE` with **8 tracked civilian deaths** (near `civ` threshold;
-  occasional runs hit 9). Early deaths ~5k–11k remain the leak
-- Base can still be wiped if assault never launches (cash/staging deadlock)
+- Assault ~22–28k with **3 free MTNKs** staged at assembly; soft follow-up tank gate
+- **SAM pack**: MTNK-first production + gap-fill free E3 (target ~4); rockets
+  loaned at launch; park free E3 at `{13,32}` until firing line
+- Western forceMove corridor → GUN (11,18) → SAM (13,16); past-arrival stage advance
+- GUN form-up; SAM focus-fire; west-rail for east-wanderers; village/base finish loans
+- Emergency NUKE sell when strike empty + SAM chipped + funds stuck under 800
 
-Next village-first steps: stop the early four civilian deaths (ARTY/tank1 at
-ticks 5–11k), then grow free assault armor without stripping hospital tanks.
+Best TRACE class: western SAM chipped to **~200 HP** (not killed); no A-10 yet.
 
 ### East B next (ordered by confirmed fail)
 
 1. ~~Instrument lose cause~~ — done; confirmed **9th civilian** (`GDILOSE`).
-2. **Village platoon first** — armor + rockets that never join the strike;
-   intercept `Terror` / `tank1` Attack-Civil teams and airlift unloads near
-   8,57 / hospital.
-3. **Hold assault** until village is stable (e.g. ≤3 civilian deaths and ≥2
-   village MTNKs alive), then push west.
-4. **Economy** for 8–10+ MTNKs after core build (harvest discipline / spend).
-5. **SAM-first** western route so `airs` grants A-10 before base push.
-6. Only then expand strike through Nod base for `win` (All Destr. BadGuy).
+2. ~~Early village intercept~~ — held (≤1 civ death by 20k on current TRACE class).
+3. **Kill western SAM (13,16)** with durable first wave + mid-corridor finisher —
+   see handoff “Recommended next work”.
+4. **A-10 unlock** via `airs` after SAM death; keep civ ≤8 total.
+5. Clear remaining Nod for `win` (All Destr. BadGuy) without stripping hospital.
+6. East-a full clear remains deferred (HAND checkpoint only).
 
 ## Working-tree / git notes
 
-- `fb5b00a` — east-a HAND kill checkpoint (maxWest 9; full clear red)
-- `a29ec0e` — earlier GUN-to-HAND path WIP
-- Both pushed to `fork/browser-port` only (not upstream `origin`)
+- Push **only** to `fork/browser-port` (not upstream `origin`)
+- East-a HAND kill / maxWest 9 earlier; full clear still red
+- East-b SAM-pack / wave-two checkpoint: see latest `WIP: Mission 8 east-b` commit
+  and [mission-8-east-b-handoff.md](mission-8-east-b-handoff.md)
 
 ## Related docs
 
+- [mission-8-east-b-handoff.md](mission-8-east-b-handoff.md) — **resume here** for east-b
 - [classic-freeware.md](classic-freeware.md) — release gate scope, Mission 8 orders
 - [implementation-status.md](implementation-status.md) — remaining product work item 1
