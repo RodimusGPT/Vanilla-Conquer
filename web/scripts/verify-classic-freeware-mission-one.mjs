@@ -2957,16 +2957,24 @@ const missionEightStructurePreferences = new Map([
 const missionEightEastBTankAssembly = { cellX: 39, cellY: 57 };
 const missionEightEastBTankReserve = { cellX: 27, cellY: 57 };
 // Village platoon: produced tanks diverted here until this many live MTNKs
-// guard the hospital/civilians (never join the strike force).
+// guard the hospital/civilians (never join the strike force). After the early
+// civil window we only top up to 1 so free armor can stage for assault.
 const missionEightEastBVillageTankCount = 2;
-// Strike tanks free of village duty. With 2 tanks held on the hospital and
-// ~6 total produced before cash dries, 3 free is the realistic launch bar.
-const missionEightEastBAssaultTankCount = 3;
+const missionEightEastBVillageTankCountLate = 1;
+// Strike tanks free of village duty. 2 free staged is the reachable launch bar
+// once the late village hold is only 1 tank.
+const missionEightEastBAssaultTankCount = 2;
+// Launch once free armor is parked — waiting to 30k used to re-divert free
+// tanks back onto village as early guards bled out (TRACE: 2 free @21k, 1 @30k).
+const missionEightEastBAssaultMinTick = 22_000;
 // Prefer not to launch the western strike after this many civilian deaths
 // (SCG08EB fails on the 9th). Still allow a late push with thin margin.
 const missionEightEastBMaxCivilianDeathsBeforeAssault = 7;
 const missionEightEastBVillagePoint = { cellX: 6, cellY: 58 };
 const missionEightEastBHospitalPoint = { cellX: 3, cellY: 60 };
+// SCG08EB: starting ARTY ~12,45; tank1 Move:3 @12,50 then Attack Civil.
+const missionEightEastBCivilIntercept = { cellX: 12, cellY: 50 };
+const missionEightEastBArtyScreen = { cellX: 12, cellY: 46 };
 const missionEightState = {
   initialized: false,
   baselineFriendlyKeys: new Set(),
@@ -3351,6 +3359,7 @@ function initializeMissionEight(snapshot) {
     for (const guard of base) state.baseGuardKeys.add(objectKey(guard));
     for (const guard of village) state.villageGuardKeys.add(objectKey(guard));
     for (const guard of remaining.values()) {
+      if (guard.typeName === "MCV" || guard.typeName === "HARV") continue;
       const target = state.villageGuardKeys.size < 10
         ? state.villageGuardKeys : state.baseGuardKeys;
       target.add(objectKey(guard));
@@ -4978,13 +4987,17 @@ function missionEightAssignRoles(snapshot, attackers) {
   ));
   if (mission.variant === "east-b") {
     // Village first — base fill used to starve hospital defense of replacements.
+    const villageTankTarget = snapshot.tick < 20_000
+      ? missionEightEastBVillageTankCount
+      : missionEightEastBVillageTankCountLate;
     for (const attacker of unassigned) {
+      if (attacker.typeName === "MCV" || attacker.typeName === "HARV") continue;
       const key = objectKey(attacker);
       const liveVillageTanks = attackers.filter((unit) => (
         unit.typeName === "MTNK" && state.villageGuardKeys.has(objectKey(unit))
       )).length;
       if (attacker.typeName === "MTNK"
-        && liveVillageTanks < missionEightEastBVillageTankCount) {
+        && liveVillageTanks < villageTankTarget) {
         state.villageGuardKeys.add(key);
         continue;
       }
@@ -5029,14 +5042,17 @@ function missionEightAssignRoles(snapshot, attackers) {
       state.initialNeutralUnitKeys.size - state.minimumNeutralUnits,
     )
     : 0;
+  const eastBVillageTankGate = snapshot.tick < 20_000
+    ? missionEightEastBVillageTankCount
+    : missionEightEastBVillageTankCountLate;
   const assaultReady = mission.variant === "east-a"
     ? state.vehicleRepairCompleteTick !== undefined
       && snapshot.tick >= 5_400 && attackers.length >= 54
     : builtAssets.has("PROC") && builtAssets.has("WEAP")
       && civilianDeaths <= missionEightEastBMaxCivilianDeathsBeforeAssault
-      && villageArmorAlive >= missionEightEastBVillageTankCount
+      && villageArmorAlive >= eastBVillageTankGate
       && stagedEastBTanks.length >= missionEightEastBAssaultTankCount
-      && snapshot.tick >= 30_000;
+      && snapshot.tick >= missionEightEastBAssaultMinTick;
   if (state.assaultTick === undefined && assaultReady) {
     state.assaultTick = snapshot.tick;
     state.assaultWave = 1;
@@ -6366,7 +6382,12 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       || left.id - right.id
     ))[0];
     const baseFallback = { cellX: 27, cellY: 52 };
-    const commandedBaseGuard = baseThreat ? baseGuard : baseGuard.filter((guard) => (
+    // During the early civil + first-airlift window the starting base MTNK is
+    // loaned to village pickets — do not yank it home with the base hold order.
+    const baseHomeGuard = snapshot.tick < 18_000
+      ? baseGuard.filter((guard) => guard.typeName !== "MTNK")
+      : baseGuard;
+    const commandedBaseGuard = baseThreat ? baseHomeGuard : baseHomeGuard.filter((guard) => (
       missionEightDistance(guard, baseFallback) > 2
     ));
     queueMissionEightRole(commands, "east-b-base", commandedBaseGuard,
@@ -6415,10 +6436,13 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
 
   if (mission.variant === "east-b") {
     // Divert produced tanks onto village duty before they stage for assault.
+    const villageTankTarget = snapshot.tick < 20_000
+      ? missionEightEastBVillageTankCount
+      : missionEightEastBVillageTankCountLate;
     let liveVillageTanks = attackers.filter((attacker) => (
       attacker.typeName === "MTNK" && state.villageGuardKeys.has(objectKey(attacker))
     )).length;
-    if (liveVillageTanks < missionEightEastBVillageTankCount) {
+    if (liveVillageTanks < villageTankTarget) {
       const candidates = attackers.filter((attacker) => (
         attacker.typeName === "MTNK"
         && state.eastBProducedTankKeys.has(objectKey(attacker))
@@ -6430,7 +6454,7 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
         || left.id - right.id
       ));
       for (const tank of candidates) {
-        if (liveVillageTanks >= missionEightEastBVillageTankCount) break;
+        if (liveVillageTanks >= villageTankTarget) break;
         const key = objectKey(tank);
         clearMissionEightUnitRoleKey(key);
         state.villageGuardKeys.add(key);
@@ -6440,32 +6464,50 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
 
     const villagePoint = missionEightEastBVillagePoint;
     const hospitalPoint = missionEightEastBHospitalPoint;
+    const interceptPoint = missionEightEastBCivilIntercept;
+    const artyScreen = missionEightEastBArtyScreen;
     const villageGuard = attackers.filter((attacker) => state.villageGuardKeys.has(objectKey(attacker)));
-    const villageArmor = villageGuard.filter((guard) => guard.typeName === "MTNK");
-    const villageInfantry = villageGuard.filter((guard) => guard.typeName !== "MTNK");
+    const villageArmor = villageGuard.filter((guard) => guard.typeName === "MTNK")
+      .toSorted((left, right) => (
+        right.strength / right.maxStrength - left.strength / left.maxStrength
+        || left.id - right.id
+      ));
+    const villageInfantry = villageGuard.filter((guard) => guard.type === 1);
     const nearVillage = (hostile, radius) => (
       missionEightDistance(hostile, villagePoint) <= radius
       || missionEightDistance(hostile, hospitalPoint) <= radius
+      || missionEightDistance(hostile, interceptPoint) <= radius
+      || missionEightDistance(hostile, artyScreen) <= radius
     );
-    // TRAN/airlift and civil-attack armor first — SCG08EB tank1/Terror farm civilians.
-    // ARTY outranges the village; hunt it out to 22 cells so it cannot snipe civs.
+    // Keep engagement west of the GDI start so we never chase ARTY into Nod's
+    // mid-map (TRACE: force-move chase of fleeing ARTY pulled tanks to ~43,30).
+    // x<=24 covers air2 landing WP0 (21,60) and Terror approach to WP14 (3,53).
+    // y>=36 catches the dual tank1 LTNK approach from the north (~9.3k TRACE).
+    const onCivilCorridor = (hostile) => (
+      hostile.cellX >= 2 && hostile.cellX <= 24
+      && hostile.cellY >= 36 && hostile.cellY <= 63
+    );
     const armorPriorities = new Map([
       ["TRAN", 0], ["ARTY", 1], ["LTNK", 2], ["BGGY", 3], ["E4", 4], ["E3", 5], ["E1", 6],
     ]);
     const armorThreat = hostiles.filter((hostile) => (
       (hostile.type === 1 || hostile.type === 2 || hostile.typeName === "TRAN")
       && armorPriorities.has(hostile.typeName)
-      && (hostile.typeName === "ARTY"
-        ? nearVillage(hostile, 22)
-        : nearVillage(hostile, 14))
+      && (onCivilCorridor(hostile)
+        || hostile.typeName === "TRAN" && nearVillage(hostile, 22)
+        || (hostile.typeName === "ARTY" && nearVillage(hostile, 18))
+        || (hostile.typeName === "LTNK" && nearVillage(hostile, 16))
+        || nearVillage(hostile, 12))
     )).toSorted((left, right) => (
-      (armorPriorities.get(left.typeName) ?? 20) - (armorPriorities.get(right.typeName) ?? 20)
+      Number(left.typeName !== "TRAN") - Number(right.typeName !== "TRAN")
+      || Number(!onCivilCorridor(left)) - Number(!onCivilCorridor(right))
+      || (armorPriorities.get(left.typeName) ?? 20) - (armorPriorities.get(right.typeName) ?? 20)
       || Math.min(
         missionEightDistance(left, hospitalPoint),
-        missionEightDistance(left, villagePoint),
+        missionEightDistance(left, interceptPoint),
       ) - Math.min(
         missionEightDistance(right, hospitalPoint),
-        missionEightDistance(right, villagePoint),
+        missionEightDistance(right, interceptPoint),
       )
       || left.strength - right.strength
       || left.id - right.id
@@ -6473,57 +6515,138 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     const infantryThreat = hostiles.filter((hostile) => (
       (hostile.typeName === "TRAN" || hostile.typeName === "E4"
         || hostile.typeName === "E3" || hostile.typeName === "E1")
-      && nearVillage(hostile, 16)
+      && (onCivilCorridor(hostile) || nearVillage(hostile, 16))
     )).toSorted((left, right) => (
       Number(left.typeName !== "TRAN") - Number(right.typeName !== "TRAN")
       || Number(left.typeName !== "E4") - Number(right.typeName !== "E4")
+      || Number(!onCivilCorridor(left)) - Number(!onCivilCorridor(right))
       || Math.min(
         missionEightDistance(left, hospitalPoint),
-        missionEightDistance(left, villagePoint),
+        missionEightDistance(left, interceptPoint),
       ) - Math.min(
         missionEightDistance(right, hospitalPoint),
-        missionEightDistance(right, villagePoint),
+        missionEightDistance(right, interceptPoint),
       )
       || left.strength - right.strength
       || left.id - right.id
     ))[0];
-    // Hold on the hospital ridge, not the northern fallback that left civs open.
     const armorFallback = { cellX: 8, cellY: 56 };
     const infantryFallback = { cellX: 5, cellY: 58 };
-    // Distant ARTY: only peel one hunter; keep remaining armor on the hospital.
-    let armorOrders;
-    if (armorThreat?.typeName === "ARTY" && villageArmor.length >= 2
-      && !nearVillage(armorThreat, 10)) {
-      armorOrders = [
-        { units: villageArmor.slice(0, 1), target: armorThreat, flags: 0 },
-        {
-          units: villageArmor.slice(1),
-          target: (infantryThreat && nearVillage(infantryThreat, 10))
-            ? infantryThreat : armorFallback,
-          flags: (infantryThreat && nearVillage(infantryThreat, 10)) ? 0 : MODIFIER_ALT,
-        },
-      ];
-    } else {
-      armorOrders = [{
-        units: armorThreat ? villageArmor : villageArmor.filter((guard) => (
-          missionEightDistance(guard, armorFallback) > 2
-        )),
-        target: armorThreat ?? armorFallback,
-        flags: armorThreat ? 0 : MODIFIER_ALT,
-      }];
+    // Terror unload cell WP14 and air2 landing WP0 — hard-coded from SCG08EB.INI.
+    const terrorLanding = { cellX: 3, cellY: 53 };
+    const airliftLanding = { cellX: 21, cellY: 60 };
+    // Clamp approach so we close with corridor threats without free-chasing ARTY
+    // into Nod (TRACE: unclamped force-move to fleeing ARTY → tanks at ~43,30).
+    const clampApproach = (threat, fallback) => {
+      if (!threat) return fallback;
+      return {
+        cellX: Math.min(20, Math.max(4, threat.cellX)),
+        cellY: Math.min(60, Math.max(38, threat.cellY)),
+      };
+    };
+    // Force-move toward approach; attack once in gun range. When a live threat is
+    // in the corridor, approach is the clamped threat cell — not a fixed screen
+    // (TRACE v6: LTNK@6,49 farmed a civ while hunters sat on intercept rally).
+    const picket = (units, threat, fallbackRally, role, engageRange = 7) => {
+      if (units.length === 0) return;
+      const rally = clampApproach(threat, fallbackRally);
+      const ready = threat
+        ? units.filter((unit) => missionEightDistance(unit, threat) <= engageRange)
+        : [];
+      const movers = units.filter((unit) => (
+        !ready.some((unitReady) => objectKey(unitReady) === objectKey(unit))
+        && missionEightDistance(unit, rally) > 2
+      ));
+      if (ready.length > 0) {
+        queueMissionEightRole(commands, `${role}-atk`, ready, threat, 0, 20);
+      }
+      if (movers.length > 0) {
+        queueMissionEightRole(commands, `${role}-mv`, movers, rally, MODIFIER_ALT, 30);
+      }
+    };
+    // Only TRAN / flame-pack (E4) count as airlift. Generic E3 near the ridge used
+    // to flip this true and yank every tank north off the hospital.
+    const airliftActive = Boolean(
+      hostiles.some((hostile) => (
+        hostile.typeName === "TRAN" && nearVillage(hostile, 22)
+      ))
+      || hostiles.some((hostile) => (
+        hostile.typeName === "E4" && nearVillage(hostile, 14)
+      )),
+    );
+    // Corridor armor (LTNK dual pack ~9.3k, ARTY, BGGY): pile both village tanks
+    // plus base loan. Keep a hospital anchor only when the map is quiet.
+    const corridorArmorActive = Boolean(
+      armorThreat && (armorThreat.typeName === "ARTY" || armorThreat.typeName === "LTNK"
+        || armorThreat.typeName === "BGGY" || armorThreat.typeName === "TRAN"),
+    );
+    const pileOn = airliftActive || corridorArmorActive;
+    const anchors = pileOn
+      ? []
+      : villageArmor.slice(0, Math.min(1, villageArmor.length));
+    const hunters = pileOn ? villageArmor : villageArmor.slice(anchors.length);
+    const screenRally = snapshot.tick < 8_000 ? artyScreen : interceptPoint;
+    const airliftRally = armorThreat?.typeName === "TRAN"
+      ? { cellX: armorThreat.cellX, cellY: armorThreat.cellY }
+      : (infantryThreat && nearVillage(infantryThreat, 16)
+        ? { cellX: infantryThreat.cellX, cellY: infantryThreat.cellY }
+        : terrorLanding);
+    const anchorThreat = (() => {
+      if (armorThreat && nearVillage(armorThreat, 14)) return armorThreat;
+      if (infantryThreat && nearVillage(infantryThreat, 12)) return infantryThreat;
+      return undefined;
+    })();
+    const hunterThreat = pileOn
+      ? (armorThreat?.typeName === "TRAN"
+        ? armorThreat
+        : (armorThreat ?? infantryThreat))
+      : (armorThreat && (
+        onCivilCorridor(armorThreat)
+        || missionEightDistance(armorThreat, artyScreen) <= 10
+        || missionEightDistance(armorThreat, interceptPoint) <= 10
+      ) ? armorThreat : undefined);
+    const hunterRally = airliftActive ? airliftRally : screenRally;
+    picket(anchors, anchorThreat, armorFallback, "east-b-village-anchor", 8);
+    picket(hunters, hunterThreat, hunterRally, "east-b-village-hunter", pileOn ? 10 : 7);
+    // Loan base MTNK through first tank1 wave + airlift (tnk2@~8.1k, Terror@~15.3k).
+    if (snapshot.tick < 18_000) {
+      const baseLoan = attackers.filter((attacker) => (
+        attacker.typeName === "MTNK"
+        && state.baseGuardKeys.has(objectKey(attacker))
+        && attacker.strength >= Math.ceil(attacker.maxStrength * 0.5)
+      )).toSorted((left, right) => (
+        right.strength / right.maxStrength - left.strength / left.maxStrength
+        || left.id - right.id
+      )).slice(0, 1);
+      picket(
+        baseLoan,
+        hunterThreat ?? anchorThreat,
+        airliftActive ? airliftRally : screenRally,
+        "east-b-base-loan",
+        10,
+      );
     }
-    for (const [index, order] of armorOrders.entries()) {
-      if (order.units.length === 0) continue;
-      queueMissionEightRole(commands, `east-b-village-armor-${index}`, order.units,
-        order.target, order.flags, 30);
+    const infantryTarget = infantryThreat && nearVillage(infantryThreat, 16)
+      ? infantryThreat
+      : (snapshot.tick < 20_000 ? interceptPoint : infantryFallback);
+    const commandedVillageInfantry = (infantryThreat || snapshot.tick < 20_000)
+      ? villageInfantry
+      : villageInfantry.filter((guard) => (
+        missionEightDistance(guard, infantryFallback) > 2
+      ));
+    if (commandedVillageInfantry.length > 0) {
+      if (infantryThreat && commandedVillageInfantry.some((unit) => (
+        missionEightDistance(unit, infantryThreat) <= 5
+      ))) {
+        queueMissionEightRole(commands, "east-b-village-infantry", commandedVillageInfantry,
+          infantryThreat,
+          infantryThreat.typeName === "TRAN" ? 0 : MODIFIER_CTRL,
+          30);
+      } else {
+        queueMissionEightRole(commands, "east-b-village-infantry", commandedVillageInfantry,
+          airliftActive ? airliftRally : infantryTarget, MODIFIER_ALT, 30);
+      }
     }
-    const commandedVillageInfantry = infantryThreat ? villageInfantry : villageInfantry.filter((guard) => (
-      missionEightDistance(guard, infantryFallback) > 2
-    ));
-    queueMissionEightRole(commands, "east-b-village-infantry", commandedVillageInfantry,
-      infantryThreat ?? infantryFallback,
-      infantryThreat ? (infantryThreat.typeName === "TRAN" ? 0 : MODIFIER_CTRL) : MODIFIER_ALT,
-      30);
   }
 
   if (mission.variant === "east-b" && state.assaultTick === undefined) {
