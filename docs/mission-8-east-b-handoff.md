@@ -7,13 +7,14 @@ can continue Mission 8 `east-b` without replaying the full TRACE history.
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
+| Commit | `7494ba7` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | local `/tmp/m8-eastb/v40`–`v64` (not committed) |
+| Last TRACE suite | local `/tmp/m8-eastb/v40`–`v64` (not in git) |
 
-Update the commit hash and “Last TRACE” row after every checkpoint push.
+Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
 ---
 
@@ -159,15 +160,16 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 [ ] Checkpoint: commit message WIP, push fork only; update commit hash in this table
 ```
 
-## Related commits (fork history, incomplete)
+## Related commits (fork history)
 
-Recent WIP on this branch (newest first at push time may differ):
+| Commit | Note |
+|---|---|
+| `7494ba7` | **This checkpoint** — SAM pack + finisher path (~200 chip; handoff doc) |
+| `74bfbe4` | Softer assault gate + E3 push prep (SAM min ~288) |
+| `1bc9b69` | Fund follow-up tank before western assault |
+| `9e51b46` | SAM chip ~278 + solo finish path |
+| `a7d8541` | 3-tank western push (~276) |
+| `a14defd` | Western strike reinforcement |
+| `28b5df5` | Early civ intercept |
 
-- Softer assault gate + E3 prep (SAM min ~288)
-- Fund follow-up tank before western assault
-- SAM chip ~278 + solo finish path
-- 3-tank western push (~276)
-- Western strike reinforcement
-- Early civ intercept
-
-Update this list when committing the SAM-pack / wave-two checkpoint.
+After the next checkpoint: prepend a row and bump the table **Commit** field.
