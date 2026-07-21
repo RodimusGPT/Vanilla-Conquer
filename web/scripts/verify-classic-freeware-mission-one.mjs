@@ -4254,8 +4254,10 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       ? state.allSamsDeadTick !== undefined
         ? ["E3"]
         : state.secondWaveLaunchTick !== undefined ? ["E1"] : ["E1", "E3", "E1", "E1"]
-      : eastBVillageInfantryCount < 5 ? ["E3", "E3", "E2"]
-        : missionEightState.assaultTick !== undefined ? ["E3", "E3", "E2"]
+      : eastBVillageInfantryCount < 4 ? ["E3", "E3", "E2"]
+        // Pre-load rockets for the western GUN/SAM once free tanks are staging.
+        : eastBTankCohortReady || missionEightState.assaultTick !== undefined
+          ? ["E3", "E3", "E3", "E2"]
         : ["E3", "E2", "E3"];
     const infantryAsset = infantryPattern[infantryProductionStarts % infantryPattern.length];
     const infantry = snapshot.sidebar.entries.find((entry) => entry.assetName === infantryAsset)
@@ -5076,10 +5078,10 @@ function missionEightAssignRoles(snapshot, attackers) {
   const eastBVillageTankGate = snapshot.tick < 20_000
     ? missionEightEastBVillageTankCount
     : 1;
-  // East-b: do not roll out the first wave until a follow-up MTNK is already
-  // paid for or building. TRACE: assault @22k with funds=0; 4th tank only
-  // completed @28.2k as the first wave died on the western SAM.
-  const eastBFollowUpTankReady = mission.variant === "east-b" && (
+  // Prefer a follow-up MTNK in production, but do not hard-block the assault
+  // past a short pad (TRACE v32–38: waiting for 800 cash delayed to ~37k without
+  // improving the SAM kill, while early 22k assaults still chipped to ~278).
+  const eastBFollowUpTankReady = mission.variant !== "east-b" || (
     snapshot.sidebar.entries.some((entry) => (
       entry.assetName === "MTNK" && (entry.constructing || entry.completed)
     ))
@@ -5089,6 +5091,7 @@ function missionEightAssignRoles(snapshot, attackers) {
       && state.eastBProducedTankKeys.has(objectKey(attacker))
       && !state.villageGuardKeys.has(objectKey(attacker))
     )).length >= missionEightEastBAssaultTankCount + 1
+    || snapshot.tick >= missionEightEastBAssaultMinTick + 6_000
   );
   const assaultReady = mission.variant === "east-a"
     ? state.vehicleRepairCompleteTick !== undefined
@@ -5184,6 +5187,33 @@ function missionEightAssignRoles(snapshot, attackers) {
         state.baseGuardKeys.delete(key);
         state.strikeKeys.add(key);
       }
+      // Rocket infantry for GUN/SAM building DPS. Prefer base E3; also take
+      // surplus village E3 beyond two guards so the launch always has rockets
+      // (TRACE v37: zero E3 joined because base keep ate the only healthy ones).
+      const villageE3 = attackers.filter((attacker) => (
+        attacker.typeName === "E3" && state.villageGuardKeys.has(objectKey(attacker))
+      )).toSorted((left, right) => (
+        right.strength / right.maxStrength - left.strength / left.maxStrength
+        || left.id - right.id
+      ));
+      const villageE3Keep = new Set(villageE3.slice(0, 2).map((unit) => objectKey(unit)));
+      const rocketLoans = attackers.filter((attacker) => (
+        attacker.typeName === "E3"
+        && !state.strikeKeys.has(objectKey(attacker))
+        && !villageE3Keep.has(objectKey(attacker))
+        && attacker.strength >= Math.ceil(attacker.maxStrength * 0.5)
+      )).toSorted((left, right) => (
+        Number(state.villageGuardKeys.has(objectKey(left)))
+          - Number(state.villageGuardKeys.has(objectKey(right)))
+        || right.strength / right.maxStrength - left.strength / left.maxStrength
+        || left.id - right.id
+      )).slice(0, 4);
+      for (const rocket of rocketLoans) {
+        const key = objectKey(rocket);
+        state.baseGuardKeys.delete(key);
+        state.villageGuardKeys.delete(key);
+        state.strikeKeys.add(key);
+      }
     }
     state.routeStageStartedTick = snapshot.tick;
   }
@@ -5264,6 +5294,10 @@ function missionEightAssignRoles(snapshot, attackers) {
         }
         if (liveVillageTanks < villageTankTarget
           && state.eastBProducedTankKeys.has(key)) return false;
+        return true;
+      }
+      if (attacker.typeName === "E3" && !state.baseGuardKeys.has(key)
+        && !state.villageGuardKeys.has(key)) {
         return true;
       }
       if (state.baseGuardKeys.has(key)) return false;
@@ -7157,9 +7191,8 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     const focusIsUnit = Boolean(focus && focus.typeName);
     const tanks = liveStrikeTanks;
     const rest = strike.filter((attacker) => attacker.typeName !== "MTNK");
-    // GUN has range ~5; shoot from the firing line (y≈23) instead of walking
-    // onto 11,18 under both GUN+SAM fire (TRACE v33: 3 full tanks at 13,23
-    // dropped to 48–98 HP in 300 ticks while advancing to SAM).
+    // GUN: shoot from y≈22–23. SAM: close onto the structure.
+    // All tanks commit — reserve holds regressed SAM damage to 0 (v38).
     const gunStandoff = { cellX: 12, cellY: 22 };
     const isGunFocus = focus?.typeName === "GUN" || nextWaypoint.typeName === "GUN";
     const engageRange = isGunFocus ? 6 : 5;
@@ -7181,11 +7214,27 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       queueMissionEightRole(commands, `east-b-focus-approach-${objectKey(tank)}`,
         [tank], rally, MODIFIER_ALT, 15);
     }
-    if (rest.length > 0) {
+    const rockets = strike.filter((attacker) => attacker.typeName === "E3");
+    const rocketInRange = focusIsUnit
+      ? rockets.filter((unit) => missionEightDistance(unit, focus) <= 4)
+      : [];
+    const rocketApproaching = rockets.filter((unit) => (
+      !rocketInRange.some((ready) => objectKey(ready) === objectKey(unit))
+    ));
+    if (rocketInRange.length > 0) {
+      queueMissionEightRole(commands, "east-b-focus-rockets", rocketInRange, focus, 0, 20);
+    }
+    if (rocketApproaching.length > 0) {
+      const rocketRally = isGunFocus ? gunStandoff : { cellX: 13, cellY: 20 };
+      queueMissionEightRole(commands, "east-b-rocket-approach", rocketApproaching,
+        rocketRally, MODIFIER_ALT, 25);
+    }
+    const nonRocketRest = rest.filter((attacker) => attacker.typeName !== "E3");
+    if (nonRocketRest.length > 0) {
       const restTarget = inRange.length > 0 && focusIsUnit
         ? focus
         : { cellX: 13, cellY: 23 };
-      queueMissionEightRole(commands, "east-b-focus-screen", rest, restTarget,
+      queueMissionEightRole(commands, "east-b-focus-screen", nonRocketRest, restTarget,
         inRange.length > 0 && focusIsUnit ? 0 : MODIFIER_ALT, 30);
     }
     return;
