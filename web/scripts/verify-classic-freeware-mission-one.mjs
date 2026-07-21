@@ -4245,9 +4245,10 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
     const structureReserve = mission.variant === "east-b" && !builtAssets.has("WEAP")
       ? 2_000
       : mission.variant === "east-b" && !eastBTankCohortReady ? 1_000
-      : mission.variant === "east-b" && missionEightState.assaultTick !== undefined
-        && (missionEightState.strikeKeys.size >= 4) ? 800
-      : mission.variant === "east-b" && missionEightState.assaultTick !== undefined ? 0
+      // After assault launches, always bank a full MTNK before infantry so the
+      // western SAM finish wave is funded (TRACE: next tank often spawns as the
+      // first wave dies on the SAM).
+      : mission.variant === "east-b" && missionEightState.assaultTick !== undefined ? 800
       : mission.variant === "east-a" && state.allSamsDeadTick !== undefined ? 0
         : mission.variant === "east-a" && state.secondWaveLaunchTick !== undefined ? 0 : 400;
     const infantryPattern = mission.variant === "east-a"
@@ -7083,9 +7084,10 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       || nextWaypoint.label === "western ridge crossing")
     || mission.variant === "east-b" && Boolean(nextWaypoint.forceMove);
   let screeningStrike = strike;
-  // East-b GUN/SAM: focus-fire when visible; otherwise force-move onto the
-  // authored cell. TRACE v18: shrouded GUN made focus fall through to SAM and
-  // the strike never engaged the turret (buildingsKilled 0).
+  // East-b GUN/SAM: aggressive focus-fire (v23 best: SAM chipped to ~276).
+  // Factory-fresh tanks pre-rally west so a second wave is mid-corridor when
+  // the first wave hits SAM. Pure solos on a full-HP SAM hold at the firing
+  // line; any 2+ live tanks always commit.
   if (mission.variant === "east-b" && nextWaypoint.typeName
     && (nextWaypoint.typeName === "GUN" || nextWaypoint.typeName === "SAM")) {
     const westernSam = hostiles.find((hostile) => (
@@ -7094,34 +7096,44 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     const westernGun = hostiles.find((hostile) => (
       hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
     ));
-    // Solo tanks suicide into a repairing SAM (TRACE v22/v23: SAM left at
-    // 276–364). Hold at the firing line until a second healthy MTNK arrives,
-    // unless the SAM is already nearly dead.
-    const healthyStrikeTanks = strike.filter((attacker) => (
-      attacker.typeName === "MTNK"
-      && attacker.strength >= Math.ceil(attacker.maxStrength * 0.4)
+    const liveStrikeTanks = strike.filter((attacker) => (
+      attacker.typeName === "MTNK" && attacker.strength > 0
     ));
+    // Pure solo on a pristine SAM: rail to the gate and wait for a partner.
+    // Any chip (strength < max) → solo finishes (TRACE v27: tank #37 sat at
+    // 13,23 while SAM sat at 360 because the wait threshold was too low).
     if (nextWaypoint.typeName === "SAM" && westernSam
-      && healthyStrikeTanks.length < 2 && westernSam.strength > 120) {
-      const hold = { cellX: 13, cellY: 23 };
-      for (const tank of strike) {
-        if (missionEightDistance(tank, hold) > 2) {
-          queueMissionEightRole(commands, `east-b-sam-wait-${objectKey(tank)}`,
-            [tank], hold, MODIFIER_ALT, 20);
-        }
+      && liveStrikeTanks.length === 1
+      && westernSam.strength >= westernSam.maxStrength) {
+      const tank = liveStrikeTanks[0];
+      const rally = tank.cellY >= 40
+        ? { cellX: 13, cellY: 32 }
+        : tank.cellY >= 28
+          ? { cellX: 13, cellY: 27 }
+          : { cellX: 13, cellY: 23 };
+      if (missionEightDistance(tank, rally) > 2) {
+        queueMissionEightRole(commands, "east-b-sam-solo-rally", [tank],
+          rally, MODIFIER_ALT, 20);
       }
       return;
     }
+    // GUN stage: kill the turret. SAM stage: always the western SAM (do not
+    // get stuck re-fighting a surviving GUN while a chipped SAM waits —
+    // TRACE v29: solo sat at 13,23 and never finished SAM@344).
     const visibleFocus = missionEightRouteTarget(snapshot, hostiles, nextWaypoint);
-    // Prefer live GUN while on GUN stage even if shrouded; only then SAM.
-    const focus = visibleFocus
-      ?? (nextWaypoint.typeName === "GUN" ? (westernGun ?? westernSam) : westernSam)
-      ?? {
-        cellX: nextWaypoint.targetCellX ?? nextWaypoint.cellX,
-        cellY: nextWaypoint.targetCellY ?? nextWaypoint.cellY,
-      };
+    const focus = nextWaypoint.typeName === "SAM"
+      ? (westernSam
+        ?? visibleFocus
+        ?? { cellX: 13, cellY: 16 })
+      : (visibleFocus
+        ?? westernGun
+        ?? westernSam
+        ?? {
+          cellX: nextWaypoint.targetCellX ?? nextWaypoint.cellX,
+          cellY: nextWaypoint.targetCellY ?? nextWaypoint.cellY,
+        });
     const focusIsUnit = Boolean(focus && focus.typeName);
-    const tanks = strike.filter((attacker) => attacker.typeName === "MTNK");
+    const tanks = liveStrikeTanks;
     const rest = strike.filter((attacker) => attacker.typeName !== "MTNK");
     const inRange = focusIsUnit
       ? tanks.filter((tank) => missionEightDistance(tank, focus) <= 5)
@@ -7130,16 +7142,15 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       !inRange.some((ready) => objectKey(ready) === objectKey(tank))
     ));
     if (inRange.length > 0) {
-      queueMissionEightRole(commands, "east-b-focus-tanks", inRange, focus, 0, 20);
+      queueMissionEightRole(commands, "east-b-focus-tanks", inRange, focus, 0, 15);
     }
     for (const tank of approaching) {
-      const rally = tank.cellY >= 26
+      // Force-move onto the structure cell so pathing stays on the western gate.
+      const rally = tank.cellY >= 30
         ? { cellX: 13, cellY: 23 }
-        : tank.cellY >= 20
-          ? { cellX: nextWaypoint.cellX, cellY: nextWaypoint.cellY }
-          : { cellX: focus.cellX, cellY: focus.cellY };
+        : { cellX: focus.cellX, cellY: focus.cellY };
       queueMissionEightRole(commands, `east-b-focus-approach-${objectKey(tank)}`,
-        [tank], rally, MODIFIER_ALT, 20);
+        [tank], rally, MODIFIER_ALT, 15);
     }
     if (rest.length > 0) {
       const restTarget = inRange.length > 0 && focusIsUnit
@@ -7150,8 +7161,28 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     }
     return;
   }
-  // Far strike reinforcements still on force-move stages: keep them on the
-  // western corridor instead of free-pathing toward the front.
+  // Factory-fresh strike MTNKs only (WEAP exit ~36,55). TRACE v26: y>=48 stole
+  // the whole stage-0 cohort off the southern artillery lane and maxRoute stuck 0.
+  if (mission.variant === "east-b" && state.routeStage >= 1) {
+    const fresh = strike.filter((attacker) => (
+      attacker.typeName === "MTNK"
+      && attacker.cellX >= 32 && attacker.cellY >= 52
+    ));
+    if (fresh.length > 0) {
+      const front = strike.filter((attacker) => (
+        !fresh.some((unit) => objectKey(unit) === objectKey(attacker))
+      ));
+      for (const tank of fresh) {
+        const rally = state.routeStage >= 5
+          ? { cellX: 13, cellY: 27 }
+          : { cellX: 25, cellY: 48 };
+        queueMissionEightRole(commands, `east-b-fresh-rail-${objectKey(tank)}`,
+          [tank], rally, MODIFIER_ALT, 20);
+      }
+      if (!forceMoveCorridor && front.length === 0) return;
+      screeningStrike = front.length > 0 ? front : screeningStrike;
+    }
+  }
   if (mission.variant === "east-b" && forceMoveCorridor) {
     const far = strike.filter((attacker) => (
       attacker.typeName === "MTNK"
@@ -7169,7 +7200,7 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
             ? { cellX: 13, cellY: 27 }
             : { cellX: 13, cellY: 23 };
         queueMissionEightRole(commands, `east-b-corridor-rally-${objectKey(tank)}`,
-          [tank], rally, MODIFIER_ALT, 30);
+          [tank], rally, MODIFIER_ALT, 25);
       }
       screeningStrike = near;
     }
