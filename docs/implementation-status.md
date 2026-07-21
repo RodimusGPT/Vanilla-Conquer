@@ -394,7 +394,8 @@ local-only evidence boundary is documented in
    variants; they already fail closed in the aggregate release gate. See
    [mission-8-east-b-handoff.md](mission-8-east-b-handoff.md) to resume east-b
    (western SAM kill) and [mission-8-hardening.md](mission-8-hardening.md) for
-   scenario facts, east-a notes, and closed dead-ends.
+   scenario facts, east-a notes, and closed dead-ends. Project agents should
+   load root [AGENTS.md](../AGENTS.md), which points here for Mission 8.
 2. Publish an immutable candidate to an operator-controlled HTTPS target, run
    the staging gate, then complete physical Safari and representative
    desktop/mobile hardware review, including a human-played Mission 1 victory

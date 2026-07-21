@@ -3,11 +3,15 @@
 **Purpose:** machine- and human-readable checkpoint so another harness or agent
 can continue Mission 8 `east-b` without replaying the full TRACE history.
 
+**Entrypoint:** root [AGENTS.md](../AGENTS.md) requires reading this file before
+Mission 8 east-b work (Grok/Claude/Codex-style agents that load project
+instructions will pick that up).
+
 | Field | Value |
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | `7494ba7` |
+| Commit | *(set to `git rev-parse --short HEAD` after each handoff edit)* |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |

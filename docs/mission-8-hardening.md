@@ -7,6 +7,9 @@ and remain **red**. Missions 1–7 retain green public-ABI victory evidence.
 [mission-8-east-b-handoff.md](mission-8-east-b-handoff.md) — TRACE metrics,
 code map, closed experiments, ordered next steps for another harness.
 
+Root [AGENTS.md](../AGENTS.md) steers agents to that handoff for Mission 8
+east-b work.
+
 This note records scenario facts, retained progress, closed dead-ends, and
 pointers. It is not a release claim.
 
