@@ -4211,13 +4211,9 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
   }
 
   if (mission.variant === "east-b" && builtAssets.has("WEAP")) {
-    // Prefer MTNK always for the western strike. Occasional JEEP only before
-    // assault when cash is short of another tank.
-    const vehicleAsset = !eastBTankCohortReady || missionEightState.assaultTick !== undefined
-      ? "MTNK"
-      : vehicleProductionStarts % 5 === 4 ? "JEEP" : "MTNK";
-    const vehicle = snapshot.sidebar.entries.find((entry) => entry.assetName === vehicleAsset)
-      ?? snapshot.sidebar.entries.find((entry) => entry.assetName === "MTNK");
+    // Always prefer MTNK once WEAP is up — the western SAM needs a continuous
+    // armor stream, not Jeeps.
+    const vehicle = snapshot.sidebar.entries.find((entry) => entry.assetName === "MTNK");
     if (vehicle && !vehicle.constructing && !vehicle.completed && !vehicle.onHold && !vehicle.busy
       && funds >= vehicle.cost) {
       startMissionEightProduction(commands, vehicle);
@@ -4242,13 +4238,16 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
     && (eastBTankCohortReady
       || (builtAssets.has("WEAP") && eastBVillageInfantryCount < 5));
   if (canProduceEastA || canProduceEastB) {
+    // Once free tanks are staging (or assault is live), bank a full MTNK before
+    // any infantry so the 4th tank starts before the western GUN fight.
+    const eastBBankingForArmor = mission.variant === "east-b" && (
+      eastBTankCohortReady || missionEightState.assaultTick !== undefined
+      || healthyReservedEastBTanks.length >= Math.max(1, missionEightEastBAssaultTankCount - 1)
+    );
     const structureReserve = mission.variant === "east-b" && !builtAssets.has("WEAP")
       ? 2_000
+      : mission.variant === "east-b" && eastBBankingForArmor ? 800
       : mission.variant === "east-b" && !eastBTankCohortReady ? 1_000
-      // After assault launches, always bank a full MTNK before infantry so the
-      // western SAM finish wave is funded (TRACE: next tank often spawns as the
-      // first wave dies on the SAM).
-      : mission.variant === "east-b" && missionEightState.assaultTick !== undefined ? 800
       : mission.variant === "east-a" && state.allSamsDeadTick !== undefined ? 0
         : mission.variant === "east-a" && state.secondWaveLaunchTick !== undefined ? 0 : 400;
     const infantryPattern = mission.variant === "east-a"
@@ -5070,9 +5069,27 @@ function missionEightAssignRoles(snapshot, attackers) {
       state.initialNeutralUnitKeys.size - state.minimumNeutralUnits,
     )
     : 0;
+  // After the early civil window, require only 1 village tank for launch so a
+  // dead hospital guard cannot hard-block the western assault forever
+  // (TRACE v32: village MTNK died ~25.8k, free tanks protected from re-absorb,
+  // villageArmorAlive=0, assault never fired).
   const eastBVillageTankGate = snapshot.tick < 20_000
     ? missionEightEastBVillageTankCount
-    : missionEightEastBVillageTankCountLate;
+    : 1;
+  // East-b: do not roll out the first wave until a follow-up MTNK is already
+  // paid for or building. TRACE: assault @22k with funds=0; 4th tank only
+  // completed @28.2k as the first wave died on the western SAM.
+  const eastBFollowUpTankReady = mission.variant === "east-b" && (
+    snapshot.sidebar.entries.some((entry) => (
+      entry.assetName === "MTNK" && (entry.constructing || entry.completed)
+    ))
+    || (snapshot.sidebar.credits + snapshot.sidebar.tiberium) >= 800
+    || attackers.filter((attacker) => (
+      attacker.typeName === "MTNK"
+      && state.eastBProducedTankKeys.has(objectKey(attacker))
+      && !state.villageGuardKeys.has(objectKey(attacker))
+    )).length >= missionEightEastBAssaultTankCount + 1
+  );
   const assaultReady = mission.variant === "east-a"
     ? state.vehicleRepairCompleteTick !== undefined
       && snapshot.tick >= 5_400 && attackers.length >= 54
@@ -5080,7 +5097,8 @@ function missionEightAssignRoles(snapshot, attackers) {
       && civilianDeaths <= missionEightEastBMaxCivilianDeathsBeforeAssault
       && villageArmorAlive >= eastBVillageTankGate
       && stagedEastBTanks.length >= missionEightEastBAssaultTankCount
-      && snapshot.tick >= missionEightEastBAssaultMinTick;
+      && snapshot.tick >= missionEightEastBAssaultMinTick
+      && eastBFollowUpTankReady;
   if (state.assaultTick === undefined && assaultReady) {
     state.assaultTick = snapshot.tick;
     state.assaultWave = 1;
@@ -6551,9 +6569,13 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
         || (attacker.cellY >= 54 && attacker.cellY <= 60
           && attacker.cellX >= 25 && attacker.cellX <= 42))
     )).length;
+    // Protect free staged tanks only while the village still has at least one
+    // live MTNK. If the hospital guard dies, allow one free tank to re-fill so
+    // the assault village gate can still pass.
     const protectAssaultStaging = state.assaultTick === undefined
       && freeStagedCount >= missionEightEastBAssaultTankCount
-      && snapshot.tick >= 18_000;
+      && snapshot.tick >= 18_000
+      && liveVillageTanks >= 1;
     if (liveVillageTanks < villageTankTarget && !protectAssaultStaging) {
       const candidates = attackers.filter((attacker) => (
         attacker.typeName === "MTNK"
@@ -7135,8 +7157,14 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     const focusIsUnit = Boolean(focus && focus.typeName);
     const tanks = liveStrikeTanks;
     const rest = strike.filter((attacker) => attacker.typeName !== "MTNK");
+    // GUN has range ~5; shoot from the firing line (y≈23) instead of walking
+    // onto 11,18 under both GUN+SAM fire (TRACE v33: 3 full tanks at 13,23
+    // dropped to 48–98 HP in 300 ticks while advancing to SAM).
+    const gunStandoff = { cellX: 12, cellY: 22 };
+    const isGunFocus = focus?.typeName === "GUN" || nextWaypoint.typeName === "GUN";
+    const engageRange = isGunFocus ? 6 : 5;
     const inRange = focusIsUnit
-      ? tanks.filter((tank) => missionEightDistance(tank, focus) <= 5)
+      ? tanks.filter((tank) => missionEightDistance(tank, focus) <= engageRange)
       : [];
     const approaching = tanks.filter((tank) => (
       !inRange.some((ready) => objectKey(ready) === objectKey(tank))
@@ -7145,10 +7173,11 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       queueMissionEightRole(commands, "east-b-focus-tanks", inRange, focus, 0, 15);
     }
     for (const tank of approaching) {
-      // Force-move onto the structure cell so pathing stays on the western gate.
-      const rally = tank.cellY >= 30
+      const rally = tank.cellY >= 28
         ? { cellX: 13, cellY: 23 }
-        : { cellX: focus.cellX, cellY: focus.cellY };
+        : isGunFocus
+          ? gunStandoff
+          : { cellX: focus.cellX, cellY: focus.cellY };
       queueMissionEightRole(commands, `east-b-focus-approach-${objectKey(tank)}`,
         [tank], rally, MODIFIER_ALT, 15);
     }
@@ -7161,26 +7190,35 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     }
     return;
   }
-  // Factory-fresh strike MTNKs only (WEAP exit ~36,55). TRACE v26: y>=48 stole
-  // the whole stage-0 cohort off the southern artillery lane and maxRoute stuck 0.
-  if (mission.variant === "east-b" && state.routeStage >= 1) {
-    const fresh = strike.filter((attacker) => (
+  // Hard-rail any strike MTNK that is still at the factory OR has wandered east
+  // of the western corridor (TRACE: tank id 29 pathfinded to ~45,33 mid-assault
+  // while siblings pushed the gate).
+  if (mission.variant === "east-b" && state.assaultTick !== undefined) {
+    const needsRail = strike.filter((attacker) => (
       attacker.typeName === "MTNK"
-      && attacker.cellX >= 32 && attacker.cellY >= 52
+      && (
+        (attacker.cellX >= 32 && attacker.cellY >= 50)
+        || (attacker.cellX >= 28 && attacker.cellY <= 40 && state.routeStage >= 1
+          && state.routeStage <= 7)
+      )
     ));
-    if (fresh.length > 0) {
+    if (needsRail.length > 0) {
       const front = strike.filter((attacker) => (
-        !fresh.some((unit) => objectKey(unit) === objectKey(attacker))
+        !needsRail.some((unit) => objectKey(unit) === objectKey(attacker))
       ));
-      for (const tank of fresh) {
-        const rally = state.routeStage >= 5
-          ? { cellX: 13, cellY: 27 }
-          : { cellX: 25, cellY: 48 };
-        queueMissionEightRole(commands, `east-b-fresh-rail-${objectKey(tank)}`,
+      for (const tank of needsRail) {
+        const rally = tank.cellY >= 50
+          ? { cellX: 25, cellY: 48 }
+          : tank.cellY >= 35
+            ? { cellX: 13, cellY: 32 }
+            : state.routeStage >= 5
+              ? { cellX: 13, cellY: 23 }
+              : { cellX: 13, cellY: 27 };
+        queueMissionEightRole(commands, `east-b-west-rail-${objectKey(tank)}`,
           [tank], rally, MODIFIER_ALT, 20);
       }
-      if (!forceMoveCorridor && front.length === 0) return;
-      screeningStrike = front.length > 0 ? front : screeningStrike;
+      if (!forceMoveCorridor && !nextWaypoint.typeName && front.length === 0) return;
+      if (front.length > 0) screeningStrike = front;
     }
   }
   if (mission.variant === "east-b" && forceMoveCorridor) {
