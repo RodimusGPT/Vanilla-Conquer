@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | `aa65651` |
+| Commit | `ed7947e` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
