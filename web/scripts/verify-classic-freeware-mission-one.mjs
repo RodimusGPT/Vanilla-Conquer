@@ -7635,10 +7635,18 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
           }
           return { cellX: 11, cellY: 20 };
         };
+        const samFireCell = { cellX: 11, cellY: 20 };
+        const samWestStage = { cellX: 13, cellY: 22 };
         for (const tank of liveStrikeTanks) {
-          if (missionEightDistance(tank, westernSam) <= 5) {
+          const samDist = missionEightDistance(tank, westernSam);
+          if (samDist <= 5) {
             queueMissionEightRole(commands, `east-b-sam-deep-fire-${objectKey(tank)}`,
               [tank], westernSam, 0, 1);
+          } else if (westernSam.strength <= 180 && tank.cellX >= 14 && tank.cellY >= 21) {
+            const westTarget = tank.cellX >= 15 && tank.cellY > 22
+              ? samWestStage : samFireCell;
+            queueMissionEightRole(commands, `east-b-sam-deep-east-rush-${objectKey(tank)}`,
+              [tank], westTarget, MODIFIER_ALT, 1);
           } else {
             const close = samCloseCell(tank);
             queueMissionEightRole(commands, `east-b-sam-deep-close-${objectKey(tank)}`,

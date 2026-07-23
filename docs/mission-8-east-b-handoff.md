@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | local `/tmp/m8-eastb/v169-fine` — samMin **174** @32580; E3 chip 234→174; **0 tank shooters** @nadir; repair to 264; no A-10 |
+| Last TRACE suite | local v188 — samMin **174** @32580 (best) or **214** @32700 (same code, run variance); east-rush @≤180; 0 shooters; no A-10 |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -161,15 +161,18 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Deep-block west force-move `{11,20}` | v172 — samMin **186**; tanks reach 11,20 after repair starts |
 | Chip-band attack-move rush to SAM | v168 — samMin **234** stall; 0 shooters |
 | E3 hold unless `samTanksFiring` in chip band | v166 — samMin **234** stall |
+| Kill finisher all tanks @ latch (≤220) | v181 — samMin **186**; 11,20 shooter @32640 too late |
+| `samKillRail` after GUN/SAM `return` | dead code on SAM waypoint — never ran |
+| East-column west-rush @ SAM≤180 | v188 — samMin **174** held; 14,22 not 11,20; 0 shooters |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held best (v169, commit d708793)** — samMin **174** @32580: staged east pathing + tiered E3 (`samRocketEarlyCommit` / `samRocketChipCommit` / `samRocketDeepCommit`); deep-block close-or-fire kept (early return required).
-2. **Kill-window gap** — all damage from E3@10,17; **0 MTNK shooters** (15,22/13,23 stuck at Chebyshev 6–7); repair wins after E3 wipe @32580.
-3. **Next levers** — third overlapping tank shooter before E3 die; preserve E3 through 174→0; then A-10 + map clear.
-4. **Closed this session** — deep-block rush/west-close, early-return removal, `samTanksFiring` E3 gate (all regress vs v169).
+1. **Held best (v188 WIP)** — samMin **174** @32580: d708793 + east-column `MODIFIER_ALT` rush to `{13,22}`/`{11,20}` when latched and SAM≤180; E3 deep commit unchanged.
+2. **Run variance** — identical verifier yields samMin **174** or **214** across runs; treat **214** as common baseline until root-caused.
+3. **Kill-window gap** — force-move to `{11,20}` does not path from 14,22/15,22 in time; need 2+ overlapping tank shooters before E3 wipe.
+4. **Architecture note** — `samKillRail` after GUN/SAM `return` is dead on SAM waypoint; east-rush wired inside deep block @ SAM≤180.
 
 ---
 
