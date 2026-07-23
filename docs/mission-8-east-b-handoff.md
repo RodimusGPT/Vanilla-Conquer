@@ -174,15 +174,16 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Chip-band west pre (one tank) | v207 — samMin **170** but tank#6 dies @32520 |
 | Chip-band east pre (cellX≥15) | v208 — SAM **234** stall |
 | E3 delayed commit @ SAM≤200 | v212 — samMin **198** stall |
+| Full north-flank all tanks @ deep block | v214 — samMin **180** |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held best (v213)** — samMin **174** @32580: `eastBWestPrePositionPick`; west tank attack-move @ dist 6; east-column south detour; `eastBWesternGunCleared` route advance.
-2. **Pathing block @11,22** — force-move to `{11,21}`/`{10,20}` stalls ~30 ticks; tank#6 reaches `{10,21}` @32610 only (SAM already repairing).
-3. **Tank#29 @15,22** — east-column west path blocked on y=22 row; south detour did not unblock in TRACE.
-4. **Chip-band pre-position** — any chip-band tank pre (west or east) regresses chip or kills finisher HP; keep pre inside deep block only.
+1. **Held best (v217)** — samMin **174** @32580: wave-two release @ SAM 221–280; `{12,20}` north-flank nudge @11,22; backup finisher rail for full-HP MTNK @ y≥24.
+2. **Pathing block** — `{11,22}`/`{15,22}` force-move still stalls; tank#6 fires @32610 only.
+3. **Tank#4 @13,24** — full-HP backup rail did not reach fire line before nadir.
+4. **Next lever** — timed finisher spawn (produced MTNK from south) hard-railed to `{13,32}`→`{12,20}` before SAM≤220; or map-cell pathing investigation.
 
 ---
 
