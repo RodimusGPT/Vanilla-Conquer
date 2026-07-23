@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v219 FINE — samMin **174** @32580 (held); 3-lever: hoisted spine rail, `{13,32}` hold, placement path sample (all clear) |
+| Last TRACE suite | v221 FINE — samMin **169** @32580 (was 174); chip-band west-edge approach + in-range fire; SAM still repairs |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -179,15 +179,20 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Timed spine finisher rail (produced MTNK) | v218 — samMin **174** held; tank#4 @13,24 @ nadir; GUN approach override fixed; west rail dead during routeStage 7 |
 | Assign-roles spine candidate scan | v219 — samMin **400** stall; do not pull corridor/strike tanks into hold via role scan |
 | v219 three-lever bundle | samMin **174** @32580 held; hoisted rail + `{13,32}` hold (y≥28 emergence) + path sample all-clear |
+| Reserve strike MTNK @ routeStage 5 | v220 — samMin **266** stall; pulls wave-two/base-scrap (#4) off chip; SAM never ≤240 to release |
+| Deep-kill spine pick proximity / y≥21 | v220 — samMin **180** @32550 regression; damaged west-edge tank pulled off chip too early |
+| West-edge dist-6/7 close pass (deep block) | v220 — samMin **174** held; tank#6 11,22→10,21 @32610 (~30 ticks late); id#29 15,22 unchanged |
+| Chip-band west-edge approach (221–280) | v221 — samMin **169** @32580; #6 pre-rails to 11,20 during chip; fires @ nadir but solo DPS; dies ~32640; SAM repairs |
+| East-column dist-6 SAM attack-move | v221 — no gain; #29 stays @15,22 |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held best (v219)** — samMin **174** @32580 unchanged; 0 shooters @ nadir; tank#6 d5 @32610 too late.
-2. **Path sample** — placement grid marks spine `{13,21}`–`{13,24}` all `generallyClear`; stall is unit traffic / cadence, not terrain flags — profile live occupancy @32550.
-3. **Spine hold timing** — hold only triggers on factory emergence @ y≥28; no hold observed pre-chip in v219 — earlier WEAP completion or hold base scrap finisher @ `{13,32}` from routeStage 4.
-4. **Next lever** — reserve one strike MTNK off overlap from routeStage 5 (not produced-hold scan); timed release @ SAM≤240 with hoisted `queueEastBSamSpineFinisherRail` only.
+1. **Held best (v221)** — samMin **169** @32580; #6 @11,20 fires @ nadir; repair wins @32610 (179 HP); #6 dead @32640.
+2. **Second shooter** — #29 @15,22 dist 6 never closes; spine #4 stuck @13,24 — need simultaneous dist≤5 @32580 (profile why #29 ignores east SAM order).
+3. **E3 pack** — 0 E3 @32580; rocket commit during deep kill may recover finisher DPS.
+4. **Do not** reserve wave-two/base-scrap @ routeStage 5; do not full west-edge close during chip band (only approach dist 7–8 + in-range fire).
 
 ---
 
