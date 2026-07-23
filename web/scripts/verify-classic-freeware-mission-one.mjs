@@ -5476,10 +5476,26 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
     const westernSam = hostiles.find((hostile) => (
       hostile.typeName === "SAM" && hostile.cellX === 13 && hostile.cellY === 16
     ));
+    const corridorStrikeTanks = attackers.filter((unit) => (
+      unit.typeName === "MTNK"
+      && state.strikeKeys.has(objectKey(unit))
+      && unit.cellY <= 24 && unit.cellX >= 10 && unit.cellX <= 15
+    )).length;
+    const holdFirstWaveStack = Boolean(
+      westernSam
+      && westernSam.strength > 280
+      && state.routeStage >= 5
+      && state.routeStage <= 7
+      && corridorStrikeTanks >= 2
+    );
     // Release wave-two at the firing line so they roll into GUN/SAM with the
-    // first wave instead of waiting one stage further south.
+    // first wave instead of waiting one stage further south. Keep base scrap on
+    // the support hold through the first-wave chip (TRACE v119: id6@12,32 diluted
+    // the 32100 stack).
     if (state.routeStage >= 4) {
-      state.eastBWaveTwoKeys.clear();
+      if (!westernSam || westernSam.strength <= 280) {
+        state.eastBWaveTwoKeys.clear();
+      }
     } else {
       for (const key of [...state.eastBWaveTwoKeys]) {
         if (!attackers.some((attacker) => objectKey(attacker) === key && attacker.strength > 0)) {
@@ -5516,9 +5532,11 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
       if (attacker.typeName === "MCV" || attacker.typeName === "HARV") return false;
       if (attacker.typeName === "MTNK") {
         if (state.villageGuardKeys.has(key)) {
+          if (holdFirstWaveStack) return false;
           return loanVillageForSamFinish && attacker.strength >= 20;
         }
         if (state.baseGuardKeys.has(key)) {
+          if (holdFirstWaveStack) return false;
           if (samFinishUrgent && attacker.strength >= 20) {
             return true;
           }
@@ -5541,13 +5559,16 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
         if (westernSam && westernSam.strength < westernSam.maxStrength
           && state.eastBProducedTankKeys.has(key)
           && !state.baseGuardKeys.has(key)) {
+          if (holdFirstWaveStack) return false;
           return true;
         }
         if (samFinishUrgent && state.eastBProducedTankKeys.has(key)) {
+          if (holdFirstWaveStack) return false;
           return true;
         }
         if (liveVillageTanks < villageTankTarget
           && state.eastBProducedTankKeys.has(key)) return false;
+        if (holdFirstWaveStack) return false;
         return true;
       }
       if (state.villageGuardKeys.has(key)) return false;
@@ -7308,11 +7329,14 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
   // East-b wave-two + SAM-pack rockets: park at western support hold until the
   // firing line so finishers/rockets are intact when GUN dies (TRACE v63: 3 E3
   // at assault → 1 at GUN; corridor peels wiped the pack).
-  if (mission.variant === "east-b" && state.routeStage < 4) {
+  if (mission.variant === "east-b" && (
+    state.routeStage < 4
+    || state.eastBWaveTwoKeys.size > 0
+  )) {
     const hold = { cellX: 13, cellY: 32 };
     const waveTwo = strike.filter((attacker) => (
       state.eastBWaveTwoKeys.has(objectKey(attacker))
-      || attacker.typeName === "E3"
+      || (state.routeStage < 4 && attacker.typeName === "E3")
     ));
     for (const unit of waveTwo) {
       const rally = unit.cellY >= 50
@@ -7633,9 +7657,11 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
         !inSamRange.some((ready) => objectKey(ready) === objectKey(tank))
       ));
       const samUrgent = Boolean(westernSam && westernSam.strength <= 300);
-      const samFormCadence = samUrgent && samApproachBand.length >= 2
-        ? 1
-        : samApproachBand.length >= 2 ? 1 : inSamRange.length >= 1 ? 3 : 10;
+      const samKillNow = Boolean(westernSam && westernSam.strength <= 200);
+      const samFormCadence = samKillNow ? 1
+        : samUrgent && samApproachBand.length >= 2
+          ? 1
+          : samApproachBand.length >= 2 ? 1 : inSamRange.length >= 1 ? 3 : 10;
       for (const tank of needsClose) {
         const nearCorridor = tank.cellY <= 26 && tank.cellX >= 10 && tank.cellX <= 15;
         const target = nearCorridor ? samStandoff : eastBSamFormRally(tank);
@@ -7644,7 +7670,7 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       }
       if (inSamRange.length > 0) {
         queueMissionEightRole(commands, "east-b-focus-tanks", inSamRange, focus, 0,
-          samUrgent ? 1 : 10);
+          samKillNow || samUrgent ? 1 : 10);
       }
     } else {
       const inRange = focusIsUnit

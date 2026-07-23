@@ -11,12 +11,12 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | `64ecb96` + local WIP (SAM range/overlap finisher + spine rail) |
+| Commit | `c8c9745` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | local `/tmp/m8-eastb/v113` — samMin **298** @32400; 2 MTNK survive to ~32460; E3 gone @32340; no A-10; assault @28020 (best prior: v111 **266** @32400 — run variance) |
+| Last TRACE suite | local `/tmp/m8-eastb/v122` — samMin **183** @32400; SAM repairs to 400 by ~33120; no A-10; assault @28020 |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -148,16 +148,17 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | E3 commit only when SAM≤300 + overlap (no tank change) | v114 samMin **346** — E3 survive but under-chip |
 | Block joiners during first-wave chip | v115 samMin **328** |
 | Demote non-corridor strike MTNK during chip | v116 samMin **400** — assault broken |
+| Wave-two hold until SAM≤280 + joiner gate | v117 samMin **400** — tanks stuck @13,32 (too broad) |
+| holdFirstWaveStack joiner gate + wave-two until SAM≤280 | v120/v122 samMin **183** @32400; SAM then **repairs** to 400 |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **FINE TRACE 32100–32400** (baseline code) — v113 FINE: E3 die @32310–32340 with SAM@298; MTNK chip 362→298 then stall. GUN not respawning in window. Confirm whether v111’s 266 is reproducible or run variance.
-2. **Do not re-add x≥12-only tank fire or E3 pre-280 screen** — both regressed chip (v112/v114).
-3. **Kill-window stack** — best runs have **2 MTNK + 3 E3** on corridor at 32100 (v111); extra southern strike MTNK correlate with shallower chip (v113/v115). Need a lever that trims distant strike without breaking assault (v116 demotion failed).
-4. **Keep range mix** — `inSamRange` fire + `samStandoff` alt; engageRange 6; samUrgent cadence 1 when 2+ in approach band.
-5. After **first western SAM death**, verify A-10 unlock and map clear.
+1. **Kill SAM@183 before repair** — v120/v122: first-wave stack hold chips to **183** @32400 then SAM repairs to 400 by ~33120 with 1–2 MTNK left. Need sustained overlap DPS or factory finisher on spine before repair wins.
+2. **Held levers** — `holdFirstWaveStack` blocks extra MTNK joiners while 2+ corridor tanks fight SAM>280; `eastBWaveTwoKeys` held until SAM≤280 (base scrap stays @13,32 through chip).
+3. **Do not re-add** x≥12-only fire, broad wave-two SAM>280 hold (v117), or E3 commit≤260 (v121 regressed to 246@33000).
+4. After **first western SAM death**, verify A-10 unlock and map clear.
 
 ---
 
