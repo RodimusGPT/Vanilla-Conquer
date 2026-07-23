@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v205 FINE ×3 — samMin **174** @32580; routeStage **7** kill window; 0 MTNK shooters @ nadir |
+| Last TRACE suite | v213 FINE ×3 — samMin **174** @32580; dist-6 west attack-move + east south detour; still 0 shooters @ nadir |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -171,15 +171,18 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | East rush @ SAM≤200 / ≤186 (all east column) | v198/v200 — samMin **180** |
 | Dist-6 nudge to `{11,21}` | v199 — tank stuck @11,22; blocks west pre |
 | Dist-6 edge fire @ deep block | v206 — no damage; MTNK needs cheb≤5 |
+| Chip-band west pre (one tank) | v207 — samMin **170** but tank#6 dies @32520 |
+| Chip-band east pre (cellX≥15) | v208 — SAM **234** stall |
+| E3 delayed commit @ SAM≤200 | v212 — samMin **198** stall |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held best (v205)** — samMin **174** @32580: deep finisher now runs at **routeStage 7** (GUN waypoint); `westPrePositionTank` filter fixed (`cellX≤13`); incremental `eastBSamWestPreStep` / east-column west steps.
-2. **Root cause confirmed** — kill window opens @ routeStage 7 while `nextWaypoint` is still GUN; finisher was gated on routeStage 8 only (now fixed).
-3. **Kill-window gap** — tanks stall @11,22/15,22 (cheb dist **6**); need dist≤5 before E3 wipe @32580; ~30 ticks/cell pathing; tank#6 fires @32640+ only.
-4. **Post-SAM untested** — western SAM still never dies; A-10 / map-clear pending kill-window fix.
+1. **Held best (v213)** — samMin **174** @32580: `eastBWestPrePositionPick`; west tank attack-move @ dist 6; east-column south detour; `eastBWesternGunCleared` route advance.
+2. **Pathing block @11,22** — force-move to `{11,21}`/`{10,20}` stalls ~30 ticks; tank#6 reaches `{10,21}` @32610 only (SAM already repairing).
+3. **Tank#29 @15,22** — east-column west path blocked on y=22 row; south detour did not unblock in TRACE.
+4. **Chip-band pre-position** — any chip-band tank pre (west or east) regresses chip or kills finisher HP; keep pre inside deep block only.
 
 ---
 

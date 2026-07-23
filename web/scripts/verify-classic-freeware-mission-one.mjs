@@ -6795,30 +6795,41 @@ function eastBSamWestPreStep(tank, samDist) {
   return eastBSamKillFireCell;
 }
 
+function eastBWestPrePositionPick(tanks) {
+  return tanks.filter((tank) => (
+    tank.typeName === "MTNK" && tank.strength > 0
+    && tank.cellX <= 13 && tank.cellY <= 24 && tank.cellY >= 21
+  )).toSorted((left, right) => (
+    left.cellX - right.cellX || left.cellY - right.cellY || left.id - right.id
+  ))[0];
+}
+
 function queueEastBSamDeepFinisher(commands, strike, westernSam) {
   const liveTanks = strike.filter((attacker) => (
     attacker.typeName === "MTNK" && attacker.strength > 0
   ));
   const samStrength = westernSam.strength;
-  const westPrePositionTank = liveTanks.filter((tank) => (
-    tank.cellX <= 13 && tank.cellY <= 24 && tank.cellY >= 21
-  )).toSorted((left, right) => (
-    left.cellX - right.cellX || left.cellY - right.cellY || left.id - right.id
-  ))[0];
+  const westPrePositionTank = eastBWestPrePositionPick(liveTanks);
   for (const tank of liveTanks) {
     const samDist = missionEightDistance(tank, westernSam);
     if (samDist <= 5) {
       queueMissionEightRole(commands, `east-b-sam-deep-fire-${objectKey(tank)}`,
         [tank], westernSam, 0, 1);
     } else if (samStrength <= 180 && tank.cellX >= 15 && tank.cellY >= 21) {
-      const eastStep = tank.cellX > 14
-        ? { cellX: tank.cellX - 1, cellY: tank.cellY }
-        : eastBSamWestCloseTarget(tank);
+      const eastStep = tank.cellX >= 15 && tank.cellY <= 22
+        ? { cellX: tank.cellX - 1, cellY: tank.cellY + 1 }
+        : tank.cellX > 14
+          ? { cellX: tank.cellX - 1, cellY: tank.cellY }
+          : eastBSamWestCloseTarget(tank);
       queueMissionEightRole(commands, `east-b-sam-deep-east-rush-${objectKey(tank)}`,
         [tank], eastStep, MODIFIER_ALT, 1);
     } else if (samStrength <= 180 && tank.cellX >= 14 && tank.cellY >= 21) {
       queueMissionEightRole(commands, `east-b-sam-deep-east-rush-${objectKey(tank)}`,
         [tank], eastBSamWestCloseTarget(tank), MODIFIER_ALT, 1);
+    } else if (westPrePositionTank && objectKey(tank) === objectKey(westPrePositionTank)
+      && samDist === 6) {
+      queueMissionEightRole(commands, `east-b-sam-deep-west-close-${objectKey(tank)}`,
+        [tank], westernSam, 0, 1);
     } else if (westPrePositionTank && objectKey(tank) === objectKey(westPrePositionTank)
       && samDist > 5 && tank.cellX <= 13 && tank.cellY >= 21) {
       queueMissionEightRole(commands, `east-b-sam-deep-west-pre-${objectKey(tank)}`,
@@ -7621,8 +7632,13 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       && waypoint.typeName === "SAM"
       && targetCellX === 13 && targetCellY === 16
       && !routeTargetAlive;
+    const eastBWesternGunCleared = mission.variant === "east-b"
+      && waypoint.typeName === "GUN"
+      && targetCellX === 11 && targetCellY === 18
+      && !routeTargetAlive;
     if (!waitingForAssembly && !routeTargetAlive
-      && (targetDestroyedOnStage || eastBWesternSamCleared || waypoint.typeName === "FACT"
+      && (targetDestroyedOnStage || eastBWesternSamCleared || eastBWesternGunCleared
+        || waypoint.typeName === "FACT"
         || effectiveArrivals >= required)) {
       state.routeProgress.push({
         tick: snapshot.tick,
