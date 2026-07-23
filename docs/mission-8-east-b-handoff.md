@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | local v188 — samMin **174** @32580 (best) or **214** @32700 (same code, run variance); east-rush @≤180; 0 shooters; no A-10 |
+| Last TRACE suite | v197 FINE ×3 — samMin **174** @32580 stable; tank#6 shooter @32640 (too late); no SAM death |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -65,6 +65,7 @@ for (const r of rows) {
   if (w&&w.strength===0&&dead<0) dead=r.tick;
 }
 console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint,dead,
+  note:'scan all stderr lines — coarse %300 sampling misses nadir between samples',
   last:rows.at(-1)&&{t:rows.at(-1).tick,rs:rows.at(-1).routeStage,
     host:rows.at(-1).hostiles,friendly:rows.at(-1).friendly,
     neutr:rows.at(-1).neutralMinimum}});
@@ -127,7 +128,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Staging cells | assembly `{39,57}`, reserve `{27,57}` |
 | SAM pack production | `eastBSamPackPhase`, MTNK-first, gap-fill E3 when pack &lt; 4 |
 | Wave-two / rocket park | `eastBWaveTwoKeys`; E3 + base scrap held at `{13,32}` until `routeStage >= 5` |
-| GUN/SAM micro | `samChipBand` form (221–279 HP); `inSamRange` weapon dist≤5; deep-chip `samCloseCell`; GUN E3 hold @ `{13,28}` only |
+| GUN/SAM micro | `samChipBand` form (221–279 HP); `inSamRange` weapon dist≤5; `queueEastBSamDeepFinisher` deep-chip kill rail; GUN E3 hold @ `{13,28}` only |
 | West rail | Hard-rail east wanderers onto X=13; finish-rail when SAM chipped |
 | Village→strike loan | When `routeStage >= 5`; last village tank if strike empty + SAM chipped |
 | Free tank assignment | While SAM chipped, unassigned free MTNK → **strike**, not village |
@@ -164,15 +165,18 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Kill finisher all tanks @ latch (≤220) | v181 — samMin **186**; 11,20 shooter @32640 too late |
 | `samKillRail` after GUN/SAM `return` | dead code on SAM waypoint — never ran |
 | East-column west-rush @ SAM≤180 | v188 — samMin **174** held; 14,22 not 11,20; 0 shooters |
+| E3 split + west pre-position @ chip band | v191 — SAM **234** stall; E3 wipe early |
+| Edge attack-move dist 6–7 @ SAM≤180 | v194 — samMin **180**; E3 chip worse |
+| Chip-band west pre-position (needsClose) | v196 — SAM **234** stall; keep west pre inside deep block only |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held best (v188, commit b120fe9)** — samMin **174** @32580: d708793 + east-column `MODIFIER_ALT` rush to `{13,22}`/`{11,20}` when latched and SAM≤180; E3 deep commit unchanged.
-2. **Run variance** — identical verifier yields samMin **174** or **214** across runs; treat **214** as common baseline until root-caused.
-3. **Kill-window gap** — force-move to `{11,20}` does not path from 14,22/15,22 in time; need 2+ overlapping tank shooters before E3 wipe.
-4. **Architecture note** — `samKillRail` after GUN/SAM `return` is dead on SAM waypoint; east-rush wired inside deep block @ SAM≤180.
+1. **Held best (v197)** — samMin **174** @32580 (FINE ×3): `queueEastBSamDeepFinisher` consolidates kill finisher; west pre `{11,20}` for westernmost tank **inside deep block only**; `eastBWesternSamCleared` route advance; dead `samKillRail` return removed.
+2. **TRACE pitfall** — default TRACE logs every **300** ticks; nadir @32580 is invisible to coarse parse. Use `CNCWEB_VERIFY_TRACE_FINE=1` or scan every stderr line for samMin.
+3. **Kill-window gap** — tank#6 reaches `{11,20}` @32640 (~600 ticks after nadir); 0 shooters @32580; need west tank on fire cell **before** E3 wipe.
+4. **Post-SAM untested** — western SAM still never dies; A-10 / map-clear path unchanged pending kill-window fix.
 
 ---
 

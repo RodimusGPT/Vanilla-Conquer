@@ -6763,6 +6763,73 @@ function queueMissionEightPostSamCounterattack(snapshot, hostiles, attackers, co
   }
 }
 
+const eastBSamKillFireCell = { cellX: 11, cellY: 20 };
+const eastBSamKillWestStage = { cellX: 13, cellY: 22 };
+const eastBSamKillSpineStage = { cellX: 13, cellY: 21 };
+
+function eastBSamCloseCell(tank) {
+  if (tank.cellX >= 15) {
+    if (tank.cellY > 22) return { cellX: 13, cellY: 21 };
+    return { cellX: 14, cellY: 20 };
+  }
+  if (tank.cellY > 22 && tank.cellX >= 10 && tank.cellX <= 15) {
+    return { cellX: 13, cellY: 21 };
+  }
+  return eastBSamKillFireCell;
+}
+
+function eastBSamWestCloseTarget(tank) {
+  if (tank.cellX >= 14 && tank.cellY > 22) return eastBSamKillWestStage;
+  if (tank.cellY > 21 || tank.cellX >= 13) return eastBSamKillFireCell;
+  return eastBSamKillSpineStage;
+}
+
+function queueEastBSamDeepFinisher(commands, strike, westernSam) {
+  const liveTanks = strike.filter((attacker) => (
+    attacker.typeName === "MTNK" && attacker.strength > 0
+  ));
+  const samStrength = westernSam.strength;
+  const westPrePositionTank = liveTanks.filter((tank) => (
+    tank.cellX <= 12 && tank.cellY <= 24
+  )).toSorted((left, right) => (
+    left.cellX - right.cellX || left.cellY - right.cellY || left.id - right.id
+  ))[0];
+  for (const tank of liveTanks) {
+    const samDist = missionEightDistance(tank, westernSam);
+    if (samDist <= 5) {
+      queueMissionEightRole(commands, `east-b-sam-deep-fire-${objectKey(tank)}`,
+        [tank], westernSam, 0, 1);
+    } else if (westernSam.strength <= 180 && tank.cellX >= 14 && tank.cellY >= 21) {
+      queueMissionEightRole(commands, `east-b-sam-deep-east-rush-${objectKey(tank)}`,
+        [tank], eastBSamWestCloseTarget(tank), MODIFIER_ALT, 1);
+    } else if (westPrePositionTank && objectKey(tank) === objectKey(westPrePositionTank)
+      && samDist > 5) {
+      queueMissionEightRole(commands, `east-b-sam-deep-west-pre-${objectKey(tank)}`,
+        [tank], eastBSamKillFireCell, MODIFIER_ALT, 1);
+    } else {
+      queueMissionEightRole(commands, `east-b-sam-deep-close-${objectKey(tank)}`,
+        [tank], eastBSamCloseCell(tank), 0, 1);
+    }
+  }
+  const deepRockets = strike.filter((attacker) => attacker.typeName === "E3");
+  if (deepRockets.length > 0) {
+    if (samStrength <= 220) {
+      queueMissionEightRole(commands, "east-b-sam-deep-rockets", deepRockets,
+        westernSam, 0, 1);
+    } else {
+      queueMissionEightRole(commands, "east-b-sam-deep-rocket-hold", deepRockets,
+        { cellX: 13, cellY: 26 }, MODIFIER_ALT, 5);
+    }
+  }
+  const screenRest = strike.filter((attacker) => (
+    attacker.typeName !== "MTNK" && attacker.typeName !== "E3"
+  ));
+  if (screenRest.length > 0) {
+    queueMissionEightRole(commands, "east-b-sam-deep-screen", screenRest,
+      westernSam, 0, 30);
+  }
+}
+
 function queueMissionEightForces(snapshot, friendly, hostiles, attackers, commands) {
   const state = missionEightState;
   queueMissionEightScout(snapshot, friendly, attackers, commands);
@@ -7533,8 +7600,12 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     }
     const targetDestroyedOnStage = waypoint.typeName && !routeTargetAlive
       && state.routeTargetEngagedStages.has(state.routeStage);
+    const eastBWesternSamCleared = mission.variant === "east-b"
+      && waypoint.typeName === "SAM"
+      && targetCellX === 13 && targetCellY === 16
+      && !routeTargetAlive;
     if (!waitingForAssembly && !routeTargetAlive
-      && (targetDestroyedOnStage || waypoint.typeName === "FACT"
+      && (targetDestroyedOnStage || eastBWesternSamCleared || waypoint.typeName === "FACT"
         || effectiveArrivals >= required)) {
       state.routeProgress.push({
         tick: snapshot.tick,
@@ -7624,45 +7695,7 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     if (nextWaypoint.typeName === "SAM" && westernSam
       && westernSam.strength < westernSam.maxStrength) {
       if (samDeepChip) {
-        const samCloseCell = (tank) => {
-          if (tank.cellX >= 15) {
-            if (tank.cellY > 22) return { cellX: 13, cellY: 21 };
-            if (tank.cellY > 20) return { cellX: 14, cellY: 20 };
-            return { cellX: 14, cellY: 20 };
-          }
-          if (tank.cellY > 22 && tank.cellX >= 10 && tank.cellX <= 15) {
-            return { cellX: 13, cellY: 21 };
-          }
-          return { cellX: 11, cellY: 20 };
-        };
-        const samFireCell = { cellX: 11, cellY: 20 };
-        const samWestStage = { cellX: 13, cellY: 22 };
-        for (const tank of liveStrikeTanks) {
-          const samDist = missionEightDistance(tank, westernSam);
-          if (samDist <= 5) {
-            queueMissionEightRole(commands, `east-b-sam-deep-fire-${objectKey(tank)}`,
-              [tank], westernSam, 0, 1);
-          } else if (westernSam.strength <= 180 && tank.cellX >= 14 && tank.cellY >= 21) {
-            const westTarget = tank.cellX >= 15 && tank.cellY > 22
-              ? samWestStage : samFireCell;
-            queueMissionEightRole(commands, `east-b-sam-deep-east-rush-${objectKey(tank)}`,
-              [tank], westTarget, MODIFIER_ALT, 1);
-          } else {
-            const close = samCloseCell(tank);
-            queueMissionEightRole(commands, `east-b-sam-deep-close-${objectKey(tank)}`,
-              [tank], close, 0, 1);
-          }
-        }
-        const deepRockets = strike.filter((attacker) => attacker.typeName === "E3");
-        if (deepRockets.length > 0) {
-          if (westernSam.strength <= 220) {
-            queueMissionEightRole(commands, "east-b-sam-deep-rockets", deepRockets,
-              westernSam, 0, 1);
-          } else {
-            queueMissionEightRole(commands, "east-b-sam-deep-rocket-hold", deepRockets,
-              { cellX: 13, cellY: 26 }, MODIFIER_ALT, 5);
-          }
-        }
+        queueEastBSamDeepFinisher(commands, strike, westernSam);
         return;
       }
       const trailers = liveStrikeTanks.filter((tank) => (
@@ -7970,29 +8003,9 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     const samFinishRail = Boolean(
       westernSamLive && westernSamLive.strength < westernSamLive.maxStrength
     );
-    const samKillRail = Boolean(
+    const samDeepFinishRail = Boolean(
       westernSamLive && missionEightState.eastBSamDeepChip && westernSamLive.strength > 0
     );
-    if (samKillRail && westernSamLive) {
-      const samFireCell = { cellX: 11, cellY: 20 };
-      for (const tank of strike.filter((attacker) => (
-        attacker.typeName === "MTNK" && attacker.strength > 0
-      ))) {
-        if (missionEightDistance(tank, westernSamLive) <= 5) {
-          queueMissionEightRole(commands, `east-b-sam-kill-west-fire-${objectKey(tank)}`,
-            [tank], westernSamLive, 0, 1);
-        } else {
-          queueMissionEightRole(commands, `east-b-sam-kill-west-close-${objectKey(tank)}`,
-            [tank], samFireCell, 0, 1);
-        }
-      }
-      const killRockets = strike.filter((attacker) => attacker.typeName === "E3");
-      if (killRockets.length > 0) {
-        queueMissionEightRole(commands, "east-b-sam-kill-west-rockets", killRockets,
-          westernSamLive, 0, 1);
-      }
-      return;
-    }
     const needsRail = strike.filter((attacker) => (
       attacker.typeName === "MTNK"
       && (
@@ -8000,7 +8013,7 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
         || (attacker.cellX >= 22 && attacker.cellY <= 42 && state.routeStage >= 1
           && state.routeStage <= 7)
         || (state.routeStage >= 6 && attacker.cellX >= 14 && attacker.cellY <= 26)
-        || (samKillRail && state.eastBProducedTankKeys.has(objectKey(attacker))
+        || (samDeepFinishRail && state.eastBProducedTankKeys.has(objectKey(attacker))
           && attacker.cellY >= 35)
         || (samFinishRail && (attacker.cellY >= 28 || attacker.cellX >= 16
           || attacker.cellX <= 9))
@@ -8010,10 +8023,10 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       const front = strike.filter((attacker) => (
         !needsRail.some((unit) => objectKey(unit) === objectKey(attacker))
       ));
-      const westRailCadence = samKillRail ? 1 : 10;
+      const westRailCadence = samDeepFinishRail ? 1 : 10;
       for (const tank of needsRail) {
-        const rally = samKillRail
-          ? { cellX: 13, cellY: 20 }
+        const rally = samDeepFinishRail
+          ? eastBSamKillFireCell
           : tank.cellY >= 55
             ? { cellX: 13, cellY: 48 }
             : tank.cellY >= 40
