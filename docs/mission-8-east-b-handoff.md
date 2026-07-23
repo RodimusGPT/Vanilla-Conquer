@@ -11,12 +11,12 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | `c8c9745` |
+| Commit | `67e7a9c` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | local `/tmp/m8-eastb/v122` — samMin **183** @32400; SAM repairs to 400 by ~33120; no A-10; assault @28020 |
+| Last TRACE suite | local `/tmp/m8-eastb/v162-fine` — samMin **186** @32520 (v161 **174** @32580); 3 MTNK + E3 at nadir; repair; no A-10 |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -127,7 +127,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Staging cells | assembly `{39,57}`, reserve `{27,57}` |
 | SAM pack production | `eastBSamPackPhase`, MTNK-first, gap-fill E3 when pack &lt; 4 |
 | Wave-two / rocket park | `eastBWaveTwoKeys`; E3 + base scrap held at `{13,32}` until `routeStage >= 5` |
-| GUN/SAM micro | Focus block for typeName GUN/SAM; `eastBGunApproachRally` / `eastBSamFormRally`; inBand attack + outOfBand spine rail + spine fallback |
+| GUN/SAM micro | `samChipBand` form (221–279 HP); `inSamRange` weapon dist≤5; deep-chip `samCloseCell`; GUN E3 hold @ `{13,28}` only |
 | West rail | Hard-rail east wanderers onto X=13; finish-rail when SAM chipped |
 | Village→strike loan | When `routeStage >= 5`; last village tank if strike empty + SAM chipped |
 | Free tank assignment | While SAM chipped, unassigned free MTNK → **strike**, not village |
@@ -149,16 +149,24 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Block joiners during first-wave chip | v115 samMin **328** |
 | Demote non-corridor strike MTNK during chip | v116 samMin **400** — assault broken |
 | Wave-two hold until SAM≤280 + joiner gate | v117 samMin **400** — tanks stuck @13,32 (too broad) |
-| holdFirstWaveStack joiner gate + wave-two until SAM≤280 | v120/v122 samMin **183** @32400; SAM then **repairs** to 400 |
+| holdFirstWaveStack + wave-two until SAM≤280 | v120/v122 samMin **183** @32400 coarse; FINE **177** @32430 with deep-chip latch |
+| E3 commit on deep-chip latch alone | v139 — E3 already dead; no gain |
+| Deep-chip attack-move to SAM | v141–142 — tanks stall 1 cell outside weapon range (Chebyshev 6); repair wins |
+| Deep-chip close-or-fire @ `{13,20}` only | v144 — samMin **163** @32430 (was 177); 15,22 never reaches fire line in time |
+| `eastBSamDeepChip` latch @ SAM≤280 | v148 — samMin **264** stall; bypasses working chip focus path |
+| E3 hold until SAM≤220 (focus block) | v151 — samMin **264** stall; same interference with chip path |
+| Pre-close east tanks during 221–280 band | v149 — samMin **246**; conflicts with focus chip orders |
+| `samCloseCell` east `{14,20}` / spine `{13,21}` | v155 — still **163** @32430; 15,22 pathing stalls at y=22 |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Kill SAM@183 before repair** — v120/v122: first-wave stack hold chips to **183** @32400 then SAM repairs to 400 by ~33120 with 1–2 MTNK left. Need sustained overlap DPS or factory finisher on spine before repair wins.
-2. **Held levers** — `holdFirstWaveStack` blocks extra MTNK joiners while 2+ corridor tanks fight SAM>280; `eastBWaveTwoKeys` held until SAM≤280 (base scrap stays @13,32 through chip).
-3. **Do not re-add** x≥12-only fire, broad wave-two SAM>280 hold (v117), or E3 commit≤260 (v121 regressed to 246@33000).
-4. After **first western SAM death**, verify A-10 unlock and map clear.
+1. **Finish SAM before repair** — held fast nadir **163** @32430 (v155); v161 three-lever stack hits **174** @32580 with 3 MTNK + E3 but still repairs. East tank reaches **14,22** (not 14,20) via chip-band form.
+2. **Held levers (v162)** — (a) `samChipBand` form targets `{14,20}` / `{13,21}` for east/spine; (b) GUN-only E3 hold @ `{13,28}`; (c) `inSamWeaponRange` dist≤5 for `inSamRange`; wave-two spine promote @ deep chip; far strike demotion `routeStage≥6`.
+3. **Closed** — `samThirdShooter` open joiners (v156–157), wave-two release @320 (v156), E3 SAM-focus hold (v151), latch@280 (v148).
+4. **Next** — path 15,22→14,20 (terrain?); E3 commit only inside deep-chip block; beat repair in 174→0 window.
+5. After **first western SAM death**, verify A-10 unlock and map clear.
 
 ---
 

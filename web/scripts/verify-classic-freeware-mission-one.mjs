@@ -3016,6 +3016,7 @@ const missionEightState = {
   // Free/base MTNKs pre-positioned at western support hold; released at GUN stage.
   eastBWaveTwoKeys: new Set(),
   eastBSamFinishSellTick: undefined,
+  eastBSamDeepChip: false,
   eastBSecondNukeOrderTick: undefined,
   villageGuardKeys: new Set(),
   baseGuardKeys: new Set(),
@@ -3390,10 +3391,22 @@ function observeMissionEightTurn(snapshot, friendly, hostiles) {
       const emergedAtFactory = missionEightDistance(tank, factoryExit) <= 3
         && (!previous || missionEightDistance(tank, previous) > 6);
       if (vehicleProductionStarts === 0 || !emergedAtFactory) continue;
+      if (state.villageGuardKeys.has(key)) continue;
       clearMissionEightUnitRoleKey(key);
       state.baselineFriendlyKeys.delete(key);
       state.productionKeys.delete(key);
       state.eastBProducedTankKeys.add(key);
+      const westernSamEmergence = hostiles.find((hostile) => (
+        hostile.typeName === "SAM" && hostile.cellX === 13 && hostile.cellY === 16
+      ));
+      if (westernSamEmergence
+        && missionEightState.eastBSamDeepChip
+        && westernSamEmergence.strength > 0) {
+        state.strikeKeys.add(key);
+        state.villageGuardKeys.delete(key);
+        state.baseGuardKeys.delete(key);
+        state.eastBWaveTwoKeys.delete(key);
+      }
     }
     state.eastBPreviousTanks = new Map(liveTanks.map((tank) => [objectKey(tank), {
       cellX: tank.cellX,
@@ -4379,10 +4392,13 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       && eastBSamStillUp
       && eastBStrikeTanksLive === 0
       && !eastBSamChipped;
+    const eastBSamNearDead = Boolean(
+      eastBWesternSam && (eastBWesternSam.strength <= 220 || missionEightState.eastBSamDeepChip)
+    );
     const eastBSamMtnkBank = mission.variant === "east-b"
       && missionEightState.assaultTick !== undefined
       && eastBSamChipped
-      && eastBStrikeTanksLive <= 2
+      && (eastBStrikeTanksLive <= 2 || eastBSamNearDead)
       && funds < 800;
     const eastBFinishBank = mission.variant === "east-b"
       && missionEightState.assaultTick !== undefined
@@ -5470,9 +5486,6 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
     const liveVillageTanks = attackers.filter((unit) => (
       unit.typeName === "MTNK" && state.villageGuardKeys.has(objectKey(unit))
     )).length;
-    const strikeTanks = attackers.filter((unit) => (
-      unit.typeName === "MTNK" && state.strikeKeys.has(objectKey(unit))
-    )).length;
     const westernSam = hostiles.find((hostile) => (
       hostile.typeName === "SAM" && hostile.cellX === 13 && hostile.cellY === 16
     ));
@@ -5488,6 +5501,52 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
       && state.routeStage <= 7
       && corridorStrikeTanks >= 2
     );
+    if (westernSam && westernSam.strength <= 220) {
+      state.eastBSamDeepChip = true;
+    }
+    if (!westernSam || westernSam.strength === 0) {
+      state.eastBSamDeepChip = false;
+    }
+    const samKillWindow = Boolean(
+      state.eastBSamDeepChip
+      && westernSam
+      && westernSam.strength > 0
+    );
+    const demoteFarSamFinishers = () => {
+      if (!samKillWindow) return;
+      for (const tank of attackers) {
+        if (tank.typeName !== "MTNK" || tank.strength < 40) continue;
+        const key = objectKey(tank);
+        if (!state.strikeKeys.has(key)) continue;
+        const farFromSamFinish = tank.cellY >= 32 || tank.cellX <= 8 || tank.cellX >= 18;
+        if (!farFromSamFinish) continue;
+        const onFinishPath = (tank.cellY <= 40 && tank.cellX >= 10 && tank.cellX <= 15)
+          || missionEightDistance(tank, missionEightEastBTankAssembly) <= 8
+          || missionEightDistance(tank, missionEightEastBTankReserve) <= 8;
+        if (onFinishPath) continue;
+        state.strikeKeys.delete(key);
+        state.baseGuardKeys.delete(key);
+        if (tank.cellX <= 8 && tank.cellY >= 40) {
+          state.villageGuardKeys.add(key);
+        } else {
+          state.baseGuardKeys.add(key);
+        }
+      }
+    };
+    demoteFarSamFinishers();
+    if (state.routeStage >= 6) {
+      for (const tank of attackers) {
+        if (tank.typeName !== "MTNK" || tank.strength < 40) continue;
+        const key = objectKey(tank);
+        if (!state.strikeKeys.has(key)) continue;
+        if (tank.cellX >= 10 && tank.cellY <= 40) continue;
+        state.strikeKeys.delete(key);
+        state.baseGuardKeys.add(key);
+      }
+    }
+    let strikeTanksLive = attackers.filter((unit) => (
+      unit.typeName === "MTNK" && state.strikeKeys.has(objectKey(unit))
+    )).length;
     // Release wave-two at the firing line so they roll into GUN/SAM with the
     // first wave instead of waiting one stage further south. Keep base scrap on
     // the support hold through the first-wave chip (TRACE v119: id6@12,32 diluted
@@ -5514,43 +5573,43 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
         liveVillageTanks >= 2
         || (westernSam
           && westernSam.strength < westernSam.maxStrength
-          && strikeTanks <= 3)
+          && strikeTanksLive <= 3)
       )
     );
     const samFinishUrgent = Boolean(
       westernSam
       && westernSam.strength < westernSam.maxStrength
       && westernSam.strength <= 320
-      && strikeTanks <= 2
+      && strikeTanksLive <= 2
     );
     const maxVillageLoans = (samFinishUrgent || (westernSam
       && westernSam.strength < westernSam.maxStrength
-      && strikeTanks <= 3)) ? 2 : 1;
+      && strikeTanksLive <= 3)) ? 2 : 1;
     const joiners = attackers.filter((attacker) => {
       const key = objectKey(attacker);
       if (state.scoutKeys.has(key) || state.strikeKeys.has(key)) return false;
       if (attacker.typeName === "MCV" || attacker.typeName === "HARV") return false;
       if (attacker.typeName === "MTNK") {
         if (state.villageGuardKeys.has(key)) {
-          if (holdFirstWaveStack) return false;
+          if (holdFirstWaveStack || samKillWindow) return false;
           return loanVillageForSamFinish && attacker.strength >= 20;
         }
         if (state.baseGuardKeys.has(key)) {
-          if (holdFirstWaveStack) return false;
+          if (holdFirstWaveStack || samKillWindow) return false;
           if (samFinishUrgent && attacker.strength >= 20) {
             return true;
           }
           if (westernSam && westernSam.strength < westernSam.maxStrength
-            && strikeTanks <= 2
+            && strikeTanksLive <= 2
             && attacker.strength >= 40) {
             return true;
           }
           if (westernSam && westernSam.strength <= westernSam.maxStrength * 0.55
-            && strikeTanks <= 1
+            && strikeTanksLive <= 1
             && attacker.strength >= 40) {
             return true;
           }
-          return strikeTanks <= 2
+          return strikeTanksLive <= 2
             && attacker.strength >= Math.ceil(attacker.maxStrength * 0.6);
         }
         // Never divert a fresh free tank into village duty while the western
@@ -5568,7 +5627,7 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
         }
         if (liveVillageTanks < villageTankTarget
           && state.eastBProducedTankKeys.has(key)) return false;
-        if (holdFirstWaveStack) return false;
+        if (holdFirstWaveStack || samKillWindow) return false;
         return true;
       }
       if (state.villageGuardKeys.has(key)) return false;
@@ -5592,6 +5651,38 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
         }
         state.baseGuardKeys.delete(key);
         state.strikeKeys.add(key);
+      }
+    }
+    if (samKillWindow) {
+      if (westernSam && westernSam.strength <= 220) {
+        for (const tank of attackers) {
+          if (tank.typeName !== "MTNK" || tank.strength < 40) continue;
+          const key = objectKey(tank);
+          if (!state.eastBWaveTwoKeys.has(key)) continue;
+          if (tank.cellY > 32 || tank.cellX < 10 || tank.cellX > 15) continue;
+          state.strikeKeys.add(key);
+          state.eastBWaveTwoKeys.delete(key);
+        }
+      }
+      demoteFarSamFinishers();
+      for (const tank of attackers) {
+        if (tank.typeName !== "MTNK" || tank.strength < 40) continue;
+        const key = objectKey(tank);
+        if (state.eastBProducedTankKeys.has(key) && !state.villageGuardKeys.has(key)) {
+          state.strikeKeys.add(key);
+          state.baseGuardKeys.delete(key);
+          state.eastBWaveTwoKeys.delete(key);
+          continue;
+        }
+        if (state.strikeKeys.has(key) || state.scoutKeys.has(key)) continue;
+        if (state.villageGuardKeys.has(key)) continue;
+        const onSpine = tank.cellY <= 40 && tank.cellX >= 10 && tank.cellX <= 15;
+        if (onSpine) {
+          state.strikeKeys.add(key);
+          state.baseGuardKeys.delete(key);
+          state.villageGuardKeys.delete(key);
+          state.eastBWaveTwoKeys.delete(key);
+        }
       }
     }
   } else if (mission.variant !== "east-a" && state.assaultTick !== undefined
@@ -7504,6 +7595,9 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     const westernGun = hostiles.find((hostile) => (
       hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
     ));
+    const samDeepChip = Boolean(
+      state.eastBSamDeepChip && westernSam && westernSam.strength > 0
+    );
     const liveStrikeTanks = strike.filter((attacker) => (
       attacker.typeName === "MTNK" && attacker.strength > 0
     ));
@@ -7529,6 +7623,40 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     // detours). TRACE v52–54: finishers pathfinded to 45,33 or looped y=47–60.
     if (nextWaypoint.typeName === "SAM" && westernSam
       && westernSam.strength < westernSam.maxStrength) {
+      if (samDeepChip) {
+        const samCloseCell = (tank) => {
+          if (tank.cellX >= 15) {
+            return tank.cellY > 21
+              ? { cellX: 13, cellY: 21 }
+              : { cellX: 14, cellY: 20 };
+          }
+          if (tank.cellY > 22 && tank.cellX >= 10 && tank.cellX <= 15) {
+            return { cellX: 13, cellY: 21 };
+          }
+          return { cellX: 11, cellY: 20 };
+        };
+        for (const tank of liveStrikeTanks) {
+          if (missionEightDistance(tank, westernSam) <= 5) {
+            queueMissionEightRole(commands, `east-b-sam-deep-fire-${objectKey(tank)}`,
+              [tank], westernSam, 0, 1);
+          } else {
+            const close = samCloseCell(tank);
+            queueMissionEightRole(commands, `east-b-sam-deep-close-${objectKey(tank)}`,
+              [tank], close, 0, 1);
+          }
+        }
+        const deepRockets = strike.filter((attacker) => attacker.typeName === "E3");
+        if (deepRockets.length > 0) {
+          if (westernSam.strength <= 220) {
+            queueMissionEightRole(commands, "east-b-sam-deep-rockets", deepRockets,
+              westernSam, 0, 1);
+          } else {
+            queueMissionEightRole(commands, "east-b-sam-deep-rocket-hold", deepRockets,
+              { cellX: 13, cellY: 26 }, MODIFIER_ALT, 5);
+          }
+        }
+        return;
+      }
       const trailers = liveStrikeTanks.filter((tank) => (
         tank.cellY >= 26 || tank.cellX >= 16 || tank.cellX <= 9
       ));
@@ -7536,16 +7664,24 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
         tank.cellY < 26 && tank.cellX >= 10 && tank.cellX <= 15
       ));
       if (trailers.length > 0) {
+        const samFinishRailCadence = samDeepChip ? 1 : 10;
         for (const tank of trailers) {
-          const rally = tank.cellY >= 55
-            ? { cellX: 13, cellY: 48 }
-            : tank.cellY >= 40
-              ? { cellX: 13, cellY: 32 }
-              : tank.cellY >= 28
-                ? { cellX: 13, cellY: 24 }
-                : { cellX: 13, cellY: 20 };
+          if (samDeepChip && tank.cellX >= 10 && tank.cellX <= 15 && tank.cellY <= 32) {
+            queueMissionEightRole(commands, `east-b-sam-finish-rush-${objectKey(tank)}`,
+              [tank], westernSam, 0, 1);
+            continue;
+          }
+          const rally = samDeepChip
+            ? { cellX: 13, cellY: 20 }
+            : tank.cellY >= 55
+              ? { cellX: 13, cellY: 48 }
+              : tank.cellY >= 40
+                ? { cellX: 13, cellY: 32 }
+                : tank.cellY >= 28
+                  ? { cellX: 13, cellY: 24 }
+                  : { cellX: 13, cellY: 20 };
           queueMissionEightRole(commands, `east-b-sam-finish-rail-${objectKey(tank)}`,
-            [tank], rally, MODIFIER_ALT, 10);
+            [tank], rally, MODIFIER_ALT, samFinishRailCadence);
         }
         if (front.length === 0) {
           const rockets = strike.filter((attacker) => attacker.typeName === "E3");
@@ -7590,6 +7726,7 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
           : gunStandoff
     );
     const eastBSamFormRally = (tank) => {
+      if (samDeepChip) return { cellX: 13, cellY: 20 };
       if (tank.cellY >= 28) return { cellX: 13, cellY: 24 };
       if (tank.cellX > 13 && tank.cellY <= 24) {
         return { cellX: 13, cellY: Math.max(tank.cellY + 2, 24) };
@@ -7638,39 +7775,73 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       const finishers = tanks.filter((tank) => tank.cellY <= 30);
       if (trailers.length > 0) {
         for (const tank of trailers) {
-          const rally = tank.cellY >= 55
-            ? (tank.cellX >= 22 ? { cellX: 25, cellY: 48 } : { cellX: 13, cellY: 48 })
-            : tank.cellY >= 40
-              ? { cellX: 13, cellY: 32 }
-              : { cellX: 13, cellY: 24 };
+          if (samDeepChip && tank.cellX >= 10 && tank.cellX <= 15 && tank.cellY <= 32) {
+            queueMissionEightRole(commands, `east-b-sam-trail-rush-${objectKey(tank)}`,
+              [tank], focus, 0, 1);
+            continue;
+          }
+          const rally = samDeepChip
+            ? { cellX: 13, cellY: 20 }
+            : tank.cellY >= 55
+              ? (tank.cellX >= 22 ? { cellX: 25, cellY: 48 } : { cellX: 13, cellY: 48 })
+              : tank.cellY >= 40
+                ? { cellX: 13, cellY: 32 }
+                : { cellX: 13, cellY: 24 };
           queueMissionEightRole(commands, `east-b-sam-trail-${objectKey(tank)}`,
-            [tank], rally, MODIFIER_ALT, 10);
+            [tank], rally, MODIFIER_ALT, samDeepChip ? 1 : 10);
         }
       }
       const samApproachBand = finishers.filter((tank) => (
         tank.cellY <= 24 && tank.cellX >= 10 && tank.cellX <= 15
       ));
       const inSamRange = finishers.filter((tank) => (
-        focusIsUnit && missionEightDistance(tank, focus) <= engageRange
+        focusIsUnit && missionEightDistance(tank, focus) <= 5
       ));
       const needsClose = finishers.filter((tank) => (
         !inSamRange.some((ready) => objectKey(ready) === objectKey(tank))
       ));
       const samUrgent = Boolean(westernSam && westernSam.strength <= 300);
-      const samKillNow = Boolean(westernSam && westernSam.strength <= 200);
-      const samFormCadence = samKillNow ? 1
+      const samChipBand = Boolean(
+        !samDeepChip && westernSam
+        && westernSam.strength > 220
+        && westernSam.strength < 280
+      );
+      const samFormCadence = samDeepChip ? 1
         : samUrgent && samApproachBand.length >= 2
           ? 1
           : samApproachBand.length >= 2 ? 1 : inSamRange.length >= 1 ? 3 : 10;
       for (const tank of needsClose) {
+        if (samDeepChip && tank.cellX >= 10 && tank.cellX <= 15 && tank.cellY <= 30) {
+          queueMissionEightRole(commands, `east-b-sam-kill-rush-${objectKey(tank)}`,
+            [tank], focus, 0, 1);
+          continue;
+        }
         const nearCorridor = tank.cellY <= 26 && tank.cellX >= 10 && tank.cellX <= 15;
-        const target = nearCorridor ? samStandoff : eastBSamFormRally(tank);
+        let target;
+        if (nearCorridor) {
+          if (samChipBand && tank.cellX >= 15
+            && missionEightDistance(tank, westernSam) > 5) {
+            target = tank.cellY > 20
+              ? { cellX: 14, cellY: 20 }
+              : samStandoff;
+          } else if (samChipBand && tank.cellY > 22
+            && missionEightDistance(tank, westernSam) > 5) {
+            target = { cellX: 13, cellY: 21 };
+          } else {
+            target = samStandoff;
+          }
+        } else {
+          target = eastBSamFormRally(tank);
+        }
         queueMissionEightRole(commands, `east-b-sam-form-${objectKey(tank)}`,
-          [tank], target, MODIFIER_ALT, samFormCadence);
+          [tank], target,
+          samChipBand && tank.cellX >= 15 && missionEightDistance(tank, westernSam) > 5
+            ? 0 : MODIFIER_ALT,
+          samFormCadence);
       }
       if (inSamRange.length > 0) {
         queueMissionEightRole(commands, "east-b-focus-tanks", inSamRange, focus, 0,
-          samKillNow || samUrgent ? 1 : 10);
+          samDeepChip || samUrgent ? 1 : 10);
       }
     } else {
       const inRange = focusIsUnit
@@ -7694,7 +7865,7 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     if (isGunFocus) {
       if (rockets.length > 0) {
         queueMissionEightRole(commands, "east-b-rocket-gun-hold", rockets,
-          { cellX: 13, cellY: 26 }, MODIFIER_ALT, 25);
+          { cellX: 13, cellY: 28 }, MODIFIER_ALT, 12);
       }
     } else {
       const samRocketScreen = { cellX: 13, cellY: 19 };
@@ -7710,13 +7881,15 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
         queueMissionEightRole(commands, "east-b-focus-rockets", rocketInRange, focus, 0, 3);
       }
       if (rocketApproaching.length > 0) {
-        const samRocketCommit = focusIsUnit && !isGunFocus && (samOverlapFire
+        const samRocketCommit = focusIsUnit && !isGunFocus && (
+          missionEightState.eastBSamDeepChip
+          || samOverlapFire
           || (westernSam && westernSam.strength <= 300)
           || focus.strength < focus.maxStrength
           || focus.strength <= 360);
         if (samRocketCommit) {
           queueMissionEightRole(commands, "east-b-rocket-commit", rocketApproaching,
-            focus, 0, samOverlapFire ? 3 : 15);
+            focus, 0, missionEightState.eastBSamDeepChip ? 1 : samOverlapFire ? 3 : 15);
         } else {
           queueMissionEightRole(commands, "east-b-rocket-approach", rocketApproaching,
             samRocketScreen, MODIFIER_ALT, samOverlapFire ? 10 : 20);
@@ -7734,6 +7907,15 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       queueMissionEightRole(commands, "east-b-focus-screen", nonRocketRest, restTarget,
         tanksEngaged && focusIsUnit ? 0 : MODIFIER_ALT, 30);
     }
+    if (samDeepChip && focusIsUnit && westernSam) {
+      const killClose = liveStrikeTanks.filter((tank) => (
+        missionEightDistance(tank, focus) > engageRange
+        && tank.cellX >= 10 && tank.cellX <= 15 && tank.cellY <= 30
+      ));
+      if (killClose.length > 0) {
+        queueMissionEightRole(commands, "east-b-sam-kill-close", killClose, focus, 0, 1);
+      }
+    }
     return;
   }
   // Hard-rail factory-fresh or east-wandered strike MTNKs onto X=13.
@@ -7746,6 +7928,29 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     const samFinishRail = Boolean(
       westernSamLive && westernSamLive.strength < westernSamLive.maxStrength
     );
+    const samKillRail = Boolean(
+      westernSamLive && missionEightState.eastBSamDeepChip && westernSamLive.strength > 0
+    );
+    if (samKillRail && westernSamLive) {
+      const samFireCell = { cellX: 11, cellY: 20 };
+      for (const tank of strike.filter((attacker) => (
+        attacker.typeName === "MTNK" && attacker.strength > 0
+      ))) {
+        if (missionEightDistance(tank, westernSamLive) <= 5) {
+          queueMissionEightRole(commands, `east-b-sam-kill-west-fire-${objectKey(tank)}`,
+            [tank], westernSamLive, 0, 1);
+        } else {
+          queueMissionEightRole(commands, `east-b-sam-kill-west-close-${objectKey(tank)}`,
+            [tank], samFireCell, 0, 1);
+        }
+      }
+      const killRockets = strike.filter((attacker) => attacker.typeName === "E3");
+      if (killRockets.length > 0) {
+        queueMissionEightRole(commands, "east-b-sam-kill-west-rockets", killRockets,
+          westernSamLive, 0, 1);
+      }
+      return;
+    }
     const needsRail = strike.filter((attacker) => (
       attacker.typeName === "MTNK"
       && (
@@ -7753,6 +7958,8 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
         || (attacker.cellX >= 22 && attacker.cellY <= 42 && state.routeStage >= 1
           && state.routeStage <= 7)
         || (state.routeStage >= 6 && attacker.cellX >= 14 && attacker.cellY <= 26)
+        || (samKillRail && state.eastBProducedTankKeys.has(objectKey(attacker))
+          && attacker.cellY >= 35)
         || (samFinishRail && (attacker.cellY >= 28 || attacker.cellX >= 16
           || attacker.cellX <= 9))
       )
@@ -7761,16 +7968,19 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       const front = strike.filter((attacker) => (
         !needsRail.some((unit) => objectKey(unit) === objectKey(attacker))
       ));
+      const westRailCadence = samKillRail ? 1 : 10;
       for (const tank of needsRail) {
-        const rally = tank.cellY >= 55
-          ? { cellX: 13, cellY: 48 }
-          : tank.cellY >= 40
-            ? { cellX: 13, cellY: 32 }
-            : tank.cellY >= 28
-              ? { cellX: 13, cellY: 24 }
-              : { cellX: 13, cellY: 20 };
+        const rally = samKillRail
+          ? { cellX: 13, cellY: 20 }
+          : tank.cellY >= 55
+            ? { cellX: 13, cellY: 48 }
+            : tank.cellY >= 40
+              ? { cellX: 13, cellY: 32 }
+              : tank.cellY >= 28
+                ? { cellX: 13, cellY: 24 }
+                : { cellX: 13, cellY: 20 };
         queueMissionEightRole(commands, `east-b-west-rail-${objectKey(tank)}`,
-          [tank], rally, MODIFIER_ALT, 10);
+          [tank], rally, MODIFIER_ALT, westRailCadence);
       }
       // During SAM finish, do not fall through to generic corridor orders for
       // railed tanks — keep them on the X=13 spine.
