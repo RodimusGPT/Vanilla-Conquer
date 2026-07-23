@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | `d708793bbf2f38ea0f6535f49ab75e629b1589cd` |
+| Commit | `b120fe948771ea792072e1a19beb4f6e584c98ca` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
@@ -169,7 +169,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 ## Recommended next work (ordered)
 
-1. **Held best (v188 WIP)** — samMin **174** @32580: d708793 + east-column `MODIFIER_ALT` rush to `{13,22}`/`{11,20}` when latched and SAM≤180; E3 deep commit unchanged.
+1. **Held best (v188, commit b120fe9)** — samMin **174** @32580: d708793 + east-column `MODIFIER_ALT` rush to `{13,22}`/`{11,20}` when latched and SAM≤180; E3 deep commit unchanged.
 2. **Run variance** — identical verifier yields samMin **174** or **214** across runs; treat **214** as common baseline until root-caused.
 3. **Kill-window gap** — force-move to `{11,20}` does not path from 14,22/15,22 in time; need 2+ overlapping tank shooters before E3 wipe.
 4. **Architecture note** — `samKillRail` after GUN/SAM `return` is dead on SAM waypoint; east-rush wired inside deep block @ SAM≤180.
