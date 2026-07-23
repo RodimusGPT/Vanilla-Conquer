@@ -11,12 +11,12 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | `ed7947e` |
+| Commit | `c70ec1a` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v213 FINE ×3 — samMin **174** @32580; dist-6 west attack-move + east south detour; still 0 shooters @ nadir |
+| Last TRACE suite | v217 FINE ×3 — samMin **174** @32580; wave-two early release + backup finisher rail; 0 shooters @ nadir |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
