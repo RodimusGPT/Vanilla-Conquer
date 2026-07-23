@@ -11,12 +11,12 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | `c70ec1a` |
+| Commit | WIP (spine finisher v218 — uncommitted) |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v217 FINE ×3 — samMin **174** @32580; wave-two early release + backup finisher rail; 0 shooters @ nadir |
+| Last TRACE suite | v218 FINE — samMin **174** @32580 (unchanged); spine finisher rail added; 0 shooters @ nadir; tank#6 d5 @32610 |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -128,8 +128,8 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Staging cells | assembly `{39,57}`, reserve `{27,57}` |
 | SAM pack production | `eastBSamPackPhase`, MTNK-first, gap-fill E3 when pack &lt; 4 |
 | Wave-two / rocket park | `eastBWaveTwoKeys`; E3 + base scrap held at `{13,32}` until `routeStage >= 5` |
-| GUN/SAM micro | `samChipBand` form (221–279 HP); deep finisher @ routeStage 7 when latched; `eastBSamWestPreStep`; GUN E3 hold @ `{13,28}` only |
-| West rail | Hard-rail east wanderers onto X=13; finish-rail when SAM chipped |
+| GUN/SAM micro | `samChipBand` form (221–279 HP); deep finisher @ routeStage 7 when latched; `eastBSamWestPreStep`; `eastBSpineFinisherPick` + `eastBSamSpineFinisherRailStep`; GUN E3 hold @ `{13,28}` only |
+| West rail | Hard-rail east wanderers onto X=13; finish-rail when SAM chipped (**note:** GUN/SAM block `return` @ ~8157 skips west rail while routeStage 7 GUN/SAM waypoint active) |
 | Village→strike loan | When `routeStage >= 5`; last village tank if strike empty + SAM chipped |
 | Free tank assignment | While SAM chipped, unassigned free MTNK → **strike**, not village |
 | Emergency sell | `eastBSamFinishSellTick`; sell NUKE if funds &lt; 800, strike empty, SAM chipped |
@@ -175,15 +175,16 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Chip-band east pre (cellX≥15) | v208 — SAM **234** stall |
 | E3 delayed commit @ SAM≤200 | v212 — samMin **198** stall |
 | Full north-flank all tanks @ deep block | v214 — samMin **180** |
+| Timed spine finisher rail (produced MTNK) | v218 — samMin **174** held; tank#4 @13,24 @ nadir; GUN approach override fixed; west rail dead during routeStage 7 |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held best (v217)** — samMin **174** @32580: wave-two release @ SAM 221–280; `{12,20}` north-flank nudge @11,22; backup finisher rail for full-HP MTNK @ y≥24.
-2. **Pathing block** — `{11,22}`/`{15,22}` force-move still stalls; tank#6 fires @32610 only.
-3. **Tank#4 @13,24** — full-HP backup rail did not reach fire line before nadir.
-4. **Next lever** — timed finisher spawn (produced MTNK from south) hard-railed to `{13,32}`→`{12,20}` before SAM≤220; or map-cell pathing investigation.
+1. **Held best (v218)** — samMin **174** @32580: spine finisher (`eastBSpineFinisherPick` / staged `{13,32}`→`{12,20}` rail) did not beat v217; 0 shooters @ nadir; tank#6 d5 @32610 (SAM repairing).
+2. **Architectural** — west-rail spine logic never runs during routeStage 7 GUN/SAM block (early `return`); move persistent spine orders before that return or hoist finisher rail out of the block.
+3. **Pathing block** — `{11,22}`/`{15,22}`/`{13,24}` still ~30 ticks/cell on y=22 spine; need engine path sample or alternate fire cell `{13,21}` arrival before tick 32550.
+4. **Next lever** — dedicated produced finisher held at `{13,32}` from assault tick, released only for spine rail (no chip overlap); or second full-HP tank path from `{13,32}` with GUN focus orders fully excluded.
 
 ---
 
