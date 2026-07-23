@@ -11,12 +11,12 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | `a5b70ed` |
+| Commit | `64ecb96` + local WIP (SAM range/overlap finisher + spine rail) |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | local `/tmp/m8-eastb/v40`–`v64` (not in git) |
+| Last TRACE suite | local `/tmp/m8-eastb/v113` — samMin **298** @32400; 2 MTNK survive to ~32460; E3 gone @32340; no A-10; assault @28020 (best prior: v111 **266** @32400 — run variance) |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -99,13 +99,19 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Free tanks east-wander | Mid-assault free MTNKs at `x≈32–45` then re-rail (costs HP/time) |
 | E3 corridor deaths | Fixed in latest WIP by parking E3 at `{13,32}` until routeStage ≥ 5; re-verify |
 | Post-wave economy | Harvest often freezes; rebuild MTNK late; NUKE sell can blackout WEAP briefly |
+| **Tank pathfinding off-corridor** | Partially improved: east-of-spine tanks detour south to X=13 (v76: id=29 14,22→13,26); still need finisher overlap |
+| **GUN respawn** | Not re-landed — prior WIP regressed samMin to 400; dropped for v76 minimal patch |
+| **SAM chip** | v86: **400→330** @32400; strike wipes; SAM repairs/stuck; no A-10 |
+| **NUKE sell** | Selling sole NUKE blackouts WEAP — only sell when **2+ NUKEs** remain |
 
-### Latest TRACE shape (v64 class)
+### Latest TRACE shape (v76)
 
 - Assault ~28020: freeT=3, freeR=3, strike includes base scrap MTNK
 - E3 parked at support hold through stages 0–4; present at GUN/SAM
-- SAM min often **~200–360** depending on first-wave HP; **not killed**
-- Lose later: civ pressure / base collapse while stuck at routeStage 7
+- SAM min **330** @32400 (improved from committed baseline 360); **not killed**; no A-10 unlock
+- Tank id=29 detoured east-of-spine via south rail (14,22→13,26); tank 5 chipped from 10,20
+- Strike wiped by tick ~32400; SAM stuck at 330; funds/rebuild not tested
+- Lose: civ pressure (neutralMinimum 7 @38400)
 
 East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
@@ -121,7 +127,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Staging cells | assembly `{39,57}`, reserve `{27,57}` |
 | SAM pack production | `eastBSamPackPhase`, MTNK-first, gap-fill E3 when pack &lt; 4 |
 | Wave-two / rocket park | `eastBWaveTwoKeys`; E3 + base scrap held at `{13,32}` until `routeStage >= 5` |
-| GUN/SAM micro | Focus block for typeName GUN/SAM; form-up; SAM attack-move when `cellY <= 30` |
+| GUN/SAM micro | Focus block for typeName GUN/SAM; `eastBGunApproachRally` / `eastBSamFormRally`; inBand attack + outOfBand spine rail + spine fallback |
 | West rail | Hard-rail east wanderers onto X=13; finish-rail when SAM chipped |
 | Village→strike loan | When `routeStage >= 5`; last village tank if strike empty + SAM chipped |
 | Free tank assignment | While SAM chipped, unassigned free MTNK → **strike**, not village |
@@ -138,17 +144,20 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Soft standoff only at y=23 on SAM | Outside medium-tank range; no damage for hundreds of ticks |
 | Village re-absorb free MTNK while SAM chipped | Finisher never leaves base (v60) |
 | E3 as preferred corridor screen | Wipes pack before GUN (v40) |
-| Force-move thrash south after overshoot | Fixed via past-arrival advance |
+| x≥12-only `samAttackers` + E3 `samRocketKillReady` gate | v112 samMin **396** — no chip |
+| E3 commit only when SAM≤300 + overlap (no tank change) | v114 samMin **346** — E3 survive but under-chip |
+| Block joiners during first-wave chip | v115 samMin **328** |
+| Demote non-corridor strike MTNK during chip | v116 samMin **400** — assault broken |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Recover v55-class first-wave SAM chip (~200)** with **3 free MTNKs + 3 E3** overlapping fire at y≈20–22 after GUN dies. Watch free-tank X (must stay ≤20 after stage 1).
-2. **Overlap a full-HP finisher** while SAM is still &lt;250 (village loan already mid-corridor *or* 4th free MTNK pre-railed to `{13,32}` at assault without holding free tanks out of wave 1).
-3. **Do not leave SAM at 200–300 unrepaired** with funds frozen — ensure rebuild tank is ordered the tick funds ≥800 (or after NUKE sell) and immediately west-railed.
-4. After **first western SAM death**, verify A-10 unlock and continue Nod clear; keep civ ≤8 deaths total (lose on 9th).
-5. Only then re-touch east-a full clear.
+1. **FINE TRACE 32100–32400** (baseline code) — v113 FINE: E3 die @32310–32340 with SAM@298; MTNK chip 362→298 then stall. GUN not respawning in window. Confirm whether v111’s 266 is reproducible or run variance.
+2. **Do not re-add x≥12-only tank fire or E3 pre-280 screen** — both regressed chip (v112/v114).
+3. **Kill-window stack** — best runs have **2 MTNK + 3 E3** on corridor at 32100 (v111); extra southern strike MTNK correlate with shallower chip (v113/v115). Need a lever that trims distant strike without breaking assault (v116 demotion failed).
+4. **Keep range mix** — `inSamRange` fire + `samStandoff` alt; engageRange 6; samUrgent cadence 1 when 2+ in approach band.
+5. After **first western SAM death**, verify A-10 unlock and map clear.
 
 ---
 
@@ -158,9 +167,10 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 [ ] git checkout browser-port && git pull fork browser-port
 [ ] Read this file + mission-8-hardening.md east-b section
 [ ] Run TRACE (command above); record samMin / assaultTick / freeR at assault
-[ ] If samMin > 280: first-wave / pathing regression — fix rail + GUN form first
+[ ] If samMin > 280: first-wave / pathing regression — fix tank pathfinding to X=13 + GUN form first
 [ ] If samMin ~200 and no death: finisher timing / rebuild — fix loan + production
 [ ] If SAM dies: pursue A-10 + map clear; re-check civ lose diagnosis
+[ ] Check GUN respawn: GUN at (11,18) destroyed ~31770, respawns ~33060 — code re-engages but tanks can't reach
 [ ] Checkpoint: commit message WIP, push fork only; update commit hash in this table
 ```
 
