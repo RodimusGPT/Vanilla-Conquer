@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | `0523712e20d2865d67efc5a77a2240c98b4c9f98` |
+| Commit | `d708793bbf2f38ea0f6535f49ab75e629b1589cd` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
@@ -166,7 +166,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 ## Recommended next work (ordered)
 
-1. **Held best (v169, uncommitted WIP)** — samMin **174** @32580: staged east pathing + tiered E3 (`samRocketEarlyCommit` / `samRocketChipCommit` / `samRocketDeepCommit`); deep-block close-or-fire kept (early return required).
+1. **Held best (v169, commit d708793)** — samMin **174** @32580: staged east pathing + tiered E3 (`samRocketEarlyCommit` / `samRocketChipCommit` / `samRocketDeepCommit`); deep-block close-or-fire kept (early return required).
 2. **Kill-window gap** — all damage from E3@10,17; **0 MTNK shooters** (15,22/13,23 stuck at Chebyshev 6–7); repair wins after E3 wipe @32580.
 3. **Next levers** — third overlapping tank shooter before E3 die; preserve E3 through 174→0; then A-10 + map clear.
 4. **Closed this session** — deep-block rush/west-close, early-return removal, `samTanksFiring` E3 gate (all regress vs v169).
