@@ -6764,6 +6764,7 @@ function queueMissionEightPostSamCounterattack(snapshot, hostiles, attackers, co
 }
 
 const eastBSamKillFireCell = { cellX: 11, cellY: 20 };
+const eastBSamKillAltFireCell = { cellX: 10, cellY: 20 };
 const eastBSamKillWestStage = { cellX: 13, cellY: 22 };
 const eastBSamKillSpineStage = { cellX: 13, cellY: 21 };
 
@@ -6779,9 +6780,19 @@ function eastBSamCloseCell(tank) {
 }
 
 function eastBSamWestCloseTarget(tank) {
+  if (tank.cellX >= 15) return eastBSamKillWestStage;
   if (tank.cellX >= 14 && tank.cellY > 22) return eastBSamKillWestStage;
   if (tank.cellY > 21 || tank.cellX >= 13) return eastBSamKillFireCell;
   return eastBSamKillSpineStage;
+}
+
+function eastBSamWestPreStep(tank, samDist) {
+  if (samDist <= 5) return eastBSamKillFireCell;
+  if (samDist === 6 && tank.cellY > 21) return { cellX: tank.cellX, cellY: 21 };
+  if (samDist === 6) return eastBSamKillAltFireCell;
+  if (tank.cellX > 11) return { cellX: tank.cellX - 1, cellY: Math.min(tank.cellY, 22) };
+  if (tank.cellY > 22) return { cellX: tank.cellX, cellY: tank.cellY - 1 };
+  return eastBSamKillFireCell;
 }
 
 function queueEastBSamDeepFinisher(commands, strike, westernSam) {
@@ -6790,7 +6801,7 @@ function queueEastBSamDeepFinisher(commands, strike, westernSam) {
   ));
   const samStrength = westernSam.strength;
   const westPrePositionTank = liveTanks.filter((tank) => (
-    tank.cellX <= 12 && tank.cellY <= 24
+    tank.cellX <= 13 && tank.cellY <= 24 && tank.cellY >= 21
   )).toSorted((left, right) => (
     left.cellX - right.cellX || left.cellY - right.cellY || left.id - right.id
   ))[0];
@@ -6799,13 +6810,19 @@ function queueEastBSamDeepFinisher(commands, strike, westernSam) {
     if (samDist <= 5) {
       queueMissionEightRole(commands, `east-b-sam-deep-fire-${objectKey(tank)}`,
         [tank], westernSam, 0, 1);
-    } else if (westernSam.strength <= 180 && tank.cellX >= 14 && tank.cellY >= 21) {
+    } else if (samStrength <= 180 && tank.cellX >= 15 && tank.cellY >= 21) {
+      const eastStep = tank.cellX > 14
+        ? { cellX: tank.cellX - 1, cellY: tank.cellY }
+        : eastBSamWestCloseTarget(tank);
+      queueMissionEightRole(commands, `east-b-sam-deep-east-rush-${objectKey(tank)}`,
+        [tank], eastStep, MODIFIER_ALT, 1);
+    } else if (samStrength <= 180 && tank.cellX >= 14 && tank.cellY >= 21) {
       queueMissionEightRole(commands, `east-b-sam-deep-east-rush-${objectKey(tank)}`,
         [tank], eastBSamWestCloseTarget(tank), MODIFIER_ALT, 1);
     } else if (westPrePositionTank && objectKey(tank) === objectKey(westPrePositionTank)
-      && samDist > 5) {
+      && samDist > 5 && tank.cellX <= 13 && tank.cellY >= 21) {
       queueMissionEightRole(commands, `east-b-sam-deep-west-pre-${objectKey(tank)}`,
-        [tank], eastBSamKillFireCell, MODIFIER_ALT, 1);
+        [tank], eastBSamWestPreStep(tank, samDist), MODIFIER_ALT, 1);
     } else {
       queueMissionEightRole(commands, `east-b-sam-deep-close-${objectKey(tank)}`,
         [tank], eastBSamCloseCell(tank), 0, 1);
@@ -7690,14 +7707,16 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       }
       return;
     }
+    // Deep-chip kill window opens at routeStage 7 (GUN waypoint) while SAM is
+    // the focus — do not wait for routeStage 8 before running the finisher.
+    if (samDeepChip && westernSam && westernSam.strength > 0) {
+      queueEastBSamDeepFinisher(commands, strike, westernSam);
+      return;
+    }
     // Chipped SAM reinforcements: hard-rail onto X=13 only (never 25,48 / east
     // detours). TRACE v52–54: finishers pathfinded to 45,33 or looped y=47–60.
     if (nextWaypoint.typeName === "SAM" && westernSam
       && westernSam.strength < westernSam.maxStrength) {
-      if (samDeepChip) {
-        queueEastBSamDeepFinisher(commands, strike, westernSam);
-        return;
-      }
       const trailers = liveStrikeTanks.filter((tank) => (
         tank.cellY >= 26 || tank.cellX >= 16 || tank.cellX <= 9
       ));

@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v197 FINE ×3 — samMin **174** @32580 stable; tank#6 shooter @32640 (too late); no SAM death |
+| Last TRACE suite | v205 FINE ×3 — samMin **174** @32580; routeStage **7** kill window; 0 MTNK shooters @ nadir |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -128,7 +128,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Staging cells | assembly `{39,57}`, reserve `{27,57}` |
 | SAM pack production | `eastBSamPackPhase`, MTNK-first, gap-fill E3 when pack &lt; 4 |
 | Wave-two / rocket park | `eastBWaveTwoKeys`; E3 + base scrap held at `{13,32}` until `routeStage >= 5` |
-| GUN/SAM micro | `samChipBand` form (221–279 HP); `inSamRange` weapon dist≤5; `queueEastBSamDeepFinisher` deep-chip kill rail; GUN E3 hold @ `{13,28}` only |
+| GUN/SAM micro | `samChipBand` form (221–279 HP); deep finisher @ routeStage 7 when latched; `eastBSamWestPreStep`; GUN E3 hold @ `{13,28}` only |
 | West rail | Hard-rail east wanderers onto X=13; finish-rail when SAM chipped |
 | Village→strike loan | When `routeStage >= 5`; last village tank if strike empty + SAM chipped |
 | Free tank assignment | While SAM chipped, unassigned free MTNK → **strike**, not village |
@@ -168,15 +168,18 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | E3 split + west pre-position @ chip band | v191 — SAM **234** stall; E3 wipe early |
 | Edge attack-move dist 6–7 @ SAM≤180 | v194 — samMin **180**; E3 chip worse |
 | Chip-band west pre-position (needsClose) | v196 — SAM **234** stall; keep west pre inside deep block only |
+| East rush @ SAM≤200 / ≤186 (all east column) | v198/v200 — samMin **180** |
+| Dist-6 nudge to `{11,21}` | v199 — tank stuck @11,22; blocks west pre |
+| Dist-6 edge fire @ deep block | v206 — no damage; MTNK needs cheb≤5 |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held best (v197)** — samMin **174** @32580 (FINE ×3): `queueEastBSamDeepFinisher` consolidates kill finisher; west pre `{11,20}` for westernmost tank **inside deep block only**; `eastBWesternSamCleared` route advance; dead `samKillRail` return removed.
-2. **TRACE pitfall** — default TRACE logs every **300** ticks; nadir @32580 is invisible to coarse parse. Use `CNCWEB_VERIFY_TRACE_FINE=1` or scan every stderr line for samMin.
-3. **Kill-window gap** — tank#6 reaches `{11,20}` @32640 (~600 ticks after nadir); 0 shooters @32580; need west tank on fire cell **before** E3 wipe.
-4. **Post-SAM untested** — western SAM still never dies; A-10 / map-clear path unchanged pending kill-window fix.
+1. **Held best (v205)** — samMin **174** @32580: deep finisher now runs at **routeStage 7** (GUN waypoint); `westPrePositionTank` filter fixed (`cellX≤13`); incremental `eastBSamWestPreStep` / east-column west steps.
+2. **Root cause confirmed** — kill window opens @ routeStage 7 while `nextWaypoint` is still GUN; finisher was gated on routeStage 8 only (now fixed).
+3. **Kill-window gap** — tanks stall @11,22/15,22 (cheb dist **6**); need dist≤5 before E3 wipe @32580; ~30 ticks/cell pathing; tank#6 fires @32640+ only.
+4. **Post-SAM untested** — western SAM still never dies; A-10 / map-clear pending kill-window fix.
 
 ---
 
