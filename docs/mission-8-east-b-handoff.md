@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | local `/tmp/m8-eastb/v162-fine` — samMin **186** @32520 (v161 **174** @32580); 3 MTNK + E3 at nadir; repair; no A-10 |
+| Last TRACE suite | local `/tmp/m8-eastb/v169-fine` — samMin **174** @32580; E3 chip 234→174; **0 tank shooters** @nadir; repair to 264; no A-10 |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -157,16 +157,19 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | E3 hold until SAM≤220 (focus block) | v151 — samMin **264** stall; same interference with chip path |
 | Pre-close east tanks during 221–280 band | v149 — samMin **246**; conflicts with focus chip orders |
 | `samCloseCell` east `{14,20}` / spine `{13,21}` | v155 — still **163** @32430; 15,22 pathing stalls at y=22 |
+| Deep-block early return removed | v171 — samMin **186** @32520; E3 chip timing worse |
+| Deep-block west force-move `{11,20}` | v172 — samMin **186**; tanks reach 11,20 after repair starts |
+| Chip-band attack-move rush to SAM | v168 — samMin **234** stall; 0 shooters |
+| E3 hold unless `samTanksFiring` in chip band | v166 — samMin **234** stall |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Finish SAM before repair** — held fast nadir **163** @32430 (v155); v161 three-lever stack hits **174** @32580 with 3 MTNK + E3 but still repairs. East tank reaches **14,22** (not 14,20) via chip-band form.
-2. **Held levers (v162)** — (a) `samChipBand` form targets `{14,20}` / `{13,21}` for east/spine; (b) GUN-only E3 hold @ `{13,28}`; (c) `inSamWeaponRange` dist≤5 for `inSamRange`; wave-two spine promote @ deep chip; far strike demotion `routeStage≥6`.
-3. **Closed** — `samThirdShooter` open joiners (v156–157), wave-two release @320 (v156), E3 SAM-focus hold (v151), latch@280 (v148).
-4. **Next** — path 15,22→14,20 (terrain?); E3 commit only inside deep-chip block; beat repair in 174→0 window.
-5. After **first western SAM death**, verify A-10 unlock and map clear.
+1. **Held best (v169, uncommitted WIP)** — samMin **174** @32580: staged east pathing + tiered E3 (`samRocketEarlyCommit` / `samRocketChipCommit` / `samRocketDeepCommit`); deep-block close-or-fire kept (early return required).
+2. **Kill-window gap** — all damage from E3@10,17; **0 MTNK shooters** (15,22/13,23 stuck at Chebyshev 6–7); repair wins after E3 wipe @32580.
+3. **Next levers** — third overlapping tank shooter before E3 die; preserve E3 through 174→0; then A-10 + map clear.
+4. **Closed this session** — deep-block rush/west-close, early-return removal, `samTanksFiring` E3 gate (all regress vs v169).
 
 ---
 

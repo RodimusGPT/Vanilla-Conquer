@@ -7626,9 +7626,9 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       if (samDeepChip) {
         const samCloseCell = (tank) => {
           if (tank.cellX >= 15) {
-            return tank.cellY > 21
-              ? { cellX: 13, cellY: 21 }
-              : { cellX: 14, cellY: 20 };
+            if (tank.cellY > 22) return { cellX: 13, cellY: 21 };
+            if (tank.cellY > 20) return { cellX: 14, cellY: 20 };
+            return { cellX: 14, cellY: 20 };
           }
           if (tank.cellY > 22 && tank.cellX >= 10 && tank.cellX <= 15) {
             return { cellX: 13, cellY: 21 };
@@ -7816,16 +7816,17 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
             [tank], focus, 0, 1);
           continue;
         }
+        const samDist = westernSam ? missionEightDistance(tank, westernSam) : 99;
         const nearCorridor = tank.cellY <= 26 && tank.cellX >= 10 && tank.cellX <= 15;
         let target;
         if (nearCorridor) {
-          if (samChipBand && tank.cellX >= 15
-            && missionEightDistance(tank, westernSam) > 5) {
-            target = tank.cellY > 20
-              ? { cellX: 14, cellY: 20 }
-              : samStandoff;
-          } else if (samChipBand && tank.cellY > 22
-            && missionEightDistance(tank, westernSam) > 5) {
+          if (samChipBand && tank.cellX >= 15 && samDist > 5) {
+            target = tank.cellY > 22
+              ? { cellX: 13, cellY: 21 }
+              : tank.cellY > 20
+                ? { cellX: 14, cellY: 20 }
+                : samStandoff;
+          } else if (samChipBand && tank.cellY > 22 && samDist > 5) {
             target = { cellX: 13, cellY: 21 };
           } else {
             target = samStandoff;
@@ -7835,9 +7836,9 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
         }
         queueMissionEightRole(commands, `east-b-sam-form-${objectKey(tank)}`,
           [tank], target,
-          samChipBand && tank.cellX >= 15 && missionEightDistance(tank, westernSam) > 5
+          samChipBand && tank.cellX >= 15 && samDist > 5
             ? 0 : MODIFIER_ALT,
-          samFormCadence);
+          samChipBand && tank.cellX >= 15 ? 1 : samFormCadence);
       }
       if (inSamRange.length > 0) {
         queueMissionEightRole(commands, "east-b-focus-tanks", inSamRange, focus, 0,
@@ -7868,9 +7869,36 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
           { cellX: 13, cellY: 28 }, MODIFIER_ALT, 12);
       }
     } else {
-      const samRocketScreen = { cellX: 13, cellY: 19 };
-      const samOverlapFire = !isGunFocus
-        && tanks.filter((tank) => tank.cellY <= 24 && tank.cellX >= 10 && tank.cellX <= 15).length >= 2;
+      const samRocketHold = { cellX: 13, cellY: 28 };
+      const samOverlapFire = tanks.filter((tank) => (
+        tank.cellY <= 24 && tank.cellX >= 10 && tank.cellX <= 15
+      )).length >= 2;
+      const samRocketDeepCommit = Boolean(
+        focusIsUnit
+        && missionEightState.eastBSamDeepChip
+        && westernSam
+        && westernSam.strength <= 220
+      );
+      const samRocketChipCommit = Boolean(
+        focusIsUnit
+        && !samRocketDeepCommit
+        && samOverlapFire
+        && westernSam
+        && westernSam.strength <= 280
+        && westernSam.strength > 220
+      );
+      const samRocketEarlyCommit = Boolean(
+        focusIsUnit && (
+          (!westernSam || westernSam.strength > 280)
+          && (
+            missionEightState.eastBSamDeepChip
+            || samOverlapFire
+            || (westernSam && westernSam.strength <= 300)
+            || focus.strength < focus.maxStrength
+            || focus.strength <= 360
+          )
+        )
+      );
       const rocketInRange = focusIsUnit
         ? rockets.filter((unit) => missionEightDistance(unit, focus) <= 5)
         : [];
@@ -7878,21 +7906,27 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
         !rocketInRange.some((ready) => objectKey(ready) === objectKey(unit))
       ));
       if (rocketInRange.length > 0) {
-        queueMissionEightRole(commands, "east-b-focus-rockets", rocketInRange, focus, 0, 3);
+        if (samRocketDeepCommit) {
+          queueMissionEightRole(commands, "east-b-focus-rockets", rocketInRange, focus, 0, 1);
+        } else if (samRocketChipCommit) {
+          queueMissionEightRole(commands, "east-b-focus-rockets", rocketInRange, focus, 0, 3);
+        } else if (samRocketEarlyCommit) {
+          queueMissionEightRole(commands, "east-b-focus-rockets", rocketInRange, focus, 0, 3);
+        } else {
+          queueMissionEightRole(commands, "east-b-rocket-range-hold", rocketInRange,
+            samRocketHold, MODIFIER_ALT, 5);
+        }
       }
       if (rocketApproaching.length > 0) {
-        const samRocketCommit = focusIsUnit && !isGunFocus && (
-          missionEightState.eastBSamDeepChip
-          || samOverlapFire
-          || (westernSam && westernSam.strength <= 300)
-          || focus.strength < focus.maxStrength
-          || focus.strength <= 360);
-        if (samRocketCommit) {
+        if (samRocketDeepCommit || samRocketChipCommit) {
           queueMissionEightRole(commands, "east-b-rocket-commit", rocketApproaching,
-            focus, 0, missionEightState.eastBSamDeepChip ? 1 : samOverlapFire ? 3 : 15);
+            focus, 0, samRocketDeepCommit ? 1 : 5);
+        } else if (samRocketEarlyCommit) {
+          queueMissionEightRole(commands, "east-b-rocket-commit", rocketApproaching,
+            focus, 0, samOverlapFire ? 3 : 15);
         } else {
           queueMissionEightRole(commands, "east-b-rocket-approach", rocketApproaching,
-            samRocketScreen, MODIFIER_ALT, samOverlapFire ? 10 : 20);
+            samRocketHold, MODIFIER_ALT, 5);
         }
       }
     }
