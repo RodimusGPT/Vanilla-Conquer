@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v221 FINE — samMin **169** @32580 (was 174); chip-band west-edge approach + in-range fire; SAM still repairs |
+| Last TRACE suite | v235 FINE — samMin **169** @32580 (held); clear-cell picker + E3 west-shooter gate in deep block |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -184,15 +184,31 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | West-edge dist-6/7 close pass (deep block) | v220 — samMin **174** held; tank#6 11,22→10,21 @32610 (~30 ticks late); id#29 15,22 unchanged |
 | Chip-band west-edge approach (221–280) | v221 — samMin **169** @32580; #6 pre-rails to 11,20 during chip; fires @ nadir but solo DPS; dies ~32640; SAM repairs |
 | East-column dist-6 SAM attack-move | v221 — no gain; #29 stays @15,22 |
+| E3 hold @13,30 until SAM≤186 | v222 — samMin **201** regression; reverted |
+| Spine kill-close @ SAM≤220 | v222 — samMin **201** regression; narrowed to ≤186 |
+| East-column kill-line + spine close (v222) | samMin **169** held; orders queue but #29 @15,22 / #4 @13,24 never close |
+| Chip-band east dist-6 @ SAM≤234 | v223 — samMin **234** regression; #6 dies @32430; reverted |
+| Kill-window occupancy profile (v223) | terrain clear; `{14,21}` often has transient **120mm** @32580 (v224); `{11,20}` has MTNK#6+SMOKE |
+| Spine one-cell north + east `{14,21}` close | v223 — samMin **169** held; #29/#4 still ignore attack-move |
+| Kill-line clear-cell picker + force east close | v224–v226 — samMin **169** held; `{14,20}` clear but #29 @15,22 still frozen (engine path block x≥15, not order overwrite) |
+| Deep-chip east spine detour @ x≥15 | v227 — samMin **214** regression; #6 dies @32520 early; reverted |
+| Chip-band east dist-6 @ SAM≤280 | v227 — samMin **214** regression; reverted to ≤205 |
+| Spine west detour `{12,y}` @ x=13 y≥24 | v230 — samMin **169** held; #4 still drifts to `{14,23}` not north |
+| Skip spine-rail when spine-close active | v229 — samMin **169** held (no duplicate spine orders) |
+| v231 three-lever bundle (chip pre-pos + spine detour + E3 gate) | samMin **234** @32310 — #6 wiped early; **reverted** |
+| E3 west-shooter gate in deep finisher only | v232/v235 — samMin **169** held; E3 still dead @32580 (already @10,17) |
+| Spine finisher rush-to-SAM @ y≥24 | v234 — samMin **400** assault broken; **reverted** |
+| E3 kill-hold @13,28 during SAM 187–280 | v237 — samMin **212** @33030; chip DPS lost, #6 dies early; **reverted** |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held best (v221)** — samMin **169** @32580; #6 @11,20 fires @ nadir; repair wins @32610 (179 HP); #6 dead @32640.
-2. **Second shooter** — #29 @15,22 dist 6 never closes; spine #4 stuck @13,24 — need simultaneous dist≤5 @32580 (profile why #29 ignores east SAM order).
-3. **E3 pack** — 0 E3 @32580; rocket commit during deep kill may recover finisher DPS.
-4. **Do not** reserve wave-two/base-scrap @ routeStage 5; do not full west-edge close during chip band (only approach dist 7–8 + in-range fire).
+1. **Held best (v221–v235)** — samMin **169** @32580; #6 @11,20 sole shooter @ nadir; 0 E3 @32580.
+2. **Second MTNK shooter** — #29 @15,22 frozen (engine x≥15 path block); #4 spine drifts east to `{14,23}`; south detour 14,22→13,26 worked historically but regressed when bundled (v231).
+3. **E3 timing** — must chip during 221–280 (holding E3 regresses to samMin **212**); need overlap fire without front-line `{10,17}` wipe before kill window.
+4. **Projectile-aware closes** — `{14,21}` often has transient 120mm; clear-cell picker in WIP skips occupied cells.
+5. **Do not** chip-band east dist-6 above SAM≤205; do not E3 hold 187–280; do not spine rush-to-SAM @ y≥24.
 
 ---
 
