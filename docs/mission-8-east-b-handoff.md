@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v235 FINE — samMin **169** @32580 (held); clear-cell picker + E3 west-shooter gate in deep block |
+| Last TRACE suite | v297 FINE ×3 — samMin **171** @32580 stable; #29 partner @**12,23** (was 13,23); #6 dead @32580; #4 @12,25 not in range; SAM repairs after nadir |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -37,13 +37,59 @@ Win path that still blocks: **kill western SAM (13,16) → unlock A-10 → clear
 
 ## How to run
 
+**Prefer the wrappers** (explicit 8 GB heap on the `node` command line — required in Cursor):
+
+```sh
+cd web
+./scripts/verify-east-b-gate.sh                           # pass/fail, no trace
+./scripts/trace-east-b-kill-window.sh                     # kill-window trace → /tmp/m8-eastb.trace.err
+node scripts/parse-east-b-trace-sam-min.mjs /tmp/m8-eastb.trace.err
+```
+
+Partial sim for strategy debug (not a release gate):
+
+```sh
+cd web
+CNCWEB_VERIFY_MAX_TICKS=33000 ./scripts/verify-east-b-gate.sh
+```
+
+Manual gate-check (only if you must — add heap flag yourself):
+
+```sh
+cd web
+node --max-old-space-size=8192 scripts/verify-classic-freeware-mission-one.mjs
+# with: CNCWEB_VERIFY_MISSION=8 CNCWEB_VERIFY_MISSION_VARIANT=east-b
+```
+
+Manual TRACE (only if you need custom tick bands):
+
 ```sh
 cd web
 CNCWEB_VERIFY_MISSION=8 CNCWEB_VERIFY_MISSION_VARIANT=east-b CNCWEB_VERIFY_TRACE=1 \
-  node scripts/verify-classic-freeware-mission-one.mjs
+  node --max-old-space-size=8192 scripts/verify-classic-freeware-mission-one.mjs
 ```
 
-Optional: `CNCWEB_VERIFY_TRACE_FINE=1` (every 30 ticks).
+Optional env vars: `CNCWEB_VERIFY_TRACE_FINE=1` (every 30 ticks), `CNCWEB_VERIFY_TRACE_COMPACT=1` (omit heavy east-b fields), `CNCWEB_VERIFY_TRACE_TICK_MIN` / `_MAX`, `CNCWEB_VERIFY_TRACE_INITIAL=0`, `CNCWEB_VERIFY_MAX_TICKS`, `CNCWEB_VERIFY_HEAP_MB` (default 8192 in wrappers).
+
+**OOM note:** A crash at **~2046 MB** means the default ~2 GB heap was used — `NODE_OPTIONS` was not applied. Always pass `node --max-old-space-size=8192` (the wrappers do this). Also:
+
+- Do **not** run ungated FINE trace on a full east-b run (~4k JSON lines).
+- Redirect stderr to a file for TRACE (`trace-east-b-kill-window.sh` does this).
+- Use `./scripts/verify-east-b-gate.sh` for regressions (no trace).
+- Parse traces with `parse-east-b-trace-sam-min.mjs` (streams; never load the whole file in agent context).
+
+Kill-window TRACE (equivalent manual command):
+
+```sh
+cd web
+CNCWEB_VERIFY_MISSION=8 CNCWEB_VERIFY_MISSION_VARIANT=east-b \
+CNCWEB_VERIFY_TRACE=1 CNCWEB_VERIFY_TRACE_FINE=1 \
+CNCWEB_VERIFY_TRACE_COMPACT=1 \
+CNCWEB_VERIFY_TRACE_TICK_MIN=32400 CNCWEB_VERIFY_TRACE_TICK_MAX=32800 \
+CNCWEB_VERIFY_TRACE_INITIAL=0 \
+node --max-old-space-size=8192 scripts/verify-classic-freeware-mission-one.mjs 2>/tmp/m8-eastb.trace.err
+node scripts/parse-east-b-trace-sam-min.mjs /tmp/m8-eastb.trace.err
+```
 
 Parse stderr JSON lines with `"missionEight"`. Useful fields:
 
@@ -128,7 +174,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Staging cells | assembly `{39,57}`, reserve `{27,57}` |
 | SAM pack production | `eastBSamPackPhase`, MTNK-first, gap-fill E3 when pack &lt; 4 |
 | Wave-two / rocket park | `eastBWaveTwoKeys`; E3 + base scrap held at `{13,32}` until `routeStage >= 5` |
-| GUN/SAM micro | `samChipBand` form (221–279 HP); deep finisher @ routeStage 7; `queueEastBSamSpineFinisherRail` hoisted before GUN/SAM `return`; `eastBSamSpineFinisherHoldKeys` hold @ `{13,32}` until chip band |
+| GUN/SAM micro | `samChipBand` form (221–279 HP); deep finisher @ routeStage 7; `queueEastBSamDeepFinisher`; partner `eastBSamPartnerWestStep` / `queueEastBSamPartnerWestRoute` (non-produced MTNK); spine finisher `eastBSamDeepSpineFinisherPick` |
 | West rail | Hard-rail east wanderers onto X=13; spine finisher uses shared `queueEastBSamSpineFinisherRail` when west-rail block runs (post-GUN/SAM return) |
 | Pathing sample | `eastBSamSpinePathSample` — placement `generallyClear` on spine cells; logged once on first SAM chip (`eastBSamSpinePath` in TRACE) |
 | Village→strike loan | When `routeStage >= 5`; last village tank if strike empty + SAM chipped |
@@ -199,16 +245,27 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | E3 west-shooter gate in deep finisher only | v232/v235 — samMin **169** held; E3 still dead @32580 (already @10,17) |
 | Spine finisher rush-to-SAM @ y≥24 | v234 — samMin **400** assault broken; **reverted** |
 | E3 kill-hold @13,28 during SAM 187–280 | v237 — samMin **212** @33030; chip DPS lost, #6 dies early; **reverted** |
+| Chip-band south detour in SAM form (v245/v249/v259/v261) | samMin **234** — #6 wiped early; **do not** start detour in chip-band form |
+| West-edge dist-7 guard (v249/v250) | samMin **218** regression; **reverted** |
+| Kill-line dist-7 east pull @15,23 (root cause) | westEdgeKill `{14,22}` steal — fixed v256+ via `eastBSamEastKillCorridorTank` skip |
+| East kill-corridor detour (deep block only, v260/v263) | samMin **169** held; #29 path 15,22→14,22→…→12,23 but ~270t late; #6 solo @ nadir |
+| Detour rush modifier @ SAM≤200 (v262) | samMin **234** regression; **reverted** |
+| Spine corridor yield + finisher suspend (v264–v267) | samMin **169** held; #4 stays @13,23; no nadir gain |
+| SAM 221–240 corridor-early detour only (v268) | samMin **139** @32580 (best); **171** on repeat; run variance |
+| Spine finisher corridor skip (v270–v278) | **171** stable ×3; #29 holds 15,24 @32460 (no 14,22 snap); #29 @13,23 @32580 — still dist 6, SAM repairs |
+| Partner west step (v295–v297) | **171** stable ×3; #29 @**12,23** @32580 (was 13,23); #6 still dead; #4 @12,25 |
+| Early partner chip band (v294) | samMin **199** @32520 — #6 wiped early; **reverted** |
+| Deep-chip latch @235 (v296) | 1/3 runs **171**, 2/3 **216** variance; **reverted** |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held best (v221–v235)** — samMin **169** @32580; #6 @11,20 sole shooter @ nadir; 0 E3 @32580.
-2. **Second MTNK shooter** — #29 @15,22 frozen (engine x≥15 path block); #4 spine drifts east to `{14,23}`; south detour 14,22→13,26 worked historically but regressed when bundled (v231).
-3. **E3 timing** — must chip during 221–280 (holding E3 regresses to samMin **212**); need overlap fire without front-line `{10,17}` wipe before kill window.
-4. **Projectile-aware closes** — `{14,21}` often has transient 120mm; clear-cell picker in WIP skips occupied cells.
-5. **Do not** chip-band east dist-6 above SAM≤205; do not E3 hold 187–280; do not spine rush-to-SAM @ y≥24.
+1. **Held (v297)** — `eastBSamPartnerWestStep` + `queueEastBSamPartnerWestRoute` stable ×3; #29 reaches **12,23** @32580 (was 13,23); samMin **171** unchanged.
+2. **Still broken @32580** — #6 solo shooter dies 32550→32580; SAM repairs 171→181+; no A-10.
+3. **Next lever** — #29 must reach `{11,21}` **before tick 32550** (currently 13,23 @32550); need ~120 ticks from 14,24 but deep finisher only latches @SAM≤220 (~32460).
+4. **Spine finisher #4** — north-first candidates added; still @12,25 @ nadir — verify 13,24→12,21 path or commit #4 to fire line when partner engages.
+5. **Do not** early partner in chip band (v294 → samMin 199); do not raise deep-chip latch to 235 (run variance 216); do not direct `{11,21}` force-move from x≥14.
 
 ---
 
