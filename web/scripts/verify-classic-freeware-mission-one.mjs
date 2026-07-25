@@ -7039,6 +7039,17 @@ function eastBSamDeepPartnerPick(liveTanks, spineFinisher) {
   ))[0];
 }
 
+function eastBSamPartnerDetourStep(tank, snapshot, samStrength) {
+  // Partner west-first: avoid south-then-west spine detour (TRACE v297: #29 lingers @15,24).
+  if (tank.cellX >= 15) {
+    return { cellX: tank.cellX - 1, cellY: tank.cellY };
+  }
+  if (tank.cellX === 14 && tank.cellY >= 22) {
+    return { cellX: 13, cellY: tank.cellY };
+  }
+  return eastBSamEastSpineDetourStep(tank, snapshot, samStrength);
+}
+
 function eastBSamPartnerWestStep(tank, snapshot, westernSam, liveTanks) {
   const tankKey = objectKey(tank);
   const samDist = missionEightDistance(tank, westernSam);
@@ -7046,7 +7057,7 @@ function eastBSamPartnerWestStep(tank, snapshot, westernSam, liveTanks) {
   if (tank.cellX >= 14) {
     return {
       fire: false,
-      target: eastBSamEastSpineDetourStep(tank, snapshot, westernSam.strength),
+      target: eastBSamPartnerDetourStep(tank, snapshot, westernSam.strength),
     };
   }
   if (tank.cellX === 13 && tank.cellY >= 22) {
@@ -7340,6 +7351,19 @@ function queueEastBSamSpineKillClose(commands, snapshot, westernSam, spineFinish
       [spineFinisher], westernSam, 0, 1);
     return spineKeys;
   }
+  if (samStrength <= 186 && spineFinisher.cellY >= 23 && samDist > 5) {
+    const rushCandidates = [
+      eastBSamKillSpineStage,
+      eastBSamKillNorthFlankCell,
+      { cellX: 12, cellY: spineFinisher.cellY - 1 },
+      { cellX: 13, cellY: spineFinisher.cellY - 1 },
+    ];
+    const rushTarget = eastBSamPickClearKillCell(snapshot, rushCandidates, key)
+      ?? eastBSamKillSpineStage;
+    queueMissionEightRole(commands, `east-b-sam-spine-rush-${key}`,
+      [spineFinisher], rushTarget, MODIFIER_ALT, 1);
+    return spineKeys;
+  }
   let target;
   if (spineFinisher.cellY >= 24) {
     const northCandidates = spineFinisher.cellX === 13
@@ -7600,7 +7624,11 @@ function queueEastBSamDeepFinisher(commands, snapshot, strike, westernSam) {
     && missionEightDistance(tank, westernSam) <= 5
   ));
   if (deepRockets.length > 0) {
-    if (samStrength <= 220 && westShooterReady) {
+    const soloWestShooter = liveTanks.some((tank) => (
+      tank.cellX <= 11 && tank.cellY >= 20 && tank.cellY <= 22
+      && missionEightDistance(tank, westernSam) <= 5
+    ));
+    if (samStrength <= 220 && (westShooterReady || soloWestShooter)) {
       queueMissionEightRole(commands, "east-b-sam-deep-rockets", deepRockets,
         westernSam, 0, 1);
     } else if (samStrength <= 220) {
@@ -8538,13 +8566,18 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     );
     if (samChipBandEarly) {
       queueEastBSamSpineFinisherRail(commands, snapshot, strike, westernSam, liveStrikeTanks);
+      const spineFinEarly = eastBSpineFinisherResolve(liveStrikeTanks, westernSam);
+      const partnerChipEarlyKeys = queueEastBSamPartnerWestRoute(commands, snapshot, westernSam,
+        liveStrikeTanks, spineFinEarly, 280);
       const samCorridorEarly = Boolean(
         westernSam.strength > 220 && westernSam.strength <= 235
       );
       if (samCorridorEarly) {
-        const spineFinEarly = eastBSpineFinisherResolve(liveStrikeTanks, westernSam);
+        const partnerEarly = eastBSamDeepPartnerPick(liveStrikeTanks, spineFinEarly);
         for (const tank of liveStrikeTanks) {
           if (tank.typeName !== "MTNK" || tank.strength <= 0) continue;
+          if (partnerEarly && objectKey(tank) === objectKey(partnerEarly)) continue;
+          if (partnerChipEarlyKeys.has(objectKey(tank))) continue;
           if (!eastBSamCorridorEarlyEligible(tank, spineFinEarly)) continue;
           if (missionEightDistance(tank, westernSam) <= 5) continue;
           queueMissionEightRole(commands, `east-b-sam-corridor-early-${objectKey(tank)}`,
@@ -8552,6 +8585,7 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
             eastBSamEastSpineDetourModifier(tank, westernSam.strength), 1);
         }
       }
+      void partnerChipEarlyKeys;
     }
     // Chipped SAM reinforcements: hard-rail onto X=13 only (never 25,48 / east
     // detours). TRACE v52–54: finishers pathfinded to 45,33 or looped y=47–60.
@@ -8717,6 +8751,8 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       );
       const spineFinisherChip = samChipBand && westernSam
         ? eastBSpineFinisherResolve(finishers, westernSam) : undefined;
+      const partnerForm = samChipBand && westernSam
+        ? eastBSamDeepPartnerPick(finishers, spineFinisherChip) : undefined;
       const westEdgeChipKeys = samChipBand && westernSam
         ? queueEastBSamWestEdgeKill(commands, snapshot, westernSam, finishers, 280, true)
         : new Set();
@@ -8729,6 +8765,7 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
           : samApproachBand.length >= 2 ? 1 : inSamRange.length >= 1 ? 3 : 10;
       for (const tank of needsClose) {
         if (westEdgeChipKeys.has(objectKey(tank))) continue;
+        if (partnerForm && objectKey(tank) === objectKey(partnerForm)) continue;
         if (spineFinisherChip && objectKey(tank) === objectKey(spineFinisherChip)) continue;
         if (samCorridorEarlyBand && eastBSamCorridorEarlyEligible(tank, spineFinisherChip)
           && westernSam && missionEightDistance(tank, westernSam) > 5) continue;

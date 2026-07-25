@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v297 FINE ×3 — samMin **171** @32580 stable; #29 partner @**12,23** (was 13,23); #6 dead @32580; #4 @12,25 not in range; SAM repairs after nadir |
+| Last TRACE suite | v301 FINE — samMin **171** @32580 stable ×4; west-first partner detour + chip-band partner route; #29 @12,23; #6 dead @32580; spine rush **171** held |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -254,18 +254,18 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | SAM 221–240 corridor-early detour only (v268) | samMin **139** @32580 (best); **171** on repeat; run variance |
 | Spine finisher corridor skip (v270–v278) | **171** stable ×3; #29 holds 15,24 @32460 (no 14,22 snap); #29 @13,23 @32580 — still dist 6, SAM repairs |
 | Partner west step (v295–v297) | **171** stable ×3; #29 @**12,23** @32580 (was 13,23); #6 still dead; #4 @12,25 |
-| Early partner chip band (v294) | samMin **199** @32520 — #6 wiped early; **reverted** |
-| Deep-chip latch @235 (v296) | 1/3 runs **171**, 2/3 **216** variance; **reverted** |
+| West-first partner detour + chip-band partner (v298–v301) | **171** held; path still 15,23→15,24 @32430 (engine pathfind); no nadir gain |
+| Partner/spine attack-move dist 6–7 @SAM≤186 (v300) | No movement; **reverted** |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held (v297)** — `eastBSamPartnerWestStep` + `queueEastBSamPartnerWestRoute` stable ×3; #29 reaches **12,23** @32580 (was 13,23); samMin **171** unchanged.
-2. **Still broken @32580** — #6 solo shooter dies 32550→32580; SAM repairs 171→181+; no A-10.
-3. **Next lever** — #29 must reach `{11,21}` **before tick 32550** (currently 13,23 @32550); need ~120 ticks from 14,24 but deep finisher only latches @SAM≤220 (~32460).
-4. **Spine finisher #4** — north-first candidates added; still @12,25 @ nadir — verify 13,24→12,21 path or commit #4 to fire line when partner engages.
-5. **Do not** early partner in chip band (v294 → samMin 199); do not raise deep-chip latch to 235 (run variance 216); do not direct `{11,21}` force-move from x≥14.
+1. **Held (v297/v301)** — partner @**12,23** @32580 stable; samMin **171** unchanged across v298–v301 levers.
+2. **Still broken @32580** — #6 solo dies 32550→32580; SAM repairs; no A-10.
+3. **Next lever** — partner path still ~30t late: @13,23 @32550, @12,23 @32580; engine path via 15,24 blocks west-first. Try partner-only force-move west @ x=15 (skip south pathfind) or E3 commit overlap @32400–32520.
+4. **Closed v300** — partner/spine attack-move dist 6–7 @SAM≤186: no position change; **reverted**.
+5. **Do not** early partner without corridor-early skip (v294); do not deep-chip latch @235 (v296 variance).
 
 ---
 
