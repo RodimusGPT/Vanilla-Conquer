@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v312 FINE — samMin **171** @32580 stable ×3; split partner pick (chip-band westernmost / deep easternmost #29); reverted v310 hoist (234) |
+| Last TRACE suite | v316 FINE — samMin **171** @32580 stable ×3; east-spine west-first @ x≥15 SAM≤235 (#29 @14,22 @32400); no nadir gain |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -259,16 +259,20 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Partner pick easternmost globally (v310/v311) | samMin **234** @32400 — chip-band pulled #29 west too early; **reverted hoist** |
 | Split partner pick: chip-band westernmost / deep easternmost + spine-key exclude (v312) | **171** stable ×3; deep finisher targets #29 not #4; kill-window positions unchanged |
 | Partner force-rush @ SAM≤200 x≥13 (v313) | **171** held; no nadir gain — **closed** |
+| Spine designated force-north @ SAM≤186 (v314) | **171** held; #4 still @12,25 — **closed** |
+| Partner detour `{14,22}` shortcut @ y≥24 (v315) | **171** held; #29 still @15,24 @32430 — **closed** |
+| East-spine west-first @ x≥15 SAM≤235 (v316) | **171** stable ×3; #29 @14,22 @32400 (was 15,23); @13,23 @32580 (was 12,23); no samMin gain |
+| Partner force @ x=13 y≥23 SAM≤186 (v317) | **171** held — **closed** |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held (v312)** — `eastBSamChipBandPartnerPick` (westernmost, SAM 221–280) + `eastBSamDeepPartnerPick` (easternmost #29, SAM≤220); samMin **171** stable ×3.
-2. **Still broken @32580** — #6 solo @ `{11,20}` dies 32550→32580; #29 @ `{13,23}` @32550 (dist 6, no fire); #4 @ `{13,25}` out of range; SAM repairs 32610+.
-3. **Next lever** — #29 must reach `{11,21}` or `{12,21}` before 32550 (270t late from 15,24); or #4 spine north to `{13,21}` for overlap DPS; engine pathfind dominates 15,23→15,24 @32430.
-4. **Closed v313** — partner force-rush @ SAM≤200: no movement gain.
-5. **Do not** re-open partner hoist (v310), attack-move dist 6–7 (v300), or unguarded chip-band partner (v294).
+1. **Held (v316)** — `eastBSamEastSpineDetourStep` west-first @ x≥15 when SAM≤235; samMin **171** stable ×3; early path fixed but #29 stalls @ `{13,23}` not `{12,21}`.
+2. **Still broken @32580** — #6 solo dies 32550→32580; #29 dist 6 @32550; SAM repairs 32610+.
+3. **Next lever** — #29 `{13,23}`→`{12,21}` during 32460–32550 (partner west step blocked?); or restore #4 to `{12,25}` spine while pulling #29 west; E3 overlap if any survive @32400.
+4. **Closed v314–v315, v317** — spine force-north, partner detour shortcut, partner x13 force: no samMin gain.
+5. **Do not** re-open south-first detour @ x≥15 y<24 during SAM≤235 corridor-early.
 
 ---
 

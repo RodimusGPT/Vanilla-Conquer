@@ -7150,8 +7150,12 @@ function eastBSamEastKillCorridorTank(tank, spineFinisher = undefined) {
 }
 
 function eastBSamEastSpineDetourStep(tank, snapshot = undefined, samStrength = undefined) {
-  void samStrength;
   const tankKey = objectKey(tank);
+  const samBand = samStrength ?? 999;
+  // Kill-window corridor: west-first @ x≥15 (TRACE v316: south-first → 15,24 linger).
+  if (tank.cellX >= 15 && tank.cellY >= 22 && samBand <= 235) {
+    return { cellX: tank.cellX - 1, cellY: tank.cellY };
+  }
   if (tank.cellX >= 15 && tank.cellY < 24) {
     return { cellX: tank.cellX, cellY: tank.cellY + 1 };
   }
@@ -7177,6 +7181,7 @@ function eastBSamEastSpineDetourModifier(tank, samStrength = 999) {
   // Force-move on spine — attack-move (0) stalls on corridor opportunistic fire.
   if (samStrength <= 220 && tank.cellX === 13 && tank.cellY >= 22 && tank.cellY <= 26) return MODIFIER_ALT;
   if (samStrength <= 235 && tank.cellX >= 14 && tank.cellY >= 22 && tank.cellY <= 26) return MODIFIER_ALT;
+  if (samStrength <= 235 && tank.cellX >= 15 && tank.cellY >= 22 && tank.cellY <= 26) return 0;
   return MODIFIER_ALT;
 }
 
