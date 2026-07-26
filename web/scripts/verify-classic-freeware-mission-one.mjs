@@ -7108,6 +7108,13 @@ function eastBSamPartnerWestStep(tank, snapshot, westernSam, liveTanks) {
   return { fire: false, target: eastBSamSecondShooterCell(liveTanks) };
 }
 
+function eastBSamPartnerWestOrderModifier(partner, samStrength, step, maxSamStrength = 280) {
+  if (step.fire) return 0;
+  if (maxSamStrength <= 220 && samStrength <= 220
+    && partner.cellX === 14 && partner.cellY >= 22) return 0;
+  return MODIFIER_ALT;
+}
+
 function queueEastBSamPartnerWestRoute(commands, snapshot, westernSam, liveTanks,
   spineFinisher, maxSamStrength = 280) {
   const partnerKeys = new Set();
@@ -7123,7 +7130,8 @@ function queueEastBSamPartnerWestRoute(commands, snapshot, westernSam, liveTanks
   queueMissionEightRole(commands, step.fire
     ? `east-b-sam-partner-fire-${partnerKey}`
     : `east-b-sam-partner-west-${partnerKey}`,
-    [partner], step.target, step.fire ? 0 : MODIFIER_ALT, 1);
+    [partner], step.target,
+    eastBSamPartnerWestOrderModifier(partner, samStrength, step, maxSamStrength), 1);
   return partnerKeys;
 }
 
@@ -7136,7 +7144,8 @@ function eastBSamEastColumnDetourEligible(tank, spineFinisher = undefined) {
 
 function eastBSamCorridorEarlyEligible(tank, spineFinisher = undefined) {
   void spineFinisher;
-  return tank.cellX >= 15 && tank.cellY >= 22 && tank.cellY < 24;
+  return (tank.cellX >= 15 || (tank.cellX === 14 && tank.cellY >= 22))
+    && tank.cellY >= 22 && tank.cellY < 24;
 }
 
 function eastBSamEastKillCorridorTank(tank, spineFinisher = undefined) {
@@ -7150,8 +7159,12 @@ function eastBSamEastKillCorridorTank(tank, spineFinisher = undefined) {
 }
 
 function eastBSamEastSpineDetourStep(tank, snapshot = undefined, samStrength = undefined) {
-  void samStrength;
   const tankKey = objectKey(tank);
+  const samBand = samStrength ?? 999;
+  // x=15 only: west-first during kill-window approach (v324; v316 x≥15 regressed nadir).
+  if (tank.cellX === 15 && tank.cellY >= 22 && samBand <= 235) {
+    return { cellX: 14, cellY: tank.cellY };
+  }
   if (tank.cellX >= 15 && tank.cellY < 24) {
     return { cellX: tank.cellX, cellY: tank.cellY + 1 };
   }
@@ -7176,6 +7189,7 @@ function eastBSamEastSpineDetourStep(tank, snapshot = undefined, samStrength = u
 function eastBSamEastSpineDetourModifier(tank, samStrength = 999) {
   // Force-move on spine — attack-move (0) stalls on corridor opportunistic fire.
   if (samStrength <= 220 && tank.cellX === 13 && tank.cellY >= 22 && tank.cellY <= 26) return MODIFIER_ALT;
+  if (samStrength <= 235 && tank.cellX === 15 && tank.cellY >= 22 && tank.cellY <= 26) return 0;
   if (samStrength <= 235 && tank.cellX >= 14 && tank.cellY >= 22 && tank.cellY <= 26) return MODIFIER_ALT;
   return MODIFIER_ALT;
 }
@@ -7366,6 +7380,12 @@ function queueEastBSamSpineKillClose(commands, snapshot, westernSam, spineFinish
   if (samDist <= 5) {
     queueMissionEightRole(commands, `east-b-sam-spine-fire-${key}`,
       [spineFinisher], westernSam, 0, 1);
+    return spineKeys;
+  }
+  if (samStrength <= 200 && spineFinisher.cellY >= 24 && samDist > 5
+    && missionEightState.eastBSamSpineFinisherKey === key) {
+    queueMissionEightRole(commands, `east-b-sam-spine-north-${key}`,
+      [spineFinisher], { cellX: 13, cellY: spineFinisher.cellY - 1 }, 0, 1);
     return spineKeys;
   }
   if (samStrength <= 186 && spineFinisher.cellY >= 23 && samDist > 5) {
@@ -7569,7 +7589,8 @@ function queueEastBSamDeepFinisher(commands, snapshot, strike, westernSam) {
         queueMissionEightRole(commands, step.fire
           ? `east-b-sam-deep-partner-fire-${tankKey}`
           : `east-b-sam-deep-partner-west-${tankKey}`,
-          [tank], step.target, step.fire ? 0 : MODIFIER_ALT, 1);
+          [tank], step.target,
+          eastBSamPartnerWestOrderModifier(tank, samStrength, step, 220), 1);
         continue;
       }
       if (!spineFinisherTank && spineShooter && objectKey(tank) !== objectKey(spineShooter)
@@ -8594,7 +8615,7 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       const partnerChipEarlyKeys = queueEastBSamPartnerWestRoute(commands, snapshot, westernSam,
         liveStrikeTanks, spineFinEarly, 280);
       const samCorridorEarly = Boolean(
-        westernSam.strength > 220 && westernSam.strength <= 235
+        westernSam.strength > 220 && westernSam.strength <= 240
       );
       if (samCorridorEarly) {
         const partnerEarly = eastBSamChipBandPartnerPick(liveStrikeTanks, spineFinEarly);
@@ -8771,7 +8792,7 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
         && westernSam.strength < 280
       );
       const samCorridorEarlyBand = Boolean(
-        samChipBand && westernSam && westernSam.strength <= 235
+        samChipBand && westernSam && westernSam.strength <= 240
       );
       const spineFinisherChip = samChipBand && westernSam
         ? eastBSpineFinisherResolve(finishers, westernSam) : undefined;

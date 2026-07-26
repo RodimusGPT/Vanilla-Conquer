@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v323 FINE — samMin **171** @32580 stable ×3; v316 west-first **reverted** (#29 @12,23); v320 spine designated-first held |
+| Last TRACE suite | v327 FINE — samMin **139** @32580 stable ×5; x=15 west-first + corridor-early 221–240; #6 survives nadir @59 HP |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -266,16 +266,19 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Partner north-first + kill-line @ x=13 (v318) | **171** held — **closed** |
 | Partner flank rush + spine designated-first (v319–v320) | **171** held; spine pick hoisted — **kept v320** |
 | Deep west-flank rush dist 6–7 @ x=13–14 (v323) | **171** held; engine ignores cell rush — **closed** |
+| x=15 west-first + corridor-early 221–240 (v324–v327) | samMin **139** @32580 stable ×5; #6 @11,20 survives; #29 stuck @14,22 (dist 6) |
+| x=14 global west-first detour (v325) | samMin **171** regression — **closed**; stalls #29 @14,22 without 139 chip |
+| Spine designated one-step north @ y≥24 (v327) | **139** held; #4 12,25→12,24 post-nadir — **kept** |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held (v320)** — `eastBSamDeepSpineFinisherPick` prefers `eastBSamSpineFinisherKey`; samMin **171** @32580; #29 @**12,23**; #6 solo @ `{11,20}` dies after nadir.
-2. **Still broken @32580** — #29 @ `{13,23}` @32550 (dist 7); reaches `{12,23}` ~30t too late; SAM repairs 32610+.
-3. **Next lever** — engine ignores force/attack-move cell orders for corridor MTNK (v323/v317/v300 pattern); need path that doesn't rely on cell-target rush — e.g. v268 corridor-early variance (samMin **139** best), or #4 spine north overlap from `{13,25}` before 32550.
-4. **Closed v316** — west-first @ x≥15 regressed nadir position; do not re-open without new evidence.
-5. **Closed v318–v319, v323** — partner north-first, flank rush, dist-6–7 cell rush: no movement gain.
+1. **Held (v327)** — x=15 west-first SAM≤235 + corridor-early 221–240 + x=14 eligible; samMin **139** stable ×5; #6 solo survives nadir @59 HP.
+2. **Still broken** — SAM repairs after 139 nadir; #29 @ `{14,22}` dist 6 (cannot close west without v325 regression to 171).
+3. **Next lever** — second shooter in range during 32520–32580 without pulling #29 off `{14,22}`: E3 overlap if any survive; or #4 spine `{13,21}` before nadir while #6 holds `{11,20}`.
+4. **Closed v325** — global x=14 west-first breaks 139 chip pattern.
+5. **Do not** re-open v316 x≥15 west-first (nadir regression) or cell-target rush levers (v323).
 
 ---
 
