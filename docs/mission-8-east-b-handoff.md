@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | `0034d9f` |
+| Commit | `15df1e1` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
@@ -289,7 +289,8 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 | Commit | Note |
 |---|---|
-| `0034d9f` | **This checkpoint** — v301 west-first partner detour + spine rush (samMin 171 held) |
+| `15df1e1` | **This checkpoint** — v312 split partner pick (samMin 171 held) |
+| `0034d9f` | v301 west-first partner detour + spine rush (samMin 171 held) |
 | `4d729d4` | v297 partner west routing + TRACE/gate wrappers |
 | `7494ba7` | SAM pack + finisher path (~200 chip; handoff doc) |
 | `74bfbe4` | Softer assault gate + E3 push prep (SAM min ~288) |
