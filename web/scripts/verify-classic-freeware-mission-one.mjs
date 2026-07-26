@@ -471,6 +471,8 @@ function missionEightTraceCompactRecord(snapshot, attackers, hostiles) {
     neutralMinimum: missionEightState.minimumNeutralUnits,
     eastBSamSpine: {
       key: missionEightState.eastBSamSpineFinisherKey,
+      deepChip: missionEightState.eastBSamDeepChip,
+      deepFinisher: missionEightState.eastBSamDeepSpineFinisherSample,
       killOccupancy: missionEightState.eastBSamKillOccupancy,
     },
     eastBStaging: {
@@ -3095,6 +3097,7 @@ const missionEightState = {
   eastBSamSpinePathLogged: false,
   eastBSamSpinePathSample: undefined,
   eastBSamKillOccupancy: undefined,
+  eastBSamDeepSpineFinisherSample: undefined,
   eastBSamFinishSellTick: undefined,
   eastBSamDeepChip: false,
   eastBSecondNukeOrderTick: undefined,
@@ -7041,6 +7044,13 @@ function eastBSamChipBandPartnerPick(liveTanks, spineFinisher) {
 
 function eastBSamDeepPartnerPick(liveTanks, spineFinisher) {
   const state = missionEightState;
+  const corridorHold = liveTanks.find((tank) => (
+    tank.typeName === "MTNK" && tank.strength > 0
+    && tank.cellX === 14 && tank.cellY === 22
+    && tank.strength < 80
+    && (!spineFinisher || objectKey(tank) !== objectKey(spineFinisher))
+  ));
+  if (corridorHold) return corridorHold;
   return liveTanks.filter((tank) => {
     const key = objectKey(tank);
     return tank.typeName === "MTNK" && tank.strength > 0
@@ -7069,6 +7079,10 @@ function eastBSamPartnerWestStep(tank, snapshot, westernSam, liveTanks) {
   const tankKey = objectKey(tank);
   const samDist = missionEightDistance(tank, westernSam);
   if (samDist <= 5) return { fire: true, target: westernSam };
+  if (tank.cellX === 14 && tank.cellY === 22 && samDist === 6
+    && westernSam.strength <= 200) {
+    return { fire: true, target: westernSam };
+  }
   if (tank.cellX >= 14) {
     return {
       fire: false,
@@ -7110,6 +7124,9 @@ function eastBSamPartnerWestStep(tank, snapshot, westernSam, liveTanks) {
 
 function eastBSamPartnerWestOrderModifier(partner, samStrength, step, maxSamStrength = 280) {
   if (step.fire) return 0;
+  if (maxSamStrength <= 220 && samStrength <= 200
+    && partner.cellX === 14 && partner.cellY === 22
+    && step.target?.cellY === 21) return MODIFIER_ALT;
   if (maxSamStrength <= 220 && samStrength <= 220
     && partner.cellX === 14 && partner.cellY >= 22) return 0;
   return MODIFIER_ALT;
@@ -7194,7 +7211,7 @@ function eastBSamEastSpineDetourModifier(tank, samStrength = 999) {
   return MODIFIER_ALT;
 }
 
-function queueEastBSamSpineBlockerYield(commands, liveTanks, samStrength) {
+function queueEastBSamSpineBlockerYield(commands, liveTanks, samStrength, spineFinisher = undefined) {
   if (samStrength > 220) return;
   const onSpine = liveTanks.filter((tank) => (
     tank.typeName === "MTNK" && tank.strength > 0
@@ -7204,6 +7221,7 @@ function queueEastBSamSpineBlockerYield(commands, liveTanks, samStrength) {
     const north = onSpine[index];
     const south = onSpine[index + 1];
     if (south.cellY - north.cellY > 1) continue;
+    if (spineFinisher && objectKey(south) === objectKey(spineFinisher)) continue;
     queueMissionEightRole(commands, `east-b-sam-spine-block-yield-${objectKey(south)}`,
       [south], { cellX: 12, cellY: south.cellY }, MODIFIER_ALT, 1);
   }
@@ -7285,6 +7303,7 @@ function queueEastBSamWestEdgeKill(commands, snapshot, westernSam, liveTanks, ma
   for (const tank of liveTanks) {
     if (tank.typeName !== "MTNK" || tank.strength <= 0) continue;
     if (eastBSamEastKillCorridorTank(tank, spineFinisher)) continue;
+    if (spineFinisher && objectKey(tank) === objectKey(spineFinisher)) continue;
     const samDist = missionEightDistance(tank, westernSam);
     const tankKey = objectKey(tank);
     const onWestKillLine = tank.cellX <= 12 && tank.cellY >= 20 && tank.cellY <= 22;
@@ -7382,10 +7401,33 @@ function queueEastBSamSpineKillClose(commands, snapshot, westernSam, spineFinish
       [spineFinisher], westernSam, 0, 1);
     return spineKeys;
   }
-  if (samStrength <= 200 && spineFinisher.cellY >= 24 && samDist > 5
-    && missionEightState.eastBSamSpineFinisherKey === key) {
+  if (samStrength <= 200 && samDist > 5 && spineFinisher.cellX === 14 && spineFinisher.cellY === 22) {
+    queueMissionEightRole(commands, `east-b-sam-spine-west-${key}`,
+      [spineFinisher], eastBSamKillSpineStage, MODIFIER_ALT, 1);
+    return spineKeys;
+  }
+  if (samStrength <= 220 && samDist > 5 && spineFinisher.cellX === 13 && spineFinisher.cellY > 21) {
+    const rushFireLine = samStrength <= 220 && spineFinisher.cellY >= 24;
+    let northTarget = rushFireLine
+      ? eastBSamKillSpineStage
+      : spineFinisher.cellY > 22
+        ? { cellX: 13, cellY: spineFinisher.cellY - 1 }
+        : eastBSamKillSpineStage;
+    let forceNorth = rushFireLine || spineFinisher.cellY === 23;
+    if (spineFinisher.cellY === 23 && samStrength <= 180) {
+      northTarget = eastBSamKillSpineStage;
+      forceNorth = true;
+    }
     queueMissionEightRole(commands, `east-b-sam-spine-north-${key}`,
-      [spineFinisher], { cellX: 13, cellY: spineFinisher.cellY - 1 }, 0, 1);
+      [spineFinisher], northTarget, forceNorth ? MODIFIER_ALT : 0, 1);
+    return spineKeys;
+  }
+  if (samStrength <= 220 && samDist > 5 && spineFinisher.cellX === 12 && spineFinisher.cellY >= 22) {
+    queueMissionEightRole(commands, `east-b-sam-spine-east-${key}`,
+      [spineFinisher], { cellX: 13, cellY: spineFinisher.cellY }, 0, 1);
+    return spineKeys;
+  }
+  if (missionEightState.eastBSamSpineFinisherKey === key) {
     return spineKeys;
   }
   if (samStrength <= 186 && spineFinisher.cellY >= 23 && samDist > 5) {
@@ -7406,9 +7448,7 @@ function queueEastBSamSpineKillClose(commands, snapshot, westernSam, spineFinish
     const northCandidates = spineFinisher.cellX === 13
       ? [
         { cellX: 13, cellY: spineFinisher.cellY - 1 },
-        { cellX: 12, cellY: spineFinisher.cellY - 1 },
         { cellX: 13, cellY: spineFinisher.cellY - 2 },
-        { cellX: 12, cellY: spineFinisher.cellY },
         eastBSamKillSpineStage,
       ]
       : [
@@ -7487,6 +7527,9 @@ function eastBSamSpineFinisherRailStep(tank, samStrength = 999, snapshot = undef
   if (samStrength <= 200 && tank.cellX === 13 && tank.cellY >= 23) {
     return eastBSamKillSpineStage;
   }
+  if (samStrength <= 240 && samStrength > 220 && tank.cellX === 13 && tank.cellY >= 26) {
+    return eastBSamKillSpineStage;
+  }
   if (samStrength <= 240 && tank.cellX === 13 && tank.cellY >= 24) {
     return eastBSamKillWestStage;
   }
@@ -7545,6 +7588,33 @@ function eastBSamDeepSpineFinisherPick(liveTanks, westernSam) {
     ));
     if (designated) return designated;
   }
+  // Do not reuse eastBSamDeepPartnerPick as a spine exclude — when the eastern
+  // partner (#29) is produced it drops out of partner pick and #4 becomes
+  // "partner", excluding the only x=13 finisher (TRACE v337).
+  const onSpine13 = liveTanks.filter((tank) => (
+    tank.typeName === "MTNK" && tank.strength > 0
+    && tank.cellX === 13 && tank.cellY >= 22
+    && missionEightDistance(tank, westernSam) > 5
+  )).toSorted((left, right) => (
+    left.cellY - right.cellY || right.strength - left.strength || left.id - right.id
+  ))[0];
+  if (onSpine13) return onSpine13;
+  const onSpine12 = liveTanks.filter((tank) => (
+    tank.typeName === "MTNK" && tank.strength > 0
+    && tank.cellX === 12 && tank.cellY >= 22
+    && missionEightDistance(tank, westernSam) > 5
+  )).toSorted((left, right) => (
+    left.cellY - right.cellY || right.strength - left.strength || left.id - right.id
+  ))[0];
+  if (onSpine12) return onSpine12;
+  const onSpineRecover = liveTanks.filter((tank) => (
+    tank.typeName === "MTNK" && tank.strength > 0
+    && tank.cellX === 14 && tank.cellY === 22 && tank.strength >= 80
+    && missionEightDistance(tank, westernSam) > 5
+  )).toSorted((left, right) => (
+    right.strength - left.strength || left.id - right.id
+  ))[0];
+  if (onSpineRecover) return onSpineRecover;
   const produced = liveTanks.filter((tank) => (
     tank.typeName === "MTNK" && tank.strength > 0
     && state.eastBProducedTankKeys.has(objectKey(tank))
@@ -7563,11 +7633,16 @@ function queueEastBSamDeepFinisher(commands, snapshot, strike, westernSam) {
   const samStrength = westernSam.strength;
   const westPrePositionTank = eastBWestPrePositionPick(liveTanks);
   let spineFinisherTank = eastBSamDeepSpineFinisherPick(liveTanks, westernSam);
+  if (snapshot.tick >= 32400 && snapshot.tick <= 32700) {
+    missionEightState.eastBSamDeepSpineFinisherSample = spineFinisherTank
+      ? { id: spineFinisherTank.id, cellX: spineFinisherTank.cellX, cellY: spineFinisherTank.cellY }
+      : null;
+  }
   eastBSamRecordKillOccupancy(snapshot, westernSam);
   const partnerKeys = queueEastBSamPartnerWestRoute(commands, snapshot, westernSam, liveTanks,
     spineFinisherTank, 220);
   const spineShooter = eastBSamSpineKillShooterPick(liveTanks, spineFinisherTank, westernSam);
-  queueEastBSamSpineBlockerYield(commands, liveTanks, samStrength);
+  queueEastBSamSpineBlockerYield(commands, liveTanks, samStrength, spineFinisherTank);
   if (!spineFinisherTank) {
     queueEastBSamSpineShooterYield(commands, liveTanks, spineFinisherTank, spineShooter, samStrength);
   }
@@ -7582,6 +7657,11 @@ function queueEastBSamDeepFinisher(commands, snapshot, strike, westernSam) {
     if (samStrength <= 220 && eastBSamEastKillCorridorTank(tank, spineFinisherTank)
       && !spineKillKeys.has(tankKey)) {
       if (partnerKeys.has(tankKey)) continue;
+      if (samStrength <= 200 && tank.cellX === 13 && tank.cellY >= 22 && samDist > 5) {
+        queueMissionEightRole(commands, `east-b-sam-deep-spine-attack-${tankKey}`,
+          [tank], westernSam, 0, 1);
+        continue;
+      }
       if (spineFinisherTank && objectKey(tank) !== objectKey(spineFinisherTank)
         && !missionEightState.eastBProducedTankKeys.has(tankKey)
         && tank.cellX >= 12 && tank.cellY >= 22) {
@@ -7618,6 +7698,7 @@ function queueEastBSamDeepFinisher(commands, snapshot, strike, westernSam) {
       continue;
     }
     if (killLineKeys.has(tankKey) || spineKillKeys.has(tankKey)) continue;
+    if (spineFinisherTank && objectKey(tank) === objectKey(spineFinisherTank)) continue;
     if (samStrength <= 220 && tank.cellX === 12 && tank.cellY >= 21 && tank.cellY <= 23
       && samDist > 5) {
       queueMissionEightRole(commands, `east-b-sam-deep-west-flank-close-${tankKey}`,
@@ -10492,6 +10573,7 @@ try {
         baseGuard: missionEightState.baseGuardKeys.size,
         eastBSamSpine: mission.variant === "east-b" ? {
           key: missionEightState.eastBSamSpineFinisherKey,
+          deepFinisher: missionEightState.eastBSamDeepSpineFinisherSample,
           held: [...missionEightState.eastBSamSpineFinisherHoldKeys],
           pathSample: missionEightState.eastBSamSpinePathSample,
           killOccupancy: missionEightState.eastBSamKillOccupancy,

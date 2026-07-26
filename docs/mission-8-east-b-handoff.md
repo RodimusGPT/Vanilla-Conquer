@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v327 FINE — samMin **139** @32580 stable ×5; x=15 west-first + corridor-early 221–240; #6 survives nadir @59 HP |
+| Last TRACE suite | v353 FINE — samMin **134** @32580 stable ×5; post-nadir spine recovery (v352) — no samMin gain; #4 still drifts `{14,22}` |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -269,16 +269,23 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | x=15 west-first + corridor-early 221–240 (v324–v327) | samMin **139** @32580 stable ×5; #6 @11,20 survives; #29 stuck @14,22 (dist 6) |
 | x=14 global west-first detour (v325) | samMin **171** regression — **closed**; stalls #29 @14,22 without 139 chip |
 | Spine designated one-step north @ y≥24 (v327) | **139** held; #4 12,25→12,24 post-nadir — **kept** |
+| v328–v329 spine north overlap + attack SAM | **139** held; `eastBSamSpineFinisherKey` undefined at nadir — **closed** |
+| Deep spine pick via partner exclude (v337) | Picked **#29** @14,22 — produced #29 drops from partner pick → #4 mis-tagged partner — **closed** |
+| Deep spine pick x=13 first (v338) | samMin **134** @32580 stable ×5; #4 @ `{13,24}` @ nadir; #29 @ `{14,22}` |
+| Spine north / rush / partner dist-6 fire (v339–v344) | **134** held; #4 still `{13,24}` @32580; engine path rate limited — **closed** |
+| Chip-band spine pre-position (v345/v348) | samMin **218/177** — breaks #6 west lead @ `{11,20}` — **closed** |
+| Spine rush y≥23 (v349) | **134** held; #4 drifts `{14,22}` post-nadir — **reverted** |
+| Post-nadir spine recovery (v352/v353) | **134** held; corridorHold `<80` + onSpine14 recover — engine keeps #4 @ `{14,22}` |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held (v327)** — x=15 west-first SAM≤235 + corridor-early 221–240 + x=14 eligible; samMin **139** stable ×5; #6 solo survives nadir @59 HP.
-2. **Still broken** — SAM repairs after 139 nadir; #29 @ `{14,22}` dist 6 (cannot close west without v325 regression to 171).
-3. **Next lever** — second shooter in range during 32520–32580 without pulling #29 off `{14,22}`: E3 overlap if any survive; or #4 spine `{13,21}` before nadir while #6 holds `{11,20}`.
-4. **Closed v325** — global x=14 west-first breaks 139 chip pattern.
-5. **Do not** re-open v316 x≥15 west-first (nadir regression) or cell-target rush levers (v323).
+1. **Held (v338 + v344)** — deep spine pick x=13 (#4); corridor-hold partner @ `{14,22}`; samMin **134** stable ×5; #6 @ `{11,20}` @59 HP.
+2. **Still broken** — SAM repairs after 134 nadir; #4 @ `{13,24}` (dist 7); engine ~1 cell/30t on spine; #29 @ `{14,22}` dist 6 (no MTNK fire).
+3. **Closed v345/v348** — chip-band `#4` north before deep window breaks west lead (#6 @ `{14,22}`); do not use `eastBSamDeepSpineFinisherPick` in `samChipBandEarly` partner context.
+4. **Next lever** — engine pathing blocks spine close post-nadir; need in-range second shooter **by tick 32580** (not after). Revisit chip-band only with partnerEarly=deepPick (not westernmost) + no `#4` north until #6 @ `{11,20}` confirmed in TRACE.
+5. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
 
 ---
 
