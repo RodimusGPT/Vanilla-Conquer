@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v301 FINE — samMin **171** @32580 stable ×4; west-first partner detour + chip-band partner route; #29 @12,23; #6 dead @32580; spine rush **171** held |
+| Last TRACE suite | v312 FINE — samMin **171** @32580 stable ×3; split partner pick (chip-band westernmost / deep easternmost #29); reverted v310 hoist (234) |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -255,17 +255,20 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Spine finisher corridor skip (v270–v278) | **171** stable ×3; #29 holds 15,24 @32460 (no 14,22 snap); #29 @13,23 @32580 — still dist 6, SAM repairs |
 | Partner west step (v295–v297) | **171** stable ×3; #29 @**12,23** @32580 (was 13,23); #6 still dead; #4 @12,25 |
 | West-first partner detour + chip-band partner (v298–v301) | **171** held; path still 15,23→15,24 @32430 (engine pathfind); no nadir gain |
-| Partner/spine attack-move dist 6–7 @SAM≤186 (v300) | No movement; **reverted** |
+| Partner hoist + NW force @x=15 + E3 west-lead (v302–v303) | **171** stable ×3; #29 path unchanged |
+| Partner pick easternmost globally (v310/v311) | samMin **234** @32400 — chip-band pulled #29 west too early; **reverted hoist** |
+| Split partner pick: chip-band westernmost / deep easternmost + spine-key exclude (v312) | **171** stable ×3; deep finisher targets #29 not #4; kill-window positions unchanged |
+| Partner force-rush @ SAM≤200 x≥13 (v313) | **171** held; no nadir gain — **closed** |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held (v297/v301)** — partner @**12,23** @32580 stable; samMin **171** unchanged across v298–v301 levers.
-2. **Still broken @32580** — #6 solo dies 32550→32580; SAM repairs; no A-10.
-3. **Next lever** — partner path still ~30t late: @13,23 @32550, @12,23 @32580; engine path via 15,24 blocks west-first. Try partner-only force-move west @ x=15 (skip south pathfind) or E3 commit overlap @32400–32520.
-4. **Closed v300** — partner/spine attack-move dist 6–7 @SAM≤186: no position change; **reverted**.
-5. **Do not** early partner without corridor-early skip (v294); do not deep-chip latch @235 (v296 variance).
+1. **Held (v312)** — `eastBSamChipBandPartnerPick` (westernmost, SAM 221–280) + `eastBSamDeepPartnerPick` (easternmost #29, SAM≤220); samMin **171** stable ×3.
+2. **Still broken @32580** — #6 solo @ `{11,20}` dies 32550→32580; #29 @ `{13,23}` @32550 (dist 6, no fire); #4 @ `{13,25}` out of range; SAM repairs 32610+.
+3. **Next lever** — #29 must reach `{11,21}` or `{12,21}` before 32550 (270t late from 15,24); or #4 spine north to `{13,21}` for overlap DPS; engine pathfind dominates 15,23→15,24 @32430.
+4. **Closed v313** — partner force-rush @ SAM≤200: no movement gain.
+5. **Do not** re-open partner hoist (v310), attack-move dist 6–7 (v300), or unguarded chip-band partner (v294).
 
 ---
 
@@ -286,7 +289,8 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 | Commit | Note |
 |---|---|
-| `4d729d4` | **This checkpoint** — v297 partner west routing (samMin 171; #29 @12,23); TRACE/gate wrappers |
+| `0034d9f` | **This checkpoint** — v301 west-first partner detour + spine rush (samMin 171 held) |
+| `4d729d4` | v297 partner west routing + TRACE/gate wrappers |
 | `7494ba7` | SAM pack + finisher path (~200 chip; handoff doc) |
 | `74bfbe4` | Softer assault gate + E3 push prep (SAM min ~288) |
 | `1bc9b69` | Fund follow-up tank before western assault |

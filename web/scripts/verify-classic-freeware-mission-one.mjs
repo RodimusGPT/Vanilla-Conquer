@@ -7028,7 +7028,7 @@ function eastBWestPrePositionPick(tanks) {
   ))[0];
 }
 
-function eastBSamDeepPartnerPick(liveTanks, spineFinisher) {
+function eastBSamChipBandPartnerPick(liveTanks, spineFinisher) {
   return liveTanks.filter((tank) => (
     tank.typeName === "MTNK" && tank.strength > 0
     && (!spineFinisher || objectKey(tank) !== objectKey(spineFinisher))
@@ -7036,6 +7036,21 @@ function eastBSamDeepPartnerPick(liveTanks, spineFinisher) {
     && tank.cellX >= 12 && tank.cellY >= 22
   )).toSorted((left, right) => (
     left.cellX - right.cellX || left.cellY - right.cellY || left.id - right.id
+  ))[0];
+}
+
+function eastBSamDeepPartnerPick(liveTanks, spineFinisher) {
+  const state = missionEightState;
+  return liveTanks.filter((tank) => {
+    const key = objectKey(tank);
+    return tank.typeName === "MTNK" && tank.strength > 0
+      && (!spineFinisher || key !== objectKey(spineFinisher))
+      && !state.eastBProducedTankKeys.has(key)
+      && key !== state.eastBSamSpineFinisherKey
+      && !state.eastBSamSpineFinisherHoldKeys.has(key)
+      && tank.cellX >= 12 && tank.cellY >= 22;
+  }).toSorted((left, right) => (
+    right.cellX - left.cellX || left.cellY - right.cellY || left.id - right.id
   ))[0];
 }
 
@@ -7098,7 +7113,9 @@ function queueEastBSamPartnerWestRoute(commands, snapshot, westernSam, liveTanks
   const partnerKeys = new Set();
   const samStrength = westernSam.strength;
   if (samStrength <= 0 || samStrength > maxSamStrength) return partnerKeys;
-  const partner = eastBSamDeepPartnerPick(liveTanks, spineFinisher);
+  const partner = maxSamStrength <= 220
+    ? eastBSamDeepPartnerPick(liveTanks, spineFinisher)
+    : eastBSamChipBandPartnerPick(liveTanks, spineFinisher);
   if (!partner) return partnerKeys;
   const partnerKey = objectKey(partner);
   partnerKeys.add(partnerKey);
@@ -8573,7 +8590,7 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
         westernSam.strength > 220 && westernSam.strength <= 235
       );
       if (samCorridorEarly) {
-        const partnerEarly = eastBSamDeepPartnerPick(liveStrikeTanks, spineFinEarly);
+        const partnerEarly = eastBSamChipBandPartnerPick(liveStrikeTanks, spineFinEarly);
         for (const tank of liveStrikeTanks) {
           if (tank.typeName !== "MTNK" || tank.strength <= 0) continue;
           if (partnerEarly && objectKey(tank) === objectKey(partnerEarly)) continue;
