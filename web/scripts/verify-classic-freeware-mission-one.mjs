@@ -7150,12 +7150,8 @@ function eastBSamEastKillCorridorTank(tank, spineFinisher = undefined) {
 }
 
 function eastBSamEastSpineDetourStep(tank, snapshot = undefined, samStrength = undefined) {
+  void samStrength;
   const tankKey = objectKey(tank);
-  const samBand = samStrength ?? 999;
-  // Kill-window corridor: west-first @ x≥15 (TRACE v316: south-first → 15,24 linger).
-  if (tank.cellX >= 15 && tank.cellY >= 22 && samBand <= 235) {
-    return { cellX: tank.cellX - 1, cellY: tank.cellY };
-  }
   if (tank.cellX >= 15 && tank.cellY < 24) {
     return { cellX: tank.cellX, cellY: tank.cellY + 1 };
   }
@@ -7181,7 +7177,6 @@ function eastBSamEastSpineDetourModifier(tank, samStrength = 999) {
   // Force-move on spine — attack-move (0) stalls on corridor opportunistic fire.
   if (samStrength <= 220 && tank.cellX === 13 && tank.cellY >= 22 && tank.cellY <= 26) return MODIFIER_ALT;
   if (samStrength <= 235 && tank.cellX >= 14 && tank.cellY >= 22 && tank.cellY <= 26) return MODIFIER_ALT;
-  if (samStrength <= 235 && tank.cellX >= 15 && tank.cellY >= 22 && tank.cellY <= 26) return 0;
   return MODIFIER_ALT;
 }
 
@@ -7523,9 +7518,16 @@ function queueEastBSamSpineFinisherRail(commands, snapshot, strike, westernSam, 
 }
 
 function eastBSamDeepSpineFinisherPick(liveTanks, westernSam) {
+  const state = missionEightState;
+  if (state.eastBSamSpineFinisherKey) {
+    const designated = liveTanks.find((tank) => (
+      objectKey(tank) === state.eastBSamSpineFinisherKey && tank.strength > 0
+    ));
+    if (designated) return designated;
+  }
   const produced = liveTanks.filter((tank) => (
     tank.typeName === "MTNK" && tank.strength > 0
-    && missionEightState.eastBProducedTankKeys.has(objectKey(tank))
+    && state.eastBProducedTankKeys.has(objectKey(tank))
     && tank.cellX >= 12 && tank.cellY >= 22
     && missionEightDistance(tank, westernSam) > 5
   )).toSorted((left, right) => (

@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v316 FINE — samMin **171** @32580 stable ×3; east-spine west-first @ x≥15 SAM≤235 (#29 @14,22 @32400); no nadir gain |
+| Last TRACE suite | v323 FINE — samMin **171** @32580 stable ×3; v316 west-first **reverted** (#29 @12,23); v320 spine designated-first held |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -261,18 +261,21 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Partner force-rush @ SAM≤200 x≥13 (v313) | **171** held; no nadir gain — **closed** |
 | Spine designated force-north @ SAM≤186 (v314) | **171** held; #4 still @12,25 — **closed** |
 | Partner detour `{14,22}` shortcut @ y≥24 (v315) | **171** held; #29 still @15,24 @32430 — **closed** |
-| East-spine west-first @ x≥15 SAM≤235 (v316) | **171** stable ×3; #29 @14,22 @32400 (was 15,23); @13,23 @32580 (was 12,23); no samMin gain |
+| East-spine west-first @ x≥15 SAM≤235 (v316) | **171** stable ×3; #29 @14,22 @32400 but @13,23 @32580 (was 12,23) — **reverted** |
 | Partner force @ x=13 y≥23 SAM≤186 (v317) | **171** held — **closed** |
+| Partner north-first + kill-line @ x=13 (v318) | **171** held — **closed** |
+| Partner flank rush + spine designated-first (v319–v320) | **171** held; spine pick hoisted — **kept v320** |
+| Deep west-flank rush dist 6–7 @ x=13–14 (v323) | **171** held; engine ignores cell rush — **closed** |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held (v316)** — `eastBSamEastSpineDetourStep` west-first @ x≥15 when SAM≤235; samMin **171** stable ×3; early path fixed but #29 stalls @ `{13,23}` not `{12,21}`.
-2. **Still broken @32580** — #6 solo dies 32550→32580; #29 dist 6 @32550; SAM repairs 32610+.
-3. **Next lever** — #29 `{13,23}`→`{12,21}` during 32460–32550 (partner west step blocked?); or restore #4 to `{12,25}` spine while pulling #29 west; E3 overlap if any survive @32400.
-4. **Closed v314–v315, v317** — spine force-north, partner detour shortcut, partner x13 force: no samMin gain.
-5. **Do not** re-open south-first detour @ x≥15 y<24 during SAM≤235 corridor-early.
+1. **Held (v320)** — `eastBSamDeepSpineFinisherPick` prefers `eastBSamSpineFinisherKey`; samMin **171** @32580; #29 @**12,23**; #6 solo @ `{11,20}` dies after nadir.
+2. **Still broken @32580** — #29 @ `{13,23}` @32550 (dist 7); reaches `{12,23}` ~30t too late; SAM repairs 32610+.
+3. **Next lever** — engine ignores force/attack-move cell orders for corridor MTNK (v323/v317/v300 pattern); need path that doesn't rely on cell-target rush — e.g. v268 corridor-early variance (samMin **139** best), or #4 spine north overlap from `{13,25}` before 32550.
+4. **Closed v316** — west-first @ x≥15 regressed nadir position; do not re-open without new evidence.
+5. **Closed v318–v319, v323** — partner north-first, flank rush, dist-6–7 cell rush: no movement gain.
 
 ---
 
