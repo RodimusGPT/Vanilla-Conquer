@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v353 FINE — samMin **134** @32580 stable ×5; post-nadir spine recovery (v352) — no samMin gain; #4 still drifts `{14,22}` |
+| Last TRACE suite | v360 FINE — samMin **134** @32580 stable; chip-band rally/rail north (v358–v360) — no position gain; engine ~1 cell/30t on spine |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -276,15 +276,18 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Chip-band spine pre-position (v345/v348) | samMin **218/177** — breaks #6 west lead @ `{11,20}` — **closed** |
 | Spine rush y≥23 (v349) | **134** held; #4 drifts `{14,22}` post-nadir — **reverted** |
 | Post-nadir spine recovery (v352/v353) | **134** held; corridorHold `<80` + onSpine14 recover — engine keeps #4 @ `{14,22}` |
+| Chip-band partner switch when westLead @ `{11,20}` (v354) | **134** held — no nadir gain |
+| Chip-band spine north pre / finish-rail / west-rail / form rally → `{13,21}` (v358–v360) | **134** held; #4 path unchanged — order targets not the limiter |
+| Loosen westLead gate to `{10,21}` + rush `{13,21}` (v355) | samMin **155** regression — **closed** |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held (v338 + v344)** — deep spine pick x=13 (#4); corridor-hold partner @ `{14,22}`; samMin **134** stable ×5; #6 @ `{11,20}` @59 HP.
-2. **Still broken** — SAM repairs after 134 nadir; #4 @ `{13,24}` (dist 7); engine ~1 cell/30t on spine; #29 @ `{14,22}` dist 6 (no MTNK fire).
-3. **Closed v345/v348** — chip-band `#4` north before deep window breaks west lead (#6 @ `{14,22}`); do not use `eastBSamDeepSpineFinisherPick` in `samChipBandEarly` partner context.
-4. **Next lever** — engine pathing blocks spine close post-nadir; need in-range second shooter **by tick 32580** (not after). Revisit chip-band only with partnerEarly=deepPick (not westernmost) + no `#4` north until #6 @ `{11,20}` confirmed in TRACE.
+1. **Held (v353 + v360)** — deep spine pick x=13 (#4); samMin **134** stable; #6 @ `{11,20}` @59 HP; chip-band rally/rail now target `{13,21}` (no regression).
+2. **Still broken** — SAM repairs after 134 nadir; #4 @ `{13,24}` (dist 7); engine ~1 cell/30t on spine regardless of `{13,24}` vs `{13,21}` order target.
+3. **Closed v354–v360** — chip-band north pre-position does not beat engine path rate; #6 dies if partner pick switches too early (v355).
+4. **Next lever** — need **earlier** x=13 alignment (pre-32310) or alternate second shooter (E3 survive to nadir, rebuild/loan MTNK in window, GUN respawn). Path-rate limit blocks post-spine north orders.
 5. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
 
 ---

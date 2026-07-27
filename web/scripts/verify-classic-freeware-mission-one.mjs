@@ -7560,11 +7560,11 @@ function queueEastBSamSpineFinisherRail(commands, snapshot, strike, westernSam, 
   const pool = (liveTanks ?? strike).filter((attacker) => (
     attacker.typeName === "MTNK" && attacker.strength > 0
   ));
+  const samStrength = westernSam.strength;
   const spineFinisher = eastBSpineFinisherResolve(pool, westernSam);
   if (!spineFinisher) return false;
   if (eastBSamSpineCorridorYieldNeeded(pool, spineFinisher)) return false;
   const samDist = missionEightDistance(spineFinisher, westernSam);
-  const samStrength = westernSam.strength;
   if (samDist <= 5) {
     queueMissionEightRole(commands, `east-b-spine-rail-fire-${objectKey(spineFinisher)}`,
       [spineFinisher], westernSam, 0, 1);
@@ -8731,6 +8731,11 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
               [tank], westernSam, 0, 1);
             continue;
           }
+          if (samChipBandEarly && tank.cellX === 13 && tank.cellY >= 26) {
+            queueMissionEightRole(commands, `east-b-sam-finish-spine-north-${objectKey(tank)}`,
+              [tank], eastBSamKillSpineStage, MODIFIER_ALT, 1);
+            continue;
+          }
           const rally = samDeepChip
             ? { cellX: 13, cellY: 20 }
             : tank.cellY >= 55
@@ -8792,6 +8797,11 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     );
     const eastBSamFormRally = (tank) => {
       if (samDeepChip) return { cellX: 13, cellY: 20 };
+      if (westernSam && !samDeepChip
+        && westernSam.strength > 220 && westernSam.strength < 280
+        && tank.cellX === 13 && tank.cellY >= 24) {
+        return eastBSamKillSpineStage;
+      }
       if (tank.cellY >= 28) return { cellX: 13, cellY: 24 };
       if (tank.cellX > 13 && tank.cellY <= 24) {
         return { cellX: 13, cellY: Math.max(tank.cellY + 2, 24) };
@@ -9106,7 +9116,9 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
           ? eastBSamSpineFinisherRailStep(tank, westernSamLive.strength, snapshot)
           : samDeepFinishRail
             ? eastBSamSpineFinisherRailStep(tank, westernSamLive.strength, snapshot)
-            : tank.cellY >= 55
+            : samEarlySpineRail && tank.cellX === 13 && tank.cellY >= 26
+              ? eastBSamKillSpineStage
+              : tank.cellY >= 55
             ? { cellX: 13, cellY: 48 }
             : tank.cellY >= 40
               ? { cellX: 13, cellY: 32 }
