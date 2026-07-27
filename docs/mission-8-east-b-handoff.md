@@ -279,6 +279,8 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Chip-band partner switch when westLead @ `{11,20}` (v354) | **134** held — no nadir gain |
 | Chip-band spine north pre / finish-rail / west-rail / form rally → `{13,21}` (v358–v360) | **134** held; #4 path unchanged — order targets not the limiter |
 | Loosen westLead gate to `{10,21}` + rush `{13,21}` (v355) | samMin **155** regression — **closed** |
+| x=14 spine align during chip band (v361) | samMin **216** ungated — #6 wiped; gated ≤240 no gain — **closed** |
+| E3 nadir hold / chip-band rocket hold (v362) | samMin **230** — #6 wiped early; E3 chip needed for west lead — **closed** |
 
 ---
 
@@ -287,7 +289,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 1. **Held (v353 + v360)** — deep spine pick x=13 (#4); samMin **134** stable; #6 @ `{11,20}` @59 HP; chip-band rally/rail now target `{13,21}` (no regression).
 2. **Still broken** — SAM repairs after 134 nadir; #4 @ `{13,24}` (dist 7); engine ~1 cell/30t on spine regardless of `{13,24}` vs `{13,21}` order target.
 3. **Closed v354–v360** — chip-band north pre-position does not beat engine path rate; #6 dies if partner pick switches too early (v355).
-4. **Next lever** — need **earlier** x=13 alignment (pre-32310) or alternate second shooter (E3 survive to nadir, rebuild/loan MTNK in window, GUN respawn). Path-rate limit blocks post-spine north orders.
+4. **Next lever** — GUN respawn re-engage (~33060), rebuild/loan MTNK for third shooter, or accept engine path ceiling and pursue A-10 after SAM death via economy path. E3 chip during 221–280 is required for #6 west-lead survival (v362).
 5. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
 
 ---
