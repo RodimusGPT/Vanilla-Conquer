@@ -281,6 +281,8 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Loosen westLead gate to `{10,21}` + rush `{13,21}` (v355) | samMin **155** regression — **closed** |
 | x=14 spine align during chip band (v361) | samMin **216** ungated — #6 wiped; gated ≤240 no gain — **closed** |
 | E3 nadir hold / chip-band rocket hold (v362) | samMin **230** — #6 wiped early; E3 chip needed for west lead — **closed** |
+| x=14 y=22–24 west detour @ SAM≤240 (v363) | samMin **171** stable ×3 — same class as v325 x=14 west-first — **closed** |
+| Partner westLead switch + village loan @ thin strike (v363 bundle) | samMin **171** — reverted with detour — **closed** |
 
 ---
 
@@ -289,7 +291,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 1. **Held (v353 + v360)** — deep spine pick x=13 (#4); samMin **134** stable; #6 @ `{11,20}` @59 HP; chip-band rally/rail now target `{13,21}` (no regression).
 2. **Still broken** — SAM repairs after 134 nadir; #4 @ `{13,24}` (dist 7); engine ~1 cell/30t on spine regardless of `{13,24}` vs `{13,21}` order target.
 3. **Closed v354–v360** — chip-band north pre-position does not beat engine path rate; #6 dies if partner pick switches too early (v355).
-4. **Next lever** — GUN respawn re-engage (~33060), rebuild/loan MTNK for third shooter, or accept engine path ceiling and pursue A-10 after SAM death via economy path. E3 chip during 221–280 is required for #6 west-lead survival (v362).
+4. **Next lever** — produced-tank rail (#27 @ `{4,48}` @32460 never reaches nadir); GUN respawn is post-repair (~33060, SAM already ≥294). Do **not** x=14 west detour @ SAM≤240 (v363→171). Village loan during `samKillWindow` untested in isolation.
 5. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
 
 ---
