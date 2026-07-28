@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v381 kill-window — samMin **98** @32670 held; #4 stuck `@11,22` (one-step `{11,21}` regresses v380 `{10,21}` path); confirms v199 closed |
+| Last TRACE suite | v382 kill-window — samMin **98** @32670 held; nadir `{10,20}` focus-fire @ SAM≤120; #4 `{10,21}`@32730 firing (v380 path restored); SAM still repairs |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
