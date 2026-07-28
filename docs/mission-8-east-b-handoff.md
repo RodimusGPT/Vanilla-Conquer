@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v369 kill-window — samMin **134** @32580 stable (unchanged); #4 @ `{13,24}` / #6 @ `{11,20}` / #27 @ `{5,46}` |
+| Last TRACE suite | v372 kill-window — samMin **134** @32580 held; #4 west-flanks to `{12,24}`@nadir then `{10,21}`@32730 (fires); SAM repairs; gate still lose @42102 |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -289,6 +289,9 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Spine contextual attack dist 6–8 @ SAM≤180 (v367) | samMin **134** held — **closed** |
 | `releaseChipBand` during deep chip (v368) | Earlier civ lose @39625, samMin **134** — **closed/reverted** |
 | Deep produced-tank rush + chip-band `{13,20}` rail @221–280 (v369) | samMin **134** held — **closed** (kept fire-line target in deep north + v366 loan) |
+| Chip-band spine trailer rally → `{13,20}` not `{13,24}` (v370) | samMin **134** held — **closed** (path rate unchanged; engine ~1 cell/30t) |
+| Spine finisher west-flank @ dist≥7 + hold x=12 (v372) | samMin **134** held; #4 reaches `{10,21}`@32730 firing but SAM already repairing — **held** |
+| Early west column @ y≥26 when SAM≤240 (v373) | samMin **155** regression — **closed/reverted** |
 
 ---
 
@@ -299,10 +302,11 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 3. **Closed v366** — village loan @ samKillWindow + strike≤1 + SAM≤180: no samMin gain (3 strike tanks live @ nadir; positioning not headcount).
 4. **Closed v364** — produced #27 joins @32340 `{3,50}`, west-rails east but cannot reach kill line by nadir; demote-skip kept in tree (no samMin gain).
 5. **Closed v365** — do not release `corridorHold` @ SAM≤200 or force partner north @ dist 7 (samMin **150**).
-6. **Next lever** — finisher **position** not headcount: #4 @ `{13,24}` must reach cheb≤5 before SAM repair; engine ~1 cell/30t. v367–v369 order/rail variants held **134** without moving #4 off `{13,24}`. Consider: (a) whether #6 solo DPS + E3 deep commit can kill SAM from `{11,20}` if sustained longer; (b) whether `eastBSamSpineCorridorYield` / occupancy at `{13,23}` blocks #4; (c) partial TRACE FINE from tick 32400–32640 for #4 order vs position deltas.
+6. **Next lever** — **timing**: #4 must be cheb≤5 @32580 not @32730. Spine path clear (no occupancy @ `{13,22}`–`{13,23}`); blocker is ~1 cell/30t + east-step recall (v372 west-hold fixes recall). v373 early west column @ y≥26 regressed to samMin **155** — do not retry. Consider: (a) #6+#E3 DPS vs SAM repair @134–154 while #6 alive (32580–32640); (b) partner #29 @ `{14,22}` dist-6 fire sustain; (c) whether chip-band `{13,24}` staging delay (pre-220) costs ~90t before deep finisher.
 7. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
 8. **Held v366** — village loan when `samKillWindow && strike≤1 && SAM≤180` (harmless; inactive @ nadir).
 9. **Held v369** — `eastBSamKillSpineFireLine` `{13,20}` + chip-band rail @221–280 for x=13 y≥23.
+10. **Held v372** — west-flank finisher @ dist≥7; west-hold on x=12 (no east recall to `{13,24}`).
 
 ---
 
