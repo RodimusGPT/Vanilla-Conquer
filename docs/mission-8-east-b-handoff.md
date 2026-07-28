@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v372 kill-window — samMin **134** @32580 held; #4 west-flanks to `{12,24}`@nadir then `{10,21}`@32730 (fires); SAM repairs; gate still lose @42102 |
+| Last TRACE suite | v374 kill-window — samMin **98** @32670 (#29 dist-6 fire held); #6+#29+#4 firing; SAM still repairs; gate lose @37696 civ-near-threshold |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -292,6 +292,8 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Chip-band spine trailer rally → `{13,20}` not `{13,24}` (v370) | samMin **134** held — **closed** (path rate unchanged; engine ~1 cell/30t) |
 | Spine finisher west-flank @ dist≥7 + hold x=12 (v372) | samMin **134** held; #4 reaches `{10,21}`@32730 firing but SAM already repairing — **held** |
 | Early west column @ y≥26 when SAM≤240 (v373) | samMin **155** regression — **closed/reverted** |
+| Partner #29 dist-6 direct fire (west edge kill-line fix, v374) | samMin **98** @32670 — **held**; #29 survives @ `{14,22}` through nadir |
+| Deep finish rush @ dist-6 SAM≤120 (v375) | samMin **98** held; earlier civ lose — **closed/reverted** |
 
 ---
 
@@ -302,11 +304,12 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 3. **Closed v366** — village loan @ samKillWindow + strike≤1 + SAM≤180: no samMin gain (3 strike tanks live @ nadir; positioning not headcount).
 4. **Closed v364** — produced #27 joins @32340 `{3,50}`, west-rails east but cannot reach kill line by nadir; demote-skip kept in tree (no samMin gain).
 5. **Closed v365** — do not release `corridorHold` @ SAM≤200 or force partner north @ dist 7 (samMin **150**).
-6. **Next lever** — **timing**: #4 must be cheb≤5 @32580 not @32730. Spine path clear (no occupancy @ `{13,22}`–`{13,23}`); blocker is ~1 cell/30t + east-step recall (v372 west-hold fixes recall). v373 early west column @ y≥26 regressed to samMin **155** — do not retry. Consider: (a) #6+#E3 DPS vs SAM repair @134–154 while #6 alive (32580–32640); (b) partner #29 @ `{14,22}` dist-6 fire sustain; (c) whether chip-band `{13,24}` staging delay (pre-220) costs ~90t before deep finisher.
+6. **Next lever** — **finish SAM from 98**: #4 @ `{11,22}` dist-6 cannot fire (MTNK range 5); needs `{11,21}`/`{10,20}` by tick ~32670 while #6+#29 still alive. v375 finish-rush regressed civ timing — closed. Consider: (a) one-cell west-lead close for #4 when sam≤120 without pulling off #6; (b) whether prolonged dist-6 chip accelerates civ deaths (lose @37696 vs @42102 baseline); (c) A-10 unlock path if SAM ever hits 0.
 7. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
 8. **Held v366** — village loan when `samKillWindow && strike≤1 && SAM≤180` (harmless; inactive @ nadir).
 9. **Held v369** — `eastBSamKillSpineFireLine` `{13,20}` + chip-band rail @221–280 for x=13 y≥23.
 10. **Held v372** — west-flank finisher @ dist≥7; west-hold on x=12 (no east recall to `{13,24}`).
+11. **Held v374** — partner `{14,22}` dist-6 fires via west-edge kill-line (not approach move); partner step sam≤220.
 
 ---
 

@@ -7092,7 +7092,7 @@ function eastBSamPartnerWestStep(tank, snapshot, westernSam, liveTanks) {
   const samDist = missionEightDistance(tank, westernSam);
   if (samDist <= 5) return { fire: true, target: westernSam };
   if (tank.cellX === 14 && tank.cellY === 22 && samDist === 6
-    && westernSam.strength <= 200) {
+    && westernSam.strength <= 220) {
     return { fire: true, target: westernSam };
   }
   if (tank.cellX >= 14) {
@@ -7336,8 +7336,13 @@ function queueEastBSamWestEdgeKill(commands, snapshot, westernSam, liveTanks, ma
         tank, snapshot, eastCloseCandidates, westernSam);
     } else if (!approachOnly && samDist === 6 && tank.cellY === 22 && tank.cellX >= 14) {
       killLineKeys.add(tankKey);
-      queueEastBSamKillLineRole(commands, `east-b-sam-kill-line-${tankKey}`,
-        tank, snapshot, eastCloseCandidates, westernSam, true);
+      if (samStrength <= 220 && tank.cellX === 14 && tank.cellY === 22) {
+        queueMissionEightRole(commands, `east-b-sam-kill-line-fire-${tankKey}`,
+          [tank], westernSam, 0, 1);
+      } else {
+        queueEastBSamKillLineRole(commands, `east-b-sam-kill-line-${tankKey}`,
+          tank, snapshot, eastCloseCandidates, westernSam, true);
+      }
     } else if (samDist === 7 && tank.cellX <= 12 && tank.cellY >= 23) {
       killLineKeys.add(tankKey);
       queueEastBSamKillLineRole(commands, `east-b-sam-kill-line-${tankKey}`,
