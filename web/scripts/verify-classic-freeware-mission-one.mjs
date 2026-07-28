@@ -6920,24 +6920,13 @@ function eastBSamWestCloseTarget(tank) {
 const eastBSamKillNorthFlankCell = { cellX: 12, cellY: 20 };
 const eastBSamKillWestFinishCell = { cellX: 10, cellY: 21 };
 
-function eastBSamKillWestFinishTarget(snapshot, tank, tankKey = undefined) {
-  const key = tankKey ?? (tank ? objectKey(tank) : undefined);
-  if (tank?.cellX >= 11 && tank.cellY === 22) {
-    const north = { cellX: 11, cellY: 21 };
-    if (eastBSamKillCellClear(snapshot, north.cellX, north.cellY, key)) return north;
-  }
-  if (tank?.cellX === 12 && tank.cellY === 22) {
-    const north = { cellX: 12, cellY: 21 };
-    if (eastBSamKillCellClear(snapshot, north.cellX, north.cellY, key)) return north;
-    const west = { cellX: 11, cellY: 22 };
-    if (eastBSamKillCellClear(snapshot, west.cellX, west.cellY, key)) return west;
-  }
+function eastBSamKillWestFinishTarget(snapshot, tankKey = undefined) {
   return eastBSamPickClearKillCell(snapshot, [
-    eastBSamKillWestFinishCell,
     eastBSamKillAltFireCell,
+    eastBSamKillWestFinishCell,
     { cellX: 11, cellY: 21 },
     eastBSamKillFireCell,
-  ], key) ?? eastBSamKillWestFinishCell;
+  ], tankKey) ?? eastBSamKillWestFinishCell;
 }
 
 function eastBSamWestFinishEligible(tank, westernSam, samStrength) {
@@ -6950,7 +6939,7 @@ function queueEastBSamWestFinish(commands, role, tank, snapshot, westernSam, sam
   void westernSam;
   void samStrength;
   queueMissionEightRole(commands, `${role}-close-${objectKey(tank)}`,
-    [tank], eastBSamKillWestFinishTarget(snapshot, tank, objectKey(tank)), MODIFIER_ALT, 1);
+    [tank], eastBSamKillWestFinishTarget(snapshot, objectKey(tank)), MODIFIER_ALT, 1);
 }
 
 function eastBSamPlacementClear(snapshot, cellX, cellY) {
@@ -7749,16 +7738,21 @@ function queueEastBSamDeepFinisher(commands, snapshot, strike, westernSam) {
   eastBSamRecordKillOccupancy(snapshot, westernSam);
   const partnerKeys = queueEastBSamPartnerWestRoute(commands, snapshot, westernSam, liveTanks,
     spineFinisherTank, 220);
-  if (samStrength <= 100 && samStrength > 0) {
+  if (samStrength <= 120 && samStrength > 0) {
     for (const tank of liveTanks) {
       const samDist = missionEightDistance(tank, westernSam);
       const tankKey = objectKey(tank);
       if (samDist <= 5) {
         queueMissionEightRole(commands, `east-b-sam-nadir-fire-${tankKey}`,
           [tank], westernSam, 0, 1);
-      } else if (samDist === 6 && tank.cellY === 22 && tank.cellX <= 12) {
+      } else if (samDist >= 6 && samDist <= 8 && tank.cellX <= 12 && tank.cellY >= 22) {
+        const close = eastBSamPickClearKillCell(snapshot, [
+          eastBSamKillAltFireCell,
+          eastBSamKillWestFinishCell,
+          eastBSamKillFireCell,
+        ], tankKey) ?? eastBSamKillAltFireCell;
         queueMissionEightRole(commands, `east-b-sam-nadir-close-${tankKey}`,
-          [tank], eastBSamKillWestFinishTarget(snapshot, tank, tankKey), MODIFIER_ALT, 1);
+          [tank], close, MODIFIER_ALT, 1);
       }
     }
   }
@@ -7829,7 +7823,7 @@ function queueEastBSamDeepFinisher(commands, snapshot, strike, westernSam) {
       && samDist > 5) {
       if (samStrength <= 120 && samDist === 6 && tank.cellY === 22) {
         queueMissionEightRole(commands, `east-b-sam-deep-west-finish-${tankKey}`,
-          [tank], eastBSamKillWestFinishTarget(snapshot, tank, tankKey), MODIFIER_ALT, 1);
+          [tank], eastBSamKillWestFinishTarget(snapshot, tankKey), MODIFIER_ALT, 1);
       } else {
         queueMissionEightRole(commands, `east-b-sam-deep-west-flank-close-${tankKey}`,
           [tank], eastBSamSecondShooterCell(liveTanks), MODIFIER_ALT, 1);
@@ -7839,7 +7833,7 @@ function queueEastBSamDeepFinisher(commands, snapshot, strike, westernSam) {
     if (samStrength <= 220 && tank.cellX === 11 && tank.cellY === 22 && samDist > 5) {
       if (samStrength <= 120 && samDist === 6) {
         queueMissionEightRole(commands, `east-b-sam-deep-west-finish-${tankKey}`,
-          [tank], eastBSamKillWestFinishTarget(snapshot, tank, tankKey), MODIFIER_ALT, 1);
+          [tank], eastBSamKillWestFinishTarget(snapshot, tankKey), MODIFIER_ALT, 1);
       } else {
         queueMissionEightRole(commands, `east-b-sam-deep-west-flank-close-${tankKey}`,
           [tank], eastBSamSecondShooterCell(liveTanks), MODIFIER_ALT, 1);
@@ -7853,15 +7847,15 @@ function queueEastBSamDeepFinisher(commands, snapshot, strike, westernSam) {
       && samDist > 5 && tank.cellX <= 13 && tank.cellY >= 21) {
       const westPreRush = samDist === 6 && samStrength <= 220;
       const westPreTarget = westPreRush && tank.cellX <= 11 && tank.cellY === 22
-        ? eastBSamKillWestFinishTarget(snapshot, tank, objectKey(tank))
+        ? eastBSamKillAltFireCell
         : eastBSamWestPreStep(tank, samDist);
       queueMissionEightRole(commands, `east-b-sam-deep-west-pre-${objectKey(tank)}`,
-        [tank], westPreTarget, westPreRush ? 0 : MODIFIER_ALT, 1);
+        [tank], westPreTarget, MODIFIER_ALT, 1);
     } else if (spineFinisherTank && objectKey(tank) === objectKey(spineFinisherTank)) {
       if (spineKillKeys.has(tankKey)) continue;
       if (samStrength <= 120 && samDist === 6 && tank.cellY === 22 && tank.cellX <= 12) {
         queueMissionEightRole(commands, `east-b-sam-deep-spine-fin-close-${tankKey}`,
-          [tank], eastBSamKillWestFinishTarget(snapshot, tank, tankKey), MODIFIER_ALT, 1);
+          [tank], eastBSamKillWestFinishTarget(snapshot, tankKey), MODIFIER_ALT, 1);
       } else if (samDist <= 5) {
         queueMissionEightRole(commands, `east-b-sam-deep-spine-fin-fire-${tankKey}`,
           [tank], westernSam, 0, 1);
