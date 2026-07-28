@@ -132,6 +132,10 @@ function includeBrowserEngine(): Plugin {
 export default defineConfig({
   base: "./",
   plugins: [react(), includeBrowserEngine()],
+  server: {
+    // Workspace dev URLs are exposed through per-session subdomains.
+    allowedHosts: [".consoleapp.sh"],
+  },
   preview: {
     // Workspace previews are exposed through per-session subdomains. Keep the
     // allowlist scoped to that forwarding domain instead of accepting any host.

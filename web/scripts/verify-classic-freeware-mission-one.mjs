@@ -5687,8 +5687,15 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
       if (attacker.typeName === "MCV" || attacker.typeName === "HARV") return false;
       if (attacker.typeName === "MTNK") {
         if (state.villageGuardKeys.has(key)) {
-          if (holdFirstWaveStack || samKillWindow) return false;
-          return loanVillageForSamFinish && attacker.strength >= 20;
+          if (holdFirstWaveStack) return false;
+          const samKillVillageLoan = Boolean(
+            samKillWindow
+            && westernSam
+            && westernSam.strength <= 180
+            && strikeTanksLive <= 1
+          );
+          if (samKillWindow && !samKillVillageLoan) return false;
+          return (loanVillageForSamFinish || samKillVillageLoan) && attacker.strength >= 20;
         }
         if (state.baseGuardKeys.has(key)) {
           if (holdFirstWaveStack || samKillWindow) return false;
@@ -6890,6 +6897,7 @@ const eastBSamKillFireCell = { cellX: 11, cellY: 20 };
 const eastBSamKillAltFireCell = { cellX: 10, cellY: 20 };
 const eastBSamKillWestStage = { cellX: 13, cellY: 22 };
 const eastBSamKillSpineStage = { cellX: 13, cellY: 21 };
+const eastBSamKillSpineFireLine = { cellX: 13, cellY: 20 };
 
 function eastBSamCloseCell(tank) {
   if (tank.cellX >= 15) {
@@ -7412,14 +7420,15 @@ function queueEastBSamSpineKillClose(commands, snapshot, westernSam, spineFinish
   }
   if (samStrength <= 220 && samDist > 5 && spineFinisher.cellX === 13 && spineFinisher.cellY > 21) {
     const rushFireLine = samStrength <= 220 && spineFinisher.cellY >= 24;
-    let northTarget = rushFireLine
-      ? eastBSamKillSpineStage
+    const deepFireLine = samStrength <= 180 && spineFinisher.cellY >= 23;
+    let northTarget = rushFireLine || deepFireLine
+      ? (deepFireLine ? eastBSamKillSpineFireLine : eastBSamKillSpineStage)
       : spineFinisher.cellY > 22
         ? { cellX: 13, cellY: spineFinisher.cellY - 1 }
         : eastBSamKillSpineStage;
-    let forceNorth = rushFireLine || spineFinisher.cellY === 23;
+    let forceNorth = rushFireLine || deepFireLine || spineFinisher.cellY === 23;
     if (spineFinisher.cellY === 23 && samStrength <= 180) {
-      northTarget = eastBSamKillSpineStage;
+      northTarget = eastBSamKillSpineFireLine;
       forceNorth = true;
     }
     queueMissionEightRole(commands, `east-b-sam-spine-north-${key}`,
@@ -7533,6 +7542,9 @@ function eastBSamSpineFinisherRailStep(tank, samStrength = 999, snapshot = undef
   }
   if (samStrength <= 240 && samStrength > 220 && tank.cellX === 13 && tank.cellY >= 26) {
     return eastBSamKillSpineStage;
+  }
+  if (samStrength <= 280 && samStrength > 220 && tank.cellX === 13 && tank.cellY >= 23) {
+    return eastBSamKillSpineFireLine;
   }
   if (samStrength <= 240 && tank.cellX === 13 && tank.cellY >= 24) {
     return eastBSamKillWestStage;

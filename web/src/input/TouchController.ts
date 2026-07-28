@@ -89,12 +89,14 @@ export class TouchController {
     this.element.focus({ preventScroll: true });
     const point = this.localPoint(event);
     this.callbacks.onHover?.(point);
+    const panOnly = event.pointerType === "mouse"
+      && (event.button === 1 || (event.button === 0 && event.altKey));
     this.pointers.set(event.pointerId, {
       start: point,
       current: point,
       alternate: event.button === 2,
       consumed: false,
-      panOnly: event.pointerType === "mouse" && event.button === 1,
+      panOnly,
     });
     this.element.setPointerCapture?.(event.pointerId);
     this.beginGestureIfNeeded();
@@ -160,7 +162,13 @@ export class TouchController {
 
   private readonly wheel = (event: WheelEvent): void => {
     event.preventDefault();
-    const factor = Math.exp(-Math.max(-240, Math.min(240, event.deltaY)) * 0.0025);
-    this.callbacks.onZoom(factor, this.localPoint(event as unknown as PointerEvent));
+    const center = this.localPoint(event as unknown as PointerEvent);
+    // Pinch-to-zoom and ctrl/meta+wheel zoom; plain wheel/trackpad scroll pans.
+    if (event.ctrlKey || event.metaKey) {
+      const factor = Math.exp(-Math.max(-240, Math.min(240, event.deltaY)) * 0.0025);
+      this.callbacks.onZoom(factor, center);
+      return;
+    }
+    this.callbacks.onPan({ x: -event.deltaX, y: -event.deltaY });
   };
 }

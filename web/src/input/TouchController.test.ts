@@ -48,9 +48,28 @@ describe("TouchController", () => {
     element.dispatchEvent(pointer("pointermove", 1, 70, 75, 1, "mouse"));
     element.dispatchEvent(pointer("pointerup", 1, 70, 75, 1, "mouse"));
     expect(onPan).toHaveBeenCalledWith({ x: 20, y: 15 });
-    element.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, clientX: 110, clientY: 70, deltaY: -100 }));
+    element.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, clientX: 110, clientY: 70, deltaY: -100, ctrlKey: true }));
     expect(onZoom.mock.calls[0][0]).toBeGreaterThan(1);
     expect(onZoom.mock.calls[0][1]).toEqual({ x: 100, y: 50 });
+    controller.destroy();
+  });
+
+  it("supports alt-drag pan and trackpad scroll pan without ctrl", () => {
+    const element = document.createElement("div");
+    vi.spyOn(element, "getBoundingClientRect").mockReturnValue({ x: 10, y: 20, left: 10, top: 20, right: 210, bottom: 120, width: 200, height: 100, toJSON: () => ({}) });
+    const onPan = vi.fn();
+    const onZoom = vi.fn();
+    const controller = new TouchController(element, { onTap: vi.fn(), onBoxSelect: vi.fn(), onPan, onZoom });
+    const altDown = pointer("pointerdown", 1, 50, 60, 0, "mouse");
+    Object.defineProperty(altDown, "altKey", { value: true });
+    element.dispatchEvent(altDown);
+    const altMove = pointer("pointermove", 1, 70, 75, 0, "mouse");
+    Object.defineProperty(altMove, "altKey", { value: true });
+    element.dispatchEvent(altMove);
+    expect(onPan).toHaveBeenCalledWith({ x: 20, y: 15 });
+    element.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, clientX: 110, clientY: 70, deltaY: 40, deltaX: -12 }));
+    expect(onPan).toHaveBeenCalledWith({ x: 12, y: -40 });
+    expect(onZoom).not.toHaveBeenCalled();
     controller.destroy();
   });
 

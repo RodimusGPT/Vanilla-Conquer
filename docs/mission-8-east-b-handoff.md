@@ -11,12 +11,12 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | `ad7ef88` |
+| Commit | `ad7ef88` (code WIP v366 uncommitted) |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v364 FINE ×5 — samMin **134** @32580 stable; produced #27 stays in strike + west-rails but @ `{5,46}` @ nadir (too late); v365 corridor-hold release → **150** regression — **closed** |
+| Last TRACE suite | v369 kill-window — samMin **134** @32580 stable (unchanged); #4 @ `{13,24}` / #6 @ `{11,20}` / #27 @ `{5,46}` |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -285,6 +285,10 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Partner westLead switch + village loan @ thin strike (v363 bundle) | samMin **171** — reverted with detour — **closed** |
 | Produced-tank early release + demote skip + samEarlySpineRail (v364) | samMin **134** ×5; #27 @ `{5,46}` @ nadir — path rate too slow to help — **closed** |
 | Corridor-hold release @ SAM≤200 + partner north @ dist 7 (v365) | samMin **150** regression — **closed** |
+| Village loan @ samKillWindow when strike≤1 && SAM≤180 (v366) | samMin **134** held; 3 strike MTNK @ nadir — gate never fires — **closed** |
+| Spine contextual attack dist 6–8 @ SAM≤180 (v367) | samMin **134** held — **closed** |
+| `releaseChipBand` during deep chip (v368) | Earlier civ lose @39625, samMin **134** — **closed/reverted** |
+| Deep produced-tank rush + chip-band `{13,20}` rail @221–280 (v369) | samMin **134** held — **closed** (kept fire-line target in deep north + v366 loan) |
 
 ---
 
@@ -292,10 +296,13 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 1. **Held (v353 + v360 + v364)** — deep spine pick x=13 (#4); samMin **134** stable; #6 @ `{11,20}` @59 HP; chip-band rally/rail target `{13,21}` (no regression).
 2. **Still broken @32580** — SAM repairs after 134 nadir; #4 @ `{13,24}` (dist 8, one cell short of fire); #29 @ `{14,22}` dist 7 dies before `{14,21}`; engine ~1 cell/30t on spine.
-3. **Closed v364** — produced #27 joins @32340 `{3,50}`, west-rails east but cannot reach kill line by nadir; demote-skip kept in tree (no samMin gain).
-4. **Closed v365** — do not release `corridorHold` @ SAM≤200 or force partner north @ dist 7 (samMin **150**).
-5. **Next lever** — village loan during `samKillWindow` when `strikeTanksLive <= 1` && SAM≤180 (untested in isolation). Do **not** x=14 west detour @ SAM≤240 (v363→171). GUN respawn post-repair (~33060) not useful.
-6. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
+3. **Closed v366** — village loan @ samKillWindow + strike≤1 + SAM≤180: no samMin gain (3 strike tanks live @ nadir; positioning not headcount).
+4. **Closed v364** — produced #27 joins @32340 `{3,50}`, west-rails east but cannot reach kill line by nadir; demote-skip kept in tree (no samMin gain).
+5. **Closed v365** — do not release `corridorHold` @ SAM≤200 or force partner north @ dist 7 (samMin **150**).
+6. **Next lever** — finisher **position** not headcount: #4 @ `{13,24}` must reach cheb≤5 before SAM repair; engine ~1 cell/30t. v367–v369 order/rail variants held **134** without moving #4 off `{13,24}`. Consider: (a) whether #6 solo DPS + E3 deep commit can kill SAM from `{11,20}` if sustained longer; (b) whether `eastBSamSpineCorridorYield` / occupancy at `{13,23}` blocks #4; (c) partial TRACE FINE from tick 32400–32640 for #4 order vs position deltas.
+7. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
+8. **Held v366** — village loan when `samKillWindow && strike≤1 && SAM≤180` (harmless; inactive @ nadir).
+9. **Held v369** — `eastBSamKillSpineFireLine` `{13,20}` + chip-band rail @221–280 for x=13 y≥23.
 
 ---
 
