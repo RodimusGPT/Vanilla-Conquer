@@ -11,12 +11,12 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | `8955834` |
+| Commit | *(this checkpoint)* |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v360 FINE — samMin **134** @32580 stable; chip-band rally/rail north (v358–v360) — no position gain; engine ~1 cell/30t on spine |
+| Last TRACE suite | v364 FINE ×5 — samMin **134** @32580 stable; produced #27 stays in strike + west-rails but @ `{5,46}` @ nadir (too late); v365 corridor-hold release → **150** regression — **closed** |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -283,16 +283,19 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | E3 nadir hold / chip-band rocket hold (v362) | samMin **230** — #6 wiped early; E3 chip needed for west lead — **closed** |
 | x=14 y=22–24 west detour @ SAM≤240 (v363) | samMin **171** stable ×3 — same class as v325 x=14 west-first — **closed** |
 | Partner westLead switch + village loan @ thin strike (v363 bundle) | samMin **171** — reverted with detour — **closed** |
+| Produced-tank early release + demote skip + samEarlySpineRail (v364) | samMin **134** ×5; #27 @ `{5,46}` @ nadir — path rate too slow to help — **closed** |
+| Corridor-hold release @ SAM≤200 + partner north @ dist 7 (v365) | samMin **150** regression — **closed** |
 
 ---
 
 ## Recommended next work (ordered)
 
-1. **Held (v353 + v360)** — deep spine pick x=13 (#4); samMin **134** stable; #6 @ `{11,20}` @59 HP; chip-band rally/rail now target `{13,21}` (no regression).
-2. **Still broken** — SAM repairs after 134 nadir; #4 @ `{13,24}` (dist 7); engine ~1 cell/30t on spine regardless of `{13,24}` vs `{13,21}` order target.
-3. **Closed v354–v360** — chip-band north pre-position does not beat engine path rate; #6 dies if partner pick switches too early (v355).
-4. **Next lever** — produced-tank rail (#27 @ `{4,48}` @32460 never reaches nadir); GUN respawn is post-repair (~33060, SAM already ≥294). Do **not** x=14 west detour @ SAM≤240 (v363→171). Village loan during `samKillWindow` untested in isolation.
-5. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
+1. **Held (v353 + v360 + v364)** — deep spine pick x=13 (#4); samMin **134** stable; #6 @ `{11,20}` @59 HP; chip-band rally/rail target `{13,21}` (no regression).
+2. **Still broken @32580** — SAM repairs after 134 nadir; #4 @ `{13,24}` (dist 8, one cell short of fire); #29 @ `{14,22}` dist 7 dies before `{14,21}`; engine ~1 cell/30t on spine.
+3. **Closed v364** — produced #27 joins @32340 `{3,50}`, west-rails east but cannot reach kill line by nadir; demote-skip kept in tree (no samMin gain).
+4. **Closed v365** — do not release `corridorHold` @ SAM≤200 or force partner north @ dist 7 (samMin **150**).
+5. **Next lever** — village loan during `samKillWindow` when `strikeTanksLive <= 1` && SAM≤180 (untested in isolation). Do **not** x=14 west detour @ SAM≤240 (v363→171). GUN respawn post-repair (~33060) not useful.
+6. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
 
 ---
 

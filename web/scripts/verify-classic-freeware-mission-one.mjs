@@ -5613,6 +5613,8 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
         if (!state.strikeKeys.has(key)) continue;
         const farFromSamFinish = tank.cellY >= 32 || tank.cellX <= 8 || tank.cellX >= 18;
         if (!farFromSamFinish) continue;
+        if (state.eastBProducedTankKeys.has(key) && tank.cellX <= 9 && tank.cellY >= 40
+          && westernSam && westernSam.strength <= 280) continue;
         const onFinishPath = (tank.cellY <= 40 && tank.cellX >= 10 && tank.cellX <= 15)
           || missionEightDistance(tank, missionEightEastBTankAssembly) <= 8
           || missionEightDistance(tank, missionEightEastBTankReserve) <= 8;
@@ -5632,6 +5634,7 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
         if (tank.typeName !== "MTNK" || tank.strength < 40) continue;
         const key = objectKey(tank);
         if (!state.strikeKeys.has(key)) continue;
+        if (state.eastBProducedTankKeys.has(key) && tank.cellX <= 9 && tank.cellY >= 40) continue;
         if (tank.cellX >= 10 && tank.cellY <= 40) continue;
         state.strikeKeys.delete(key);
         state.baseGuardKeys.add(key);
@@ -5760,12 +5763,13 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
         state.eastBWaveTwoKeys.delete(key);
       }
       for (const tank of attackers) {
-        if (tank.typeName !== "MTNK" || tank.strength < 150) continue;
+        if (tank.typeName !== "MTNK" || tank.strength < 40) continue;
         const key = objectKey(tank);
         if (state.eastBSamSpineFinisherHoldKeys.has(key)) continue;
         if (!state.eastBProducedTankKeys.has(key)) continue;
         if (state.strikeKeys.has(key) || state.villageGuardKeys.has(key)) continue;
-        if (tank.cellY > 55 || tank.cellX < 8 || tank.cellX > 18) continue;
+        if (tank.cellY > 55 || tank.cellX > 18) continue;
+        if (tank.cellX < 8 && tank.cellY < 42) continue;
         state.strikeKeys.add(key);
         state.baseGuardKeys.delete(key);
         state.eastBWaveTwoKeys.delete(key);
@@ -9096,6 +9100,10 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
             && objectKey(attacker) === objectKey(spineFinisherWest)))
         || (samDeepFinishRail && state.eastBProducedTankKeys.has(objectKey(attacker))
           && attacker.cellY >= 35
+          && !(spineFinisherRail && spineFinisherWest
+            && objectKey(attacker) === objectKey(spineFinisherWest)))
+        || (samEarlySpineRail && state.eastBProducedTankKeys.has(objectKey(attacker))
+          && attacker.cellY >= 42
           && !(spineFinisherRail && spineFinisherWest
             && objectKey(attacker) === objectKey(spineFinisherWest)))
         || (samFinishRail && (attacker.cellY >= 28 || attacker.cellX >= 16
