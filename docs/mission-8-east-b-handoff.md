@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | `563566f` |
+| Commit | `ac4dae1` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
@@ -327,7 +327,8 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 | Commit | Note |
 |---|---|
-| `563566f` | **This checkpoint** — v366-v369 finisher rails (samMin 134 held); trackpad pan; vite allowedHosts |
+| `ac4dae1` | **This checkpoint** — v370-v372 west-flank finisher (samMin 134 held; v373 reverted) |
+| `563566f` | v366-v369 finisher rails (samMin 134 held); trackpad pan; vite allowedHosts |
 | `ad7ef88` | v364 produced-tank rail (samMin 134 held; #27 too late @ nadir) |
 | `fea0e81` | docs: close east-b v363 experiments |
 | `8955834` | v360 chip-band north rally (samMin 134 held) |
