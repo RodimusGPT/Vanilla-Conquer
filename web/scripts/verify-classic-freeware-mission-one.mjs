@@ -3008,6 +3008,14 @@ const missionEightEastAEngineerTransportReserve = {
   label: "western turret reserve",
 };
 
+function eastAEngineerBasinArty(hostiles) {
+  return hostiles.find((hostile) => (
+    hostile.typeName === "ARTY"
+    && missionEightDistance(hostile, missionEightEastAEngineerTransportBasinHold) <= 14
+    && hostile.strength > 15
+  ));
+}
+
 function eastAEngineerUnloadPathArty(hostiles) {
   return hostiles.find((hostile) => (
     hostile.typeName === "ARTY"
@@ -4683,6 +4691,14 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       && hostile.cellX === counterattackSite.cellX
       && hostile.cellY === counterattackSite.cellY
     )) : undefined;
+    const engineerTransport = engineerIngressPending && state.engineer.transportKey !== undefined
+      ? friendly.find((object) => objectKey(object) === state.engineer.transportKey)
+      : undefined;
+    const engineerAtBasinHold = engineerTransport !== undefined
+      && missionEightDistance(engineerTransport, missionEightEastAEngineerTransportBasinHold) <= 6;
+    const engineerBasinArtyTarget = engineerAtBasinHold
+      ? eastAEngineerBasinArty(hostiles)
+      : undefined;
     const productionGun = mission.variant === "east-a"
       ? hostiles.find((hostile) => (
         hostile.typeName === missionEightEastAProductionGunSite.typeName
@@ -4763,7 +4779,7 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
     const target = (peelCommitted
       ? (productionBaseTarget ?? baseArmorThreat)
       : (baseArmorThreat ?? productionTurretTarget))
-      ?? productionTurretTarget ?? counterattackTarget
+      ?? productionTurretTarget ?? counterattackTarget ?? engineerBasinArtyTarget
       ?? productionBaseTarget ?? baseAirstrikeTarget ?? structureTarget
       ?? withdrawalTarget ?? chooseTarget(hostiles);
     if (target) {
@@ -5089,10 +5105,12 @@ function queueMissionEightEngineer(snapshot, friendly, hostiles, commands) {
       ));
       if (state.postSamCounterattackStage
         < missionEightEastAPostSamFirstTargetStage) {
-        const routeTarget = missionEightEastAPostSamCounterattackRoute[
-          state.postSamCounterattackStage
-        ];
-        transportTarget = state.postSamCounterattackStage >= 3
+        const gunBlocksBasin = westernGun && westernGun.strength > 0;
+        const effectiveStage = gunBlocksBasin
+          ? Math.min(state.postSamCounterattackStage, 2)
+          : state.postSamCounterattackStage;
+        const routeTarget = missionEightEastAPostSamCounterattackRoute[effectiveStage];
+        transportTarget = effectiveStage >= 3
           ? (eastAEngineerApcHoldCell(hostiles, transport) ?? routeTarget)
           : routeTarget;
       } else if (westernGun) {
@@ -5104,14 +5122,15 @@ function queueMissionEightEngineer(snapshot, friendly, hostiles, commands) {
           : missionEightEastAEngineerTransportReserve;
       } else {
         const apcHold = eastAEngineerApcHoldCell(hostiles, transport);
+        const tooFragile = transport.strength / transport.maxStrength < 0.15;
         const nearUnload = missionEightDistance(
           transport, missionEightEastAEngineerUnloadApproach,
         ) <= 4;
         const nearReserve = missionEightDistance(
           transport, missionEightEastAEngineerTransportReserve,
         ) <= 2;
-        if (apcHold) {
-          transportTarget = apcHold;
+        if (apcHold || tooFragile) {
+          transportTarget = apcHold ?? missionEightEastAEngineerTransportBasinHold;
         } else if (!nearReserve) {
           transportTarget = missionEightEastAEngineerTransportReserve;
         } else if (!nearUnload) {
