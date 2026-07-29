@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v384 kill-window — samMin **98** @32670 held; timed spine defer (west-finish @ SAM≤100 or y≤23); #4 `{10,21}`@32730; no v383 regression |
+| Last TRACE suite | v386 bundle — samMin **98** @32670 held (no gain vs v384); SAM≤100-only spine defer + nadir burst + post-western-SAM push wired; #4 dist-6 fire @ `{11,22}` @ nadir |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -297,6 +297,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | One-step north `{11,21}` @ dist-6 (v381) | samMin **98** held; #4 frozen `@11,22` — **closed/reverted** (same class as v199) |
 | Untimed spine defer / west-finish override (v383) | samMin **104**; #6 dies @32640 — **closed** |
 | Timed spine defer @ SAM≤100 or y≤23 (v384) | samMin **98** held; same kill-window as v382 — **held** |
+| v386 bundle: SAM≤100-only defer + nadir burst + post-kill push | samMin **98** held; #4 fires @ dist-6 `{11,22}` @ nadir but #6/#29 die @32700; SAM repairs — **held (no gain)** |
 
 ---
 
@@ -307,7 +308,8 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 3. **Closed v366** — village loan @ samKillWindow + strike≤1 + SAM≤180: no samMin gain (3 strike tanks live @ nadir; positioning not headcount).
 4. **Closed v364** — produced #27 joins @32340 `{3,50}`, west-rails east but cannot reach kill line by nadir; demote-skip kept in tree (no samMin gain).
 5. **Closed v365** — do not release `corridorHold` @ SAM≤200 or force partner north @ dist 7 (samMin **150**).
-6. **Next lever** — finish SAM from **98**: #4 still ~60t late to range @32730; combined #6+#29+#4 DPS insufficient before repair. Try: **#29 survival** through 32700, or accept engine ~1 cell/30t and work post-kill civ path once SAM dies.
+6. **Closed v386** — SAM≤100-only defer + nadir burst (#6+#29+#4 @ SAM≤100) + post-western-SAM push: samMin **98** held; #4 dist-6 fire @ `{11,22}` @ nadir but #6/#29 still die @32700; post-kill push untested (SAM never dies). Engine ~1 cell/30t ceiling likely.
+7. **Next lever** — limited options @ samMin 98: earlier #4 west-finish (pre-nadir pathing), or partial sim @33000 for post-SAM civ/A-10 path debug.
 7. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
 8. **Held v366** — village loan when `samKillWindow && strike≤1 && SAM≤180` (harmless; inactive @ nadir).
 9. **Held v369** — `eastBSamKillSpineFireLine` `{13,20}` + chip-band rail @221–280 for x=13 y≥23.

@@ -6937,9 +6937,64 @@ function eastBSamWestFinishEligible(tank, westernSam, samStrength) {
 
 function eastBSamSpineFinisherWestFinishEligible(tank, westernSam, samStrength) {
   if (!tank || tank.cellX > 12 || tank.cellY < 22) return false;
-  if (!eastBSamWestFinishEligible(tank, westernSam, samStrength)) return false;
-  if (samStrength <= 100) return true;
-  return tank.cellY <= 23;
+  return samStrength <= 100 && eastBSamWestFinishEligible(tank, westernSam, samStrength);
+}
+
+function queueEastBSamNadirBurst(commands, snapshot, westernSam, liveTanks) {
+  const samStrength = westernSam.strength;
+  if (samStrength > 100 || samStrength <= 0) return;
+  for (const tank of liveTanks) {
+    if (tank.typeName !== "MTNK" || tank.strength <= 0) continue;
+    const samDist = missionEightDistance(tank, westernSam);
+    const tankKey = objectKey(tank);
+    if (samDist <= 5) {
+      queueMissionEightRole(commands, `east-b-sam-nadir-fire-${tankKey}`,
+        [tank], westernSam, 0, 1);
+    } else if (tank.cellX === 14 && tank.cellY === 22 && samDist === 6) {
+      queueMissionEightRole(commands, `east-b-sam-nadir-partner-fire-${tankKey}`,
+        [tank], westernSam, 0, 1);
+    } else if (samDist === 6 && tank.cellX <= 12 && tank.cellY >= 22) {
+      queueMissionEightRole(commands, `east-b-sam-nadir-west-fire-${tankKey}`,
+        [tank], westernSam, 0, 1);
+    } else if (samDist >= 6 && samDist <= 8 && tank.cellX <= 12 && tank.cellY >= 22) {
+      const close = eastBSamPickClearKillCell(snapshot, [
+        eastBSamKillAltFireCell,
+        eastBSamKillWestFinishCell,
+        eastBSamKillFireCell,
+      ], tankKey) ?? eastBSamKillAltFireCell;
+      queueMissionEightRole(commands, `east-b-sam-nadir-close-${tankKey}`,
+        [tank], close, MODIFIER_ALT, 1);
+    }
+  }
+}
+
+function queueEastBSamPostWesternSamPush(commands, hostiles, strike) {
+  if (mission.variant !== "east-b") return false;
+  const state = missionEightState;
+  if (!state.samDeathTicks.has("13:16")) return false;
+  if (hostiles.some((hostile) => (
+    hostile.typeName === "SAM" && hostile.cellX === 13 && hostile.cellY === 16
+  ))) return false;
+  if (state.routeStage < 7) return false;
+  const route = missionEightRoutes["east-b"];
+  const waypoint = route[Math.min(state.routeStage, route.length - 1)];
+  if (!waypoint?.typeName) return false;
+  const targetCellX = waypoint.targetCellX ?? waypoint.cellX;
+  const targetCellY = waypoint.targetCellY ?? waypoint.cellY;
+  const target = hostiles.find((hostile) => (
+    hostile.typeName === waypoint.typeName
+    && hostile.cellX === targetCellX && hostile.cellY === targetCellY
+  ));
+  if (!target) return false;
+  const tanks = strike.filter((attacker) => (
+    attacker.typeName === "MTNK" && attacker.strength > 0
+  ));
+  if (tanks.length === 0) return false;
+  for (const tank of tanks) {
+    queueMissionEightRole(commands, `east-b-post-west-sam-${objectKey(tank)}`,
+      [tank], target, 0, 1);
+  }
+  return true;
 }
 
 function queueEastBSamWestFinish(commands, role, tank, snapshot, westernSam, samStrength) {
@@ -7749,24 +7804,7 @@ function queueEastBSamDeepFinisher(commands, snapshot, strike, westernSam) {
   eastBSamRecordKillOccupancy(snapshot, westernSam);
   const partnerKeys = queueEastBSamPartnerWestRoute(commands, snapshot, westernSam, liveTanks,
     spineFinisherTank, 220);
-  if (samStrength <= 120 && samStrength > 0) {
-    for (const tank of liveTanks) {
-      const samDist = missionEightDistance(tank, westernSam);
-      const tankKey = objectKey(tank);
-      if (samDist <= 5) {
-        queueMissionEightRole(commands, `east-b-sam-nadir-fire-${tankKey}`,
-          [tank], westernSam, 0, 1);
-      } else if (samDist >= 6 && samDist <= 8 && tank.cellX <= 12 && tank.cellY >= 22) {
-        const close = eastBSamPickClearKillCell(snapshot, [
-          eastBSamKillAltFireCell,
-          eastBSamKillWestFinishCell,
-          eastBSamKillFireCell,
-        ], tankKey) ?? eastBSamKillAltFireCell;
-        queueMissionEightRole(commands, `east-b-sam-nadir-close-${tankKey}`,
-          [tank], close, MODIFIER_ALT, 1);
-      }
-    }
-  }
+  queueEastBSamNadirBurst(commands, snapshot, westernSam, liveTanks);
   const spineShooter = eastBSamSpineKillShooterPick(liveTanks, spineFinisherTank, westernSam);
   queueEastBSamSpineBlockerYield(commands, liveTanks, samStrength, spineFinisherTank);
   if (!spineFinisherTank) {
@@ -8607,6 +8645,10 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       }
     }
     strike = attackers.filter((attacker) => state.strikeKeys.has(objectKey(attacker)));
+  }
+  if (mission.variant === "east-b"
+    && queueEastBSamPostWesternSamPush(commands, hostiles, strike)) {
+    return;
   }
   if (strike.length === 0
     && !(mission.variant === "east-b" && state.eastBSamSpineFinisherHoldKeys.size > 0)) return;
