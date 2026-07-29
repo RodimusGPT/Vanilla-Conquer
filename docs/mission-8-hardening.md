@@ -108,11 +108,16 @@ screen `{18,7}`, basin hold `{29,38}`, or transport reserve `{23,30}` with
 under-fire stop + staged reserve→unload advance. `transportDeathTick` improved
 32280 → ~53850 (still RED, no `captureTick`).
 
-**v392 (in progress):** Cap APC counterattack routing at stage 2 (southern
+**v392:** Cap APC counterattack routing at stage 2 (southern
 crossing) while western GUN `@21,19` lives; A-10 basin-ARTY pass when APC holds
 `{29,38}`; fragile-APC hold below 15% HP. `transportDeathTick` ~58380 (+4.5k
-vs v391); still no `captureTick` — APC bleeds to ~3 HP at basin ~50k from
-production ARTY before GUN clears.
+vs v391); still no `captureTick`.
+
+**v393:** Pre-basin ARTY A-10 from post-SAM stage ≥2; transport-relative ARTY
+range check; ingress corridor-clear gate (+600t stable window for fragile APC);
+basin-hold GUN-then-ARTY strike priority. APC keeps ~140 HP at basin through ~64k
+(vs ~3 HP @50k in v392); `transportDeathTick` ~58–65k — western GUN repairs to
+400 and never clears, so no `captureTick` yet.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 

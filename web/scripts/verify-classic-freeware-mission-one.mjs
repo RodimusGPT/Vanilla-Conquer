@@ -3008,12 +3008,28 @@ const missionEightEastAEngineerTransportReserve = {
   label: "western turret reserve",
 };
 
-function eastAEngineerBasinArty(hostiles) {
+function eastAEngineerBasinArtyAtHold(hostiles) {
   return hostiles.find((hostile) => (
     hostile.typeName === "ARTY"
     && missionEightDistance(hostile, missionEightEastAEngineerTransportBasinHold) <= 14
     && hostile.strength > 15
   ));
+}
+
+function eastAEngineerBasinArty(hostiles, transport) {
+  const anchor = transport ?? missionEightEastAEngineerTransportBasinHold;
+  return hostiles.find((hostile) => (
+    hostile.typeName === "ARTY"
+    && missionEightDistance(hostile, anchor) <= 11
+    && hostile.strength > 15
+  ));
+}
+
+function eastAEngineerIngressCorridorClear(hostiles, transport) {
+  return !eastAEngineerBasinArty(hostiles, transport)
+    && !eastAEngineerWesternCorridorBlocked(hostiles)
+    && !eastAEngineerTransportUnderFire(hostiles, transport)
+    && !eastAEngineerUnloadPathArty(hostiles);
 }
 
 function eastAEngineerUnloadPathArty(hostiles) {
@@ -3278,6 +3294,7 @@ const missionEightState = {
     transportRouteStage: 0,
     transportRouteProgress: [],
     transportCounterattackTick: undefined,
+    corridorClearSinceTick: undefined,
     loadIssuedTick: undefined,
     sealedTick: undefined,
     transportRetreatTick: undefined,
@@ -4696,8 +4713,11 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       : undefined;
     const engineerAtBasinHold = engineerTransport !== undefined
       && missionEightDistance(engineerTransport, missionEightEastAEngineerTransportBasinHold) <= 6;
-    const engineerBasinArtyTarget = engineerAtBasinHold
-      ? eastAEngineerBasinArty(hostiles)
+    const engineerBasinArtyPending = engineerIngressPending
+      && state.postSamCounterattackLaunchTick !== undefined
+      && state.postSamCounterattackStage >= 2;
+    const engineerBasinArtyTarget = (engineerAtBasinHold || engineerBasinArtyPending)
+      ? eastAEngineerBasinArtyAtHold(hostiles)
       : undefined;
     const productionGun = mission.variant === "east-a"
       ? hostiles.find((hostile) => (
@@ -4779,7 +4799,11 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
     const target = (peelCommitted
       ? (productionBaseTarget ?? baseArmorThreat)
       : (baseArmorThreat ?? productionTurretTarget))
-      ?? productionTurretTarget ?? counterattackTarget ?? engineerBasinArtyTarget
+      ?? productionTurretTarget
+      ?? (engineerAtBasinHold
+        ? (counterattackTarget ?? engineerBasinArtyTarget)
+        : undefined)
+      ?? counterattackTarget ?? engineerBasinArtyTarget
       ?? productionBaseTarget ?? baseAirstrikeTarget ?? structureTarget
       ?? withdrawalTarget ?? chooseTarget(hostiles);
     if (target) {
@@ -5103,6 +5127,14 @@ function queueMissionEightEngineer(snapshot, friendly, hostiles, commands) {
       const westernGun = hostiles.find((hostile) => (
         hostile.typeName === "GUN" && hostile.cellX === 21 && hostile.cellY === 19
       ));
+      const ingressCorridorClear = eastAEngineerIngressCorridorClear(hostiles, transport);
+      if (ingressCorridorClear) {
+        state.engineer.corridorClearSinceTick ??= snapshot.tick;
+      } else {
+        state.engineer.corridorClearSinceTick = undefined;
+      }
+      const corridorReady = state.engineer.corridorClearSinceTick !== undefined
+        && snapshot.tick >= state.engineer.corridorClearSinceTick + 600;
       if (state.postSamCounterattackStage
         < missionEightEastAPostSamFirstTargetStage) {
         const gunBlocksBasin = westernGun && westernGun.strength > 0;
@@ -5123,13 +5155,15 @@ function queueMissionEightEngineer(snapshot, friendly, hostiles, commands) {
       } else {
         const apcHold = eastAEngineerApcHoldCell(hostiles, transport);
         const tooFragile = transport.strength / transport.maxStrength < 0.15;
+        const holdIngress = apcHold || !ingressCorridorClear
+          || (tooFragile && !corridorReady);
         const nearUnload = missionEightDistance(
           transport, missionEightEastAEngineerUnloadApproach,
         ) <= 4;
         const nearReserve = missionEightDistance(
           transport, missionEightEastAEngineerTransportReserve,
         ) <= 2;
-        if (apcHold || tooFragile) {
+        if (holdIngress) {
           transportTarget = apcHold ?? missionEightEastAEngineerTransportBasinHold;
         } else if (!nearReserve) {
           transportTarget = missionEightEastAEngineerTransportReserve;
