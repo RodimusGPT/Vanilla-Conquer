@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — not release-ready |
 | Branch | `browser-port` |
-| Commit | *(pending v384 push)* |
+| Commit | `94fe069` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
@@ -334,7 +334,8 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 | Commit | Note |
 |---|---|
-| `f567821` | v381 one-step `{11,21}` (samMin 98; stuck @11,22 — closed) |
+| `94fe069` | **This checkpoint** — v384 timed spine defer (samMin 98 held) |
+| `ec7cb8b` | v382 nadir focus-fire `{10,20}` (samMin 98 held) |
 | `13f5c15` | v376-v380 west-finish rush (samMin 98 held) |
 | `f0a3a5f` | v374 partner dist-6 fire (samMin 98 @32670) |
 | `ac4dae1` | v370-v372 west-flank finisher (samMin 134 held; v373 reverted) |
