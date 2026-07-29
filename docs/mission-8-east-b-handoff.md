@@ -9,9 +9,9 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — not release-ready |
+| Status | **RED** — samMin **98** @32670 appears to be strategy/engine ceiling (v389 closed) |
 | Branch | `browser-port` |
-| Commit | `b8e691b` |
+| Commit | `90e2af2` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
