@@ -113,11 +113,10 @@ crossing) while western GUN `@21,19` lives; A-10 basin-ARTY pass when APC holds
 `{29,38}`; fragile-APC hold below 15% HP. `transportDeathTick` ~58380 (+4.5k
 vs v391); still no `captureTick`.
 
-**v393:** Pre-basin ARTY A-10 from post-SAM stage ≥2; transport-relative ARTY
-range check; ingress corridor-clear gate (+600t stable window for fragile APC);
-basin-hold GUN-then-ARTY strike priority. APC keeps ~140 HP at basin through ~64k
-(vs ~3 HP @50k in v392); `transportDeathTick` ~58–65k — western GUN repairs to
-400 and never clears, so no `captureTick` yet.
+**v394:** Western GUN `@21,19` siege — wire `postSamNorthSupportKeys` from north
+flank/strike/south-ready; suppress local-threat peel during GUN stage; repeat
+A-10 on GUN while APC holds basin (420t cooldown). `transportDeathTick` ~75750
+(+17k vs v393); GUN repairs to 400, still no `captureTick`.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 
