@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v386 bundle — samMin **98** @32670 held (no gain vs v384); SAM≤100-only spine defer + nadir burst + post-western-SAM push wired; #4 dist-6 fire @ `{11,22}` @ nadir |
+| Last TRACE suite | v389 GUN respawn re-engage — samMin **98** @32670 held; GUN respawns @~33060 @400 HP; #27 rails x=13 but dies @~33300 before GUN kill |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -300,6 +300,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | v386 bundle: SAM≤100-only defer + nadir burst + post-kill push | samMin **98** held; #4 fires @ dist-6 `{11,22}` @ nadir but #6/#29 die @32700; SAM repairs — **held (no gain)** |
 | Pre-nadir west-finish @ SAM≤130 / y≤23 (v387) | samMin **98** held; #4 still `@10,21`@32730 — path rate unchanged — **closed** |
 | Finisher pick inversion / west-line spine defer (v388) | Pick inversion @ SAM≤120 → samMin **104** (#6 dies @32640); surgical spine-close defer @ SAM≤120 → samMin **98** held, #4 still `@10,21`@32730 — **closed** |
+| GUN respawn re-engage @ `{11,18}` (v389) | samMin **98** held; GUN respawns @~33060 @400 HP; lone #27 spine-rails, dies @~33300 — **closed** |
 
 ---
 
@@ -312,13 +313,14 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 5. **Closed v365** — do not release `corridorHold` @ SAM≤200 or force partner north @ dist 7 (samMin **150**).
 6. **Closed v386** — SAM≤100-only defer + nadir burst (#6+#29+#4 @ SAM≤100) + post-western-SAM push: samMin **98** held; #4 dist-6 fire @ `{11,22}` @ nadir but #6/#29 still die @32700; post-kill push untested (SAM never dies). Engine ~1 cell/30t ceiling likely.
 6b. **Closed v388** — finisher pick inversion / west-line spine-close defer: pick inversion regressed to samMin **104**; surgical defer held **98** but #4 still `@10,21`@32730 — **closed**.
-7. **Next lever** — samMin **98** appears to be engine path-rate ceiling (v387/v388 closed); optional secondary: GUN respawn re-engage (~33060) or partial sim post-SAM once kill path exists.
-7. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
-8. **Held v366** — village loan when `samKillWindow && strike≤1 && SAM≤180` (harmless; inactive @ nadir).
-9. **Held v369** — `eastBSamKillSpineFireLine` `{13,20}` + chip-band rail @221–280 for x=13 y≥23.
-10. **Held v372** — west-flank finisher @ dist≥7; west-hold on x=12 (no east recall to `{13,24}`).
-11. **Held v374** — partner `{14,22}` dist-6 fires via west-edge kill-line (not approach move); partner step sam≤220.
-12. **Held v376–v380** — west-finish rush @ dist 6–8 sam≤130 → `{10,21}`; dist-8 finish without chipBandLead gate.
+6c. **Closed v389** — GUN `{11,18}` respawn re-engage when kill line empty: samMin **98** held; lone #27 spine-rails but dies before GUN kill; SAM repairs to 400 — **closed**.
+7. **Next lever** — samMin **98** engine/strategy ceiling; no remaining scripted levers without engine path change.
+8. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
+9. **Held v366** — village loan when `samKillWindow && strike≤1 && SAM≤180` (harmless; inactive @ nadir).
+10. **Held v369** — `eastBSamKillSpineFireLine` `{13,20}` + chip-band rail @221–280 for x=13 y≥23.
+11. **Held v372** — west-flank finisher @ dist≥7; west-hold on x=12 (no east recall to `{13,24}`).
+12. **Held v374** — partner `{14,22}` dist-6 fires via west-edge kill-line (not approach move); partner step sam≤220.
+13. **Held v376–v380** — west-finish rush @ dist 6–8 sam≤130 → `{10,21}`; dist-8 finish without chipBandLead gate.
 
 ---
 

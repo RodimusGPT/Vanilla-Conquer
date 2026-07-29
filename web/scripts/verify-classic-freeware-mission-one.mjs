@@ -6940,6 +6940,53 @@ function eastBSamSpineFinisherWestFinishEligible(tank, westernSam, samStrength) 
   return samStrength <= 100 && eastBSamWestFinishEligible(tank, westernSam, samStrength);
 }
 
+function eastBWesternGunWaypointIndex() {
+  return missionEightRoutes["east-b"].findIndex((site) => (
+    site.typeName === "GUN" && site.cellX === 11 && site.cellY === 18
+  ));
+}
+
+function eastBWesternGunRespawnReengage(state, hostiles, strike, westernGun, westernSam) {
+  const gunStage = eastBWesternGunWaypointIndex();
+  if (gunStage < 0 || state.routeStage <= gunStage) return false;
+  if (!state.routeTargetEngagedStages.has(gunStage)) return false;
+  if (!westernGun || westernGun.strength <= 0 || !westernSam || westernSam.strength <= 0) {
+    return false;
+  }
+  return !strike.some((attacker) => (
+    attacker.typeName === "MTNK" && attacker.strength > 0
+    && attacker.cellY <= 24 && attacker.cellX >= 10 && attacker.cellX <= 15
+    && missionEightDistance(attacker, westernSam) <= 8
+  ));
+}
+
+function queueEastBWesternGunRespawnEngage(commands, strike, westernGun) {
+  const gunStandoff = { cellX: 12, cellY: 22 };
+  const tanks = strike.filter((attacker) => (
+    attacker.typeName === "MTNK" && attacker.strength > 0
+  ));
+  if (tanks.length === 0) return false;
+  for (const tank of tanks) {
+    const tankKey = objectKey(tank);
+    const gunDist = westernGun ? missionEightDistance(tank, westernGun) : 999;
+    if (westernGun && westernGun.strength > 0 && gunDist <= 5) {
+      queueMissionEightRole(commands, `east-b-gun-respawn-fire-${tankKey}`,
+        [tank], westernGun, 0, 1);
+      continue;
+    }
+    let rally = gunStandoff;
+    if (tank.cellY > 24 || tank.cellX !== 13) {
+      if (tank.cellY >= 40) rally = { cellX: 13, cellY: 32 };
+      else if (tank.cellY >= 28) rally = { cellX: 13, cellY: 24 };
+      else if (tank.cellX !== 13) rally = { cellX: 13, cellY: Math.min(tank.cellY, 27) };
+      else rally = { cellX: 13, cellY: Math.max(tank.cellY - 1, 24) };
+    }
+    queueMissionEightRole(commands, `east-b-gun-respawn-rail-${tankKey}`,
+      [tank], rally, MODIFIER_ALT, 1);
+  }
+  return true;
+}
+
 function queueEastBSamNadirBurst(commands, snapshot, westernSam, liveTanks) {
   const samStrength = westernSam.strength;
   if (samStrength > 100 || samStrength <= 0) return;
@@ -8846,6 +8893,10 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     const liveStrikeTanks = strike.filter((attacker) => (
       attacker.typeName === "MTNK" && attacker.strength > 0
     ));
+    if (eastBWesternGunRespawnReengage(state, hostiles, strike, westernGun, westernSam)
+      && queueEastBWesternGunRespawnEngage(commands, strike, westernGun)) {
+      return;
+    }
     // Pure solo on a pristine SAM: rail to the gate and wait for a partner.
     // Any chip (strength < max) → solo finishes (TRACE v27: tank #37 sat at
     // 13,23 while SAM sat at 360 because the wait threshold was too low).
