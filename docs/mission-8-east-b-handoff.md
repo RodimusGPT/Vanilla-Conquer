@@ -299,6 +299,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Timed spine defer @ SAM≤100 or y≤23 (v384) | samMin **98** held; same kill-window as v382 — **held** |
 | v386 bundle: SAM≤100-only defer + nadir burst + post-kill push | samMin **98** held; #4 fires @ dist-6 `{11,22}` @ nadir but #6/#29 die @32700; SAM repairs — **held (no gain)** |
 | Pre-nadir west-finish @ SAM≤130 / y≤23 (v387) | samMin **98** held; #4 still `@10,21`@32730 — path rate unchanged — **closed** |
+| Finisher pick inversion / west-line spine defer (v388) | Pick inversion @ SAM≤120 → samMin **104** (#6 dies @32640); surgical spine-close defer @ SAM≤120 → samMin **98** held, #4 still `@10,21`@32730 — **closed** |
 
 ---
 
@@ -310,7 +311,8 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 4. **Closed v364** — produced #27 joins @32340 `{3,50}`, west-rails east but cannot reach kill line by nadir; demote-skip kept in tree (no samMin gain).
 5. **Closed v365** — do not release `corridorHold` @ SAM≤200 or force partner north @ dist 7 (samMin **150**).
 6. **Closed v386** — SAM≤100-only defer + nadir burst (#6+#29+#4 @ SAM≤100) + post-western-SAM push: samMin **98** held; #4 dist-6 fire @ `{11,22}` @ nadir but #6/#29 still die @32700; post-kill push untested (SAM never dies). Engine ~1 cell/30t ceiling likely.
-7. **Next lever** — limited options @ samMin 98: engine ~1 cell/30t on spine (v387 pre-nadir west-finish @ SAM≤130 closed — #4 path unchanged); partial sim @33000 shows SAM@224, neutrals 13, hospital/Moebius intact — post-SAM path debug only useful once SAM dies.
+6b. **Closed v388** — finisher pick inversion / west-line spine-close defer: pick inversion regressed to samMin **104**; surgical defer held **98** but #4 still `@10,21`@32730 — **closed**.
+7. **Next lever** — samMin **98** appears to be engine path-rate ceiling (v387/v388 closed); optional secondary: GUN respawn re-engage (~33060) or partial sim post-SAM once kill path exists.
 7. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
 8. **Held v366** — village loan when `samKillWindow && strike≤1 && SAM≤180` (harmless; inactive @ nadir).
 9. **Held v369** — `eastBSamKillSpineFireLine` `{13,20}` + chip-band rail @221–280 for x=13 y≥23.
