@@ -102,12 +102,17 @@ Need durable post-HAND DPS without stripping the HAND kill:
   east-b vehicle economy once that path is green)
 - Do **not** hold-back HAND wave or redirect assault-window A-10 away from HAND
 
-**v390–v391 (in progress):** FACT-capture prerequisite — APC was dying @32280 routing
+**v390–v391:** FACT-capture prerequisite — APC was dying @32280 routing
 to `{8,13}` through ARTY / production screen. Hold helpers keep APC at northern
 screen `{18,7}`, basin hold `{29,38}`, or transport reserve `{23,30}` with
 under-fire stop + staged reserve→unload advance. `transportDeathTick` improved
-32280 → 41820 → 48960 → ~53850 (still RED, no `captureTick`; APC bleeds at
-basin hold ~53k from production ARTY/HARV before western GUN clears).
+32280 → ~53850 (still RED, no `captureTick`).
+
+**v392 (in progress):** Cap APC counterattack routing at stage 2 (southern
+crossing) while western GUN `@21,19` lives; A-10 basin-ARTY pass when APC holds
+`{29,38}`; fragile-APC hold below 15% HP. `transportDeathTick` ~58380 (+4.5k
+vs v391); still no `captureTick` — APC bleeds to ~3 HP at basin ~50k from
+production ARTY before GUN clears.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 
