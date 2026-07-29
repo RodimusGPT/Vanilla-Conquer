@@ -6935,6 +6935,13 @@ function eastBSamWestFinishEligible(tank, westernSam, samStrength) {
     && tank.cellY >= 22 && tank.cellX <= 12;
 }
 
+function eastBSamSpineFinisherWestFinishEligible(tank, westernSam, samStrength) {
+  if (!tank || tank.cellX > 12 || tank.cellY < 22) return false;
+  if (!eastBSamWestFinishEligible(tank, westernSam, samStrength)) return false;
+  if (samStrength <= 100) return true;
+  return tank.cellY <= 23;
+}
+
 function queueEastBSamWestFinish(commands, role, tank, snapshot, westernSam, samStrength) {
   void westernSam;
   void samStrength;
@@ -7338,7 +7345,8 @@ function queueEastBSamWestEdgeKill(commands, snapshot, westernSam, liveTanks, ma
   for (const tank of liveTanks) {
     if (tank.typeName !== "MTNK" || tank.strength <= 0) continue;
     if (eastBSamEastKillCorridorTank(tank, spineFinisher)) continue;
-    if (spineFinisher && objectKey(tank) === objectKey(spineFinisher)) continue;
+    if (spineFinisher && objectKey(tank) === objectKey(spineFinisher)
+      && !eastBSamSpineFinisherWestFinishEligible(tank, westernSam, samStrength)) continue;
     const samDist = missionEightDistance(tank, westernSam);
     const tankKey = objectKey(tank);
     const onWestKillLine = tank.cellX <= 12 && tank.cellY >= 20 && tank.cellY <= 22;
@@ -7498,6 +7506,9 @@ function queueEastBSamSpineKillClose(commands, snapshot, westernSam, spineFinish
     return spineKeys;
   }
   if (samStrength <= 220 && samDist > 5 && spineFinisher.cellX === 12 && spineFinisher.cellY >= 22) {
+    if (eastBSamSpineFinisherWestFinishEligible(spineFinisher, westernSam, samStrength)) {
+      return spineKeys;
+    }
     if (samStrength <= 200 && samDist >= 7 && spineFinisher.cellY >= 23) {
       const holdWest = eastBSamPickClearKillCell(snapshot, [
         { cellX: 12, cellY: 21 },
