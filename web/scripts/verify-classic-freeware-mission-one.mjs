@@ -2984,6 +2984,21 @@ const missionEightEastAPostFactLaunchCompletionCount =
 // Launch once the production turret has been airstrike-softened (~tick 51k)
 // rather than waiting until 54.5k while it repairs back to full.
 const missionEightEastAPostFactLaunchMinTick = 52_000;
+const missionEightEastAPostFactEarlyCaptureLaunchLeadTicks = 4_000;
+
+function eastAPostFactLaunchMinTick(state) {
+  if (state.engineer.captureTick === undefined) {
+    return missionEightEastAPostFactLaunchMinTick;
+  }
+  return state.engineer.captureTick + missionEightEastAPostFactEarlyCaptureLaunchLeadTicks;
+}
+
+function eastAProductionGunHoldTimeout(state) {
+  return state.engineer.captureTick !== undefined
+    && state.engineer.captureTick < 50_000
+    ? 4_500
+    : 10_500;
+}
 // Charge only when the turret is badly softened. ~217 still wiped a 15-rifle
 // wave in ~600 ticks; wait for deeper damage or a post-hold airstrike pass.
 const missionEightEastAProductionGunSoftStrength = 150;
@@ -4793,6 +4808,17 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         productionGun.strength,
       );
     }
+    const productionGunPrelaunchTarget = mission.variant === "east-a"
+      && state.engineer.captureTick !== undefined
+      && state.postFactCleanupLaunchTick === undefined
+      && productionGun
+      && !state.airstrike.orders.some((order) => (
+        order.target === "GUN"
+        && order.cellX === missionEightEastAProductionGunSite.cellX
+        && order.cellY === missionEightEastAProductionGunSite.cellY
+      ))
+      ? productionGun
+      : undefined;
     // Once the production charge (or HAND peel) is committed, prefer A-10s on
     // HAND/AFLD over the turret. Keep post-hold GUN soft-passes available so
     // the charge does not walk into a fully repaired turret.
@@ -4858,6 +4884,7 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       || left.id - right.id
     ))[0];
     const target = engineerUnloadPathArtyStrikeTarget
+      ?? productionGunPrelaunchTarget
       ?? westernGunStrikeTarget
       ?? ((peelCommitted
       ? (productionBaseTarget ?? baseArmorThreat)
@@ -6161,6 +6188,30 @@ function queueMissionEightTransitWave(snapshot, attackers, commands, {
   }
 }
 
+function releaseMissionEightNorthHold(state, snapshot) {
+  if (state.northReleaseTick !== undefined) return;
+  state.northReleaseTick = snapshot.tick;
+  for (const key of new Set([
+    ...state.northHoldKeys,
+    ...state.southReadyKeys,
+    ...state.secondWaveKeys,
+    ...state.thirdWaveKeys,
+    ...state.engineer.footEscortKeys,
+    ...state.engineer.footDecoyKeys,
+    ...state.engineer.replacementDecoyEscortKeys,
+  ])) {
+    state.northReleaseKeys.add(key);
+    state.strikeKeys.add(key);
+  }
+  state.northHoldKeys.clear();
+  state.southReadyKeys.clear();
+  state.secondWaveKeys.clear();
+  state.thirdWaveKeys.clear();
+  state.engineer.footEscortKeys.clear();
+  state.engineer.footDecoyKeys.clear();
+  state.engineer.replacementDecoyEscortKeys.clear();
+}
+
 function completeMissionEightSouthTransit(snapshot, combined) {
   const state = missionEightState;
   const mainRoute = missionEightRoutes["east-a"];
@@ -6595,7 +6646,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
         && (sincePostHoldAirstrike === undefined || sincePostHoldAirstrike >= 180);
       const previouslySoft = (state.productionGunMinimumStrength ?? 999)
         <= missionEightEastAProductionGunSoftStrength + 70;
-      const forceChargeAfterHold = holdDuration >= 10_500
+      const forceChargeAfterHold = holdDuration >= eastAProductionGunHoldTimeout(state)
         // Post-hold soft-pass: charge once the turret is mid-health. Full-HP
         // early charges wipe finishers; A-10-on-HAND first did not reduce HAND.
         || (sincePostHoldAirstrike !== undefined && sincePostHoldAirstrike >= 300
@@ -6709,7 +6760,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
         && (sincePostHoldAirstrike === undefined || sincePostHoldAirstrike >= 180);
       const previouslySoft = (state.productionGunMinimumStrength ?? 999)
         <= missionEightEastAProductionGunSoftStrength + 70;
-      const forceChargeAfterHold = holdDuration >= 10_500
+      const forceChargeAfterHold = holdDuration >= eastAProductionGunHoldTimeout(state)
         || (sincePostHoldAirstrike !== undefined && sincePostHoldAirstrike >= 300
           && target.strength <= 300)
         || (previouslySoft && holdDuration >= 2_700 && target.strength <= 280);
@@ -7005,6 +7056,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
 function queueMissionEightPostSamCounterattack(snapshot, hostiles, attackers, commands) {
   const state = missionEightState;
   if (mission.variant !== "east-a" || state.allSamsDeadTick === undefined) return;
+  if (state.engineer.captureTick !== undefined) return;
   if (state.postSamCounterattackLaunchTick === undefined && snapshot.tick >= 28_800) {
     const defenders = attackers.filter((attacker) => (
       state.baseGuardKeys.has(objectKey(attacker))
@@ -8292,6 +8344,15 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
   queueMissionEightPostSamCounterattack(snapshot, hostiles, attackers, commands);
 
   if (mission.variant === "east-a" && state.engineer.captureTick !== undefined) {
+    if (state.postFactCleanupLaunchTick === undefined) {
+      for (const key of new Set([
+        ...state.postSamCounterattackKeys,
+        ...state.postSamNorthSupportKeys,
+      ])) {
+        state.strikeKeys.delete(key);
+        state.postFactHomeDefenseKeys.add(key);
+      }
+    }
     const cleanup = attackers.filter((attacker) => (
       state.postFactCleanupCohortKeys.has(objectKey(attacker))
     ));
@@ -8314,8 +8375,9 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
         order.target === "GUN" && order.cellX === 26 && order.cellY === 21
       )).length >= 1
       && state.airstrike.pending === undefined
-      && snapshot.tick >= missionEightEastAPostFactLaunchMinTick) {
+      && snapshot.tick >= eastAPostFactLaunchMinTick(state)) {
       state.postFactCleanupLaunchTick = snapshot.tick;
+      releaseMissionEightNorthHold(state, snapshot);
       const liveHomeCohort = attackers.filter((attacker) => (
         state.postFactHomeDefenseCohortKeys.has(objectKey(attacker))
       ));
@@ -8373,27 +8435,9 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
   }
 
   if (mission.variant === "east-a" && state.engineer.captureTick !== undefined
-    && state.northReleaseTick === undefined) {
-    state.northReleaseTick = snapshot.tick;
-    for (const key of new Set([
-      ...state.northHoldKeys,
-      ...state.southReadyKeys,
-      ...state.secondWaveKeys,
-      ...state.thirdWaveKeys,
-      ...state.engineer.footEscortKeys,
-      ...state.engineer.footDecoyKeys,
-      ...state.engineer.replacementDecoyEscortKeys,
-    ])) {
-      state.northReleaseKeys.add(key);
-      state.strikeKeys.add(key);
-    }
-    state.northHoldKeys.clear();
-    state.southReadyKeys.clear();
-    state.secondWaveKeys.clear();
-    state.thirdWaveKeys.clear();
-    state.engineer.footEscortKeys.clear();
-    state.engineer.footDecoyKeys.clear();
-    state.engineer.replacementDecoyEscortKeys.clear();
+    && state.northReleaseTick === undefined
+    && state.postFactCleanupLaunchTick !== undefined) {
+    releaseMissionEightNorthHold(state, snapshot);
   }
 
   if (mission.variant === "east-a" && state.factDeathTick !== undefined
