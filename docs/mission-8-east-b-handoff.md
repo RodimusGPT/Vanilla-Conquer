@@ -341,7 +341,8 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 | Commit | Note |
 |---|---|
-| `b8e691b` | **This checkpoint** — v386 nadir burst + post-western-SAM push (samMin 98 held) |
+| `90e2af2` | **This checkpoint** — v389 GUN respawn re-engage (samMin 98 held) |
+| `b8e691b` | v386 nadir burst + post-western-SAM push (samMin 98 held) |
 | `94fe069` | v384 timed spine defer (samMin 98 held) |
 | `ec7cb8b` | v382 nadir focus-fire `{10,20}` (samMin 98 held) |
 | `13f5c15` | v376-v380 west-finish rush (samMin 98 held) |

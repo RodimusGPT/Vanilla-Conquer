@@ -3007,6 +3007,76 @@ const missionEightEastAEngineerTransportReserve = {
   cellY: 30,
   label: "western turret reserve",
 };
+
+function eastAEngineerUnloadPathArty(hostiles) {
+  return hostiles.find((hostile) => (
+    hostile.typeName === "ARTY"
+    && hostile.cellX >= 4 && hostile.cellX <= 12
+    && hostile.cellY >= 7 && hostile.cellY <= 13
+    && hostile.strength > 15
+  ));
+}
+
+const missionEightEastAEngineerTransportBasinHold = {
+  cellX: 29,
+  cellY: 38,
+  label: "western approach hold",
+};
+
+function eastAEngineerApcBasinHoldCell(hostiles) {
+  const basinThreat = hostiles.some((hostile) => (
+    (hostile.type === 1 || hostile.type === 2)
+    && hostile.cellX >= 18 && hostile.cellX <= 32
+    && hostile.cellY >= 15 && hostile.cellY <= 32
+  ));
+  if (basinThreat) {
+    return missionEightEastAEngineerTransportBasinHold;
+  }
+  return undefined;
+}
+
+function eastAEngineerTransportUnderFire(hostiles, transport) {
+  if (!transport) return false;
+  return hostiles.some((hostile) => (
+    (hostile.type === 1 || hostile.type === 2 || hostile.typeName === "HARV")
+    && missionEightDistance(hostile, transport) <= 12
+  ));
+}
+
+function eastAEngineerWesternCorridorBlocked(hostiles) {
+  return hostiles.some((hostile) => (
+    (hostile.type === 1 || hostile.type === 2 || hostile.typeName === "HARV")
+    && hostile.cellX >= 15 && hostile.cellX <= 32
+    && hostile.cellY >= 22 && hostile.cellY <= 40
+  ));
+}
+
+function eastAEngineerApcHoldCell(hostiles, transport) {
+  if (eastAEngineerTransportUnderFire(hostiles, transport)) {
+    return missionEightEastAEngineerTransportBasinHold;
+  }
+  if (eastAEngineerWesternCorridorBlocked(hostiles)) {
+    return missionEightEastAEngineerTransportBasinHold;
+  }
+  if (eastAEngineerUnloadPathArty(hostiles)) {
+    return missionEightEastAEngineerTransportReserve;
+  }
+  const basinHold = eastAEngineerApcBasinHoldCell(hostiles);
+  if (basinHold) {
+    return basinHold;
+  }
+  const productionScreen = hostiles.some((hostile) => (
+    (hostile.type === 1 || hostile.type === 2)
+    && hostile.cellX >= 18 && hostile.cellX <= 30
+    && hostile.cellY <= 21
+    && missionEightDistance(hostile, { cellX: 8, cellY: 11 }) <= 24
+  ));
+  if (productionScreen) {
+    return missionEightEastAEngineerTransportRoute[3];
+  }
+  return undefined;
+}
+
 const missionEightEastAEmergencyEngineerRoute = [
   { cellX: 12, cellY: 12, label: "western ridge crossing" },
   { cellX: 8, cellY: 12, label: "construction yard approach" },
@@ -5004,8 +5074,13 @@ function queueMissionEightEngineer(snapshot, friendly, hostiles, commands) {
     }
     let transportTarget = transportWaypoint;
     let capturing = false;
+    const northernScreen = missionEightEastAEngineerTransportRoute[3];
     if (state.engineer.transportRouteStage === finalTransportStage
-      && (missionEightDistance(transport, transportWaypoint) <= 2
+      && transportWaypoint.cellX === 44 && transportWaypoint.cellY === 50) {
+      transportTarget = eastAEngineerApcHoldCell(hostiles, transport) ?? northernScreen;
+    }
+    if (state.engineer.transportRouteStage === finalTransportStage
+      && (missionEightDistance(transport, northernScreen) <= 2
         || state.engineer.transportCounterattackTick !== undefined)) {
       if (state.postSamCounterattackLaunchTick === undefined) return;
       state.engineer.transportCounterattackTick ??= snapshot.tick;
@@ -5014,18 +5089,37 @@ function queueMissionEightEngineer(snapshot, friendly, hostiles, commands) {
       ));
       if (state.postSamCounterattackStage
         < missionEightEastAPostSamFirstTargetStage) {
-        transportTarget = missionEightEastAPostSamCounterattackRoute[
+        const routeTarget = missionEightEastAPostSamCounterattackRoute[
           state.postSamCounterattackStage
         ];
+        transportTarget = state.postSamCounterattackStage >= 3
+          ? (eastAEngineerApcHoldCell(hostiles, transport) ?? routeTarget)
+          : routeTarget;
       } else if (westernGun) {
         // Let the infantry and airstrike remove the turret while the loaded
         // APC waits outside its range. The engineer is the mission-critical
         // payload, not another member of the assault wave.
-        transportTarget = missionEightEastAEngineerTransportReserve;
-      }
-      else {
-        transportTarget = missionEightEastAEngineerUnloadApproach;
-        capturing = true;
+        transportTarget = eastAEngineerTransportUnderFire(hostiles, transport)
+          ? missionEightEastAEngineerTransportBasinHold
+          : missionEightEastAEngineerTransportReserve;
+      } else {
+        const apcHold = eastAEngineerApcHoldCell(hostiles, transport);
+        const nearUnload = missionEightDistance(
+          transport, missionEightEastAEngineerUnloadApproach,
+        ) <= 4;
+        const nearReserve = missionEightDistance(
+          transport, missionEightEastAEngineerTransportReserve,
+        ) <= 2;
+        if (apcHold) {
+          transportTarget = apcHold;
+        } else if (!nearReserve) {
+          transportTarget = missionEightEastAEngineerTransportReserve;
+        } else if (!nearUnload) {
+          transportTarget = missionEightEastAEngineerUnloadApproach;
+        } else {
+          transportTarget = missionEightEastAEngineerUnloadApproach;
+          capturing = true;
+        }
       }
     }
     if (capturing && missionEightDistance(transport, transportTarget) <= 1) {
