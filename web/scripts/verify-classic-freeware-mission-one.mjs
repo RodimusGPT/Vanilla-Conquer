@@ -2987,12 +2987,18 @@ const missionEightEastAPostFactLaunchCompletionCount =
 // combat stragglers (units still > this many cells from HAND when the A-10
 // is ordered) as the mop seed so engaged rifles stay on the kill.
 const missionEightEastAPostFactMopRifleCount = 12;
+// v520: 2 home-trained mop reserves after launch (never enter HAND mass).
+// Funded by post-launch GTWR/NUKE sells — does not cut the 26-rifle launch.
+const missionEightEastAMopReserveCount = 2;
+const missionEightEastAMopReserveBankCredits = 220;
 const missionEightEastAWeapReserveCredits = 2_000;
 const missionEightEastAHandStragglerMopDistance = 8;
 // Safe of HAND flame, close enough to rush AFLD after the kill (v454 hold).
 const missionEightEastAHandStragglerMopHold = { cellX: 20, cellY: 24 };
 // Post-HAND kite cell south of pad LTNK — wait for next A-10 (~73k).
 const missionEightEastAMopKiteHold = { cellX: 18, cellY: 28 };
+// Home mop-reserve park (south of pad, clear of HAND assault).
+const missionEightEastAMopReserveHold = { cellX: 22, cellY: 26 };
 // Home HARV hide from base BGGYs so the mission can live past remnant wipe.
 // Far SE corner — v502 HARV sat at 45,55 until death; push farther from BGGY.
 const missionEightEastAHarvSafeHold = { cellX: 58, cellY: 62 };
@@ -3508,6 +3514,8 @@ const missionEightState = {
   eastAMopKiteTick: undefined,
   eastAHarvFleeTick: undefined,
   eastAHarvFleeStopTick: undefined,
+  eastAMopReserveKeys: new Set(),
+  eastAMopReserveParkedKeys: new Set(),
   eastAHarvEscortKeys: new Set(),
   eastAMopCashReserveTick: undefined,
   postFactCleanupTransitStage: 0,
@@ -3968,9 +3976,8 @@ function observeMissionEightTurn(snapshot, friendly, hostiles) {
           state.postFactHomeDefenseKeys.add(key);
           state.postFactHomeDefenseCohortKeys.add(key);
         } else if (isMopTrailer) {
-          state.postFactCleanupCohortKeys.add(key);
-          state.eastAMopTrailerKeys.add(key);
-          state.strikeKeys.add(key);
+          // Home mop reserves never join HAND (no strikeKeys until stage ≥ 9).
+          state.eastAMopReserveKeys.add(key);
         } else {
           state.postFactCleanupCohortKeys.add(key);
           if (state.postFactCleanupLaunchTick === undefined) {
@@ -4651,21 +4658,27 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       state.eastAMopTankOrderedTick ??= snapshot.tick;
     }
   }
-  // Post-HAND credit source (v500): sell leftover NUKE/GTWR/SILO (not PYLE —
-  // barracks still trains mop E1s) once HAND is down. Raise the bank threshold
-  // so refunds fire immediately at funds=43 (v499 never sold). Keep FIX/PROC
-  // if present for harvest; only dump idle power/towers/silos.
-  if (mission.variant === "east-a" && eastAEarlyCapture(state)
-    && state.westCleanupStage >= 9
+  // v520: after launch, sell GTWR/NUKE for 2 mop-reserve E1s (never thin the
+  // 26-rifle HAND mass). Also sell after HAND for any further mop cash.
+  // Keep PYLE/FIX/PROC. Prior sells only after HAND never fired (funds=43,
+  // no sellable leftovers in TRACE dumps).
+  const handIsDown = state.westCleanupStage >= 9;
+  const mopReservesStarted = postFactStartsFor("MOP");
+  const needMopReserveCash = mission.variant === "east-a" && eastAEarlyCapture(state)
+    && state.postFactCleanupLaunchTick !== undefined
+    && mopReservesStarted < missionEightEastAMopReserveCount
+    && funds < missionEightEastAMopReserveBankCredits;
+  const postHandMopSell = mission.variant === "east-a" && eastAEarlyCapture(state)
+    && handIsDown
     && builtAssets.has("PYLE")
-    && funds < 800) {
+    && funds < 800;
+  if ((needMopReserveCash || postHandMopSell) && builtAssets.has("PYLE")) {
     const leftover = friendly.filter((object) => (
       object.type === 4
       && (object.typeName === "NUKE" || object.typeName === "GTWR" || object.typeName === "SILO")
       && (object.objectFlags & (1 << 5))
       && !state.soldStructureIds.has(object.id)
     )).toSorted((left, right) => (
-      // Prefer high refund: NUKE > GTWR > SILO
       (left.typeName === "NUKE" ? 0 : left.typeName === "GTWR" ? 1 : 2)
         - (right.typeName === "NUKE" ? 0 : right.typeName === "GTWR" ? 1 : 2)
       || right.strength - left.strength
@@ -4679,14 +4692,16 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         typeName: leftover.typeName,
         cellX: leftover.cellX,
         cellY: leftover.cellY,
-        reason: "post-HAND mop cash",
+        reason: handIsDown ? "post-HAND mop cash" : "post-launch mop reserve cash",
       });
       state.eastAMopCashReserveTick ??= snapshot.tick;
     }
   }
-  const handIsDown = state.westCleanupStage >= 9;
-  // v496: all 26 FACT slots fund the HAND kill. Mop E1s only after HAND is
-  // down (pre-HAND MOP in v495 diverted cash and thinned launch timing).
+  // FACT funds all 26 launch rifles. After launch: up to 2 MOP reserves that
+  // park south of the pad (never HAND). After HAND: more MOP if cash allows.
+  const mopCap = handIsDown
+    ? missionEightEastAPostFactMopRifleCount
+    : missionEightEastAMopReserveCount;
   const postFactFundingSale = mission.variant === "east-a" && builtAssets.has("PYLE")
     && state.postFactSales.PROC?.goneTick !== undefined && postFactStartsFor("PROC") < 3
       ? "PROC"
@@ -4696,16 +4711,12 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         ? "FACT"
       : mission.variant === "east-a" && builtAssets.has("PYLE")
         && eastAEarlyCapture(state)
-        && handIsDown
+        && state.postFactCleanupLaunchTick !== undefined
         && postFactStartsFor("FACT") >= missionEightEastAPostFactProductionCount
-        && postFactStartsFor("MOP") < missionEightEastAPostFactMopRifleCount
-        && (builtAssets.has("WEAP")
-          || state.eastAMopTankOrderedTick !== undefined
-          || funds < missionEightEastAWeapReserveCredits
-          || postFactStartsFor("MOP") < 4
-          || funds >= missionEightEastAWeapReserveCredits + 100
-          || state.eastAMopEconomyTick !== undefined
-          || state.eastAMopCashReserveTick !== undefined)
+        && postFactStartsFor("MOP") < mopCap
+        && funds >= 100
+        && (handIsDown
+          || postFactStartsFor("MOP") < missionEightEastAMopReserveCount)
         ? "MOP"
       : undefined;
   if (postFactFundingSale) {
@@ -4921,6 +4932,13 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       ? 2_000
       : mission.variant === "east-b" && eastBBankingForArmor ? 800
       : mission.variant === "east-b" && !eastBTankCohortReady ? 1_000
+      // Bank for post-launch mop-reserve E1s (do not free-spend the 2×E1 cash).
+      : mission.variant === "east-a"
+        && state.postFactCleanupLaunchTick !== undefined
+        && state.westCleanupStage < 9
+        && state.postFactProductionOrders.filter((order) => order.fundingSale === "MOP").length
+          < missionEightEastAMopReserveCount
+        ? missionEightEastAMopReserveBankCredits
       : mission.variant === "east-a" && state.allSamsDeadTick !== undefined ? 0
         : mission.variant === "east-a" && state.secondWaveLaunchTick !== undefined ? 0 : 400;
     const infantryPattern = mission.variant === "east-a"
@@ -6899,6 +6917,45 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
   if (mission.variant !== "east-a" || state.factDeathTick === undefined) return false;
   if (state.postFactCleanupLaunchTick === undefined) return false;
   state.westCleanupStartedTick ??= snapshot.tick;
+
+  // Home mop-reserve E1s (v522): one-shot park south, then silence until HAND
+  // is down. Continuous holds (v520–v521) thrashed GUN/HAND assault selection.
+  if (eastAEarlyCapture(state) && state.eastAMopReserveKeys.size > 0) {
+    for (const key of [...state.eastAMopReserveKeys]) {
+      if (!snapshot.objects.some((object) => (
+        objectKey(object) === key && object.strength > 0 && object.subObject === 0
+      ))) {
+        state.eastAMopReserveKeys.delete(key);
+        state.eastAMopReserveParkedKeys.delete(key);
+      }
+    }
+    const mopReserve = snapshot.objects.filter((object) => (
+      state.eastAMopReserveKeys.has(objectKey(object))
+      && object.strength > 0 && object.subObject === 0
+    ));
+    if (mopReserve.length > 0 && state.westCleanupStage < 9) {
+      const unparked = mopReserve.filter((unit) => (
+        !state.eastAMopReserveParkedKeys.has(objectKey(unit))
+      ));
+      if (unparked.length > 0) {
+        for (let index = 0; index < unparked.length; index += 10) {
+          queueMissionEightRole(commands, `east-a-mop-reserve-park-${index / 10}`,
+            unparked.slice(index, index + 10), missionEightEastAMopReserveHold,
+            MODIFIER_ALT, 1);
+        }
+        for (const unit of unparked) {
+          state.eastAMopReserveParkedKeys.add(objectKey(unit));
+        }
+      }
+    } else if (mopReserve.length > 0 && state.westCleanupStage >= 9) {
+      for (const unit of mopReserve) {
+        const key = objectKey(unit);
+        state.postFactCleanupCohortKeys.add(key);
+        state.strikeKeys.add(key);
+        state.productionGunPeelKeys.add(key);
+      }
+    }
+  }
 
   // After HAND assault opens: escort stays home to swat BGGYs. HARV flees SE
   // when HAND is down, threatened, or already hurt (v502 sat at 45,55). No

@@ -214,6 +214,18 @@ or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 
 **Next:** produce 1–2 mop E1s **before** HAND dies from leftover cash (without cutting launch 26); or post-HAND structure sell that actually fires; do not move seeds off pad until `westCleanupStage ≥ 9`.
 
+### v520–v522 mop-reserve E1s (post-launch, off HAND)
+
+| Change | Result |
+|---|---|
+| 2× MOP E1 after launch (FACT stays 26) | Produced @~55.4k from leftover cash (~293) |
+| Continuous/reserve hold thrash during GUN/HAND | **HAND fail** (v520–v521) |
+| **One-shot park** then silence until stage ≥ 9 (v522) | **HAND min 6**, AFLD min **877**, `cleanupAlive` 7 at HAND death, end **~70401** |
+
+**Retained foothold (v522):** capture@46620, launch@55290, MOP×2 reserve, HAND kill min **6** @66330, AFLD **877**, stage 9 with live mop until ~70k. Still short of next A-10 (~73.2k) by ~3k ticks; no post-HAND AFLD strike yet.
+
+**Next:** extend mop kite farther from pad LTNK/BGGY; keep HARV alive with mop screen after HAND; land AFLD A-10 at ~73k with pad clear for building-tarcom.
+
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 
 ### Scenario fail/win triggers (from packaged `SCG08EB.INI`)
