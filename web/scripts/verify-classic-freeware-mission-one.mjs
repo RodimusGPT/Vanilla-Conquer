@@ -7598,8 +7598,9 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           const postHandAfldElapsed = postHandAfldOrder !== undefined
             ? snapshot.tick - postHandAfldOrder.tick
             : -1;
+          // Dive after napalm has had time to land, then push AFLD.
           const shouldDive = postHandAfldDischarged
-            || (postHandAfldOrder !== undefined && postHandAfldElapsed >= 150);
+            || (postHandAfldOrder !== undefined && postHandAfldElapsed >= 90);
           const shouldKite = eastAEarlyCapture(state)
             && state.westCleanupStage >= 9
             && mopWave.length > 0
@@ -7611,8 +7612,11 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
               object.owner === HOUSE_GDI && object.typeName === "HARV"
               && object.subObject === 0 && object.strength > 0
             ));
+            // When air is due stay deep SE (clear of AFLD for building-tarcom).
+            // SW pad-clear (v526) walked ground units into threats so only A10s
+            // remained at game-over ~73481.
             const kiteCell = airSoon
-              ? missionEightEastAPadClearHold
+              ? missionEightEastAHarvSafeHold
               : (harvLive
                 ? { cellX: harvLive.cellX, cellY: harvLive.cellY }
                 : missionEightEastAPostHandRally);

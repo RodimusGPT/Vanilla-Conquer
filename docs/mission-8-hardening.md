@@ -239,6 +239,19 @@ or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 
 **Next:** keep one ground unit alive through AFLD A-10 discharge; confirm AFLD HP drop from building-tarcom; dive mop after strike.
 
+### v527–v532 ground through A-10 + AFLD damage
+
+| Change | Result |
+|---|---|
+| SE hold when air due (not SW pad-clear) | Lives to **~74.1k**; AFLD A-10 **ordered @73230** |
+| AFLD always building-tarcom | Still discharge dmg=false if DROP_BOMBS never near |
+| A-10 DROP_BOMBS: force Explosion_Damage on enemy AFLD within range | **AFLD min 505** (was ~901) — real structure chip; likely during HAND A-10 pass too |
+| Dedicated survivor unit | Thinned mop earlier (v528) — closed |
+
+**Retained foothold (v532):** HAND min **6**, AFLD min **~505**, AFLD A-10 order @73230 a10Observed, end ~**74124**, capture OK. Still red: ground wipe near A-10 window; AFLD not destroyed; discharge telemetry often before==after on the late strike.
+
+**Next:** keep 1 ground unit past AFLD discharge; dive mop when AFLD is soft; clear PROC/pad armor.
+
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 
 ### Scenario fail/win triggers (from packaged `SCG08EB.INI`)
