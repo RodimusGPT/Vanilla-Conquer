@@ -7144,7 +7144,10 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           }
           return true;
         }
-        // Air window open: tag 1 far healthy seed, rest on HAND (v454/v458).
+        // Air window open: tag 1 far healthy seed at open (v454/v458). v463
+        // flee-salvage never fired; v462 threat-clear regressed AFLD chip
+        // 877→913. v464: restore pure seed and start it on AFLD as soon as the
+        // HAND A-10 is ordered so the walk finishes while pad armor is busy.
         const handNearDead = hand && hand.strength <= (eastAEarlyCapture(state) ? 80 : 200);
         if (hand && eastAEarlyCapture(state)
           && state.eastAHandSoftMopKeys.size === 0
@@ -7155,10 +7158,12 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             && missionEightDistance(unit, hand) >= missionEightEastAHandStragglerMopDistance
             && unit.strength >= 35
           )).toSorted((left, right) => (
-            right.strength - left.strength
-            || missionEightDistance(right, hand) - missionEightDistance(left, hand)
+            missionEightDistance(right, hand) - missionEightDistance(left, hand)
+            || right.strength - left.strength
             || left.id - right.id
           ));
+          // v454/v458: 1 straggler keeps HAND kill and chips AFLD. v455 with 2
+          // lost the kill (min 113).
           const maxStragglers = Math.min(1, Math.max(0, peeled.length - 12));
           for (const unit of stragglers.slice(0, maxStragglers)) {
             state.eastAHandSoftMopKeys.add(objectKey(unit));
@@ -7172,29 +7177,30 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           ? peeled.filter((unit) => !state.eastAMopTrailerKeys.has(objectKey(unit))
             && !state.eastAHandSoftMopKeys.has(objectKey(unit)))
           : peeled;
-        const trailerHoldUnique = [...new Map([
-          ...peeled.filter((unit) => state.eastAMopTrailerKeys.has(objectKey(unit))
-            || state.eastAHandSoftMopKeys.has(objectKey(unit))),
+        const trailerHold = [
+          ...peeled.filter((unit) => state.eastAMopTrailerKeys.has(objectKey(unit))),
           ...snapshot.objects.filter((unit) => (
             (state.eastAHandSoftMopKeys.has(objectKey(unit))
               || state.eastAMopTrailerKeys.has(objectKey(unit)))
             && unit.owner === HOUSE_GDI && unit.strength > 0 && unit.subObject === 0
           )),
-        ].map((unit) => [objectKey(unit), unit])).values()];
+        ];
+        const trailerHoldUnique = [...new Map(
+          trailerHold.map((unit) => [objectKey(unit), unit]),
+        ).values()];
         if (trailerHoldUnique.length > 0 && hand) {
-          const afld = hostiles.find((hostile) => (
-            hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14
+          // v458 sent seed at HAND ≤200. v464 also starts the walk once HAND
+          // A-10 is ordered — pad armor is sticky on HAND then, and the seed
+          // reaches AFLD closer to the kill with more HP left.
+          const handAirOrdered = state.airstrike.orders.some((order) => (
+            order.target === "HAND" && order.cellX === 27 && order.cellY === 17
           ));
-          const seedThreat = hostiles.filter((hostile) => (
-            (hostile.typeName === "E4" || hostile.typeName === "BGGY")
-            && trailerHoldUnique.some((unit) => missionEightDistance(unit, hostile) <= 2)
-          )).toSorted((left, right) => left.strength - right.strength || left.id - right.id)[0];
-          if (seedThreat) {
-            for (let index = 0; index < trailerHoldUnique.length; index += 10) {
-              queueMissionEightRole(commands, `east-a-mop-seed-screen-${index / 10}`,
-                trailerHoldUnique.slice(index, index + 10), seedThreat, 0, 30);
-            }
-          } else if (afld && hand.strength <= 250) {
+          const afld = (hand.strength <= 200 || handAirOrdered)
+            ? hostiles.find((hostile) => (
+              hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14
+            ))
+            : undefined;
+          if (afld) {
             for (let index = 0; index < trailerHoldUnique.length; index += 10) {
               queueMissionEightRole(commands, `east-a-mop-seed-afld-${index / 10}`,
                 trailerHoldUnique.slice(index, index + 10), afld, MODIFIER_CTRL, 30);
@@ -7253,15 +7259,15 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
               handEngaged.slice(index, index + 10), hand, MODIFIER_CTRL, 30);
           }
         } else {
-          // HAND is down — press AFLD with mop seed + any survivors. Clear
-          // point-blank pad armor first so the seed is not free food (v458 dies
-          // within ~300 ticks on AFLD).
+          // HAND is down — press AFLD/PROC with trailers + any surviving
+          // mobiles (v458 priority). Do not divert to pad armor unless it is
+          // within 5 cells of the mop wave (v462 threat-clear lost AFLD DPS).
           if (eastAEarlyCapture(state)) {
             eastACommitPostFactHomeReserve(state, snapshot);
           }
           const mopPriority = new Map([
             ["AFLD", 0], ["PROC", 1], ["NUKE", 2], ["SILO", 3], ["HAND", 4],
-            ["E4", 5], ["BGGY", 6], ["LTNK", 7], ["ARTY", 8], ["MTNK", 9],
+            ["LTNK", 5], ["BGGY", 6], ["ARTY", 7], ["MTNK", 8],
           ]);
           const mopWave = [...new Map([
             ...peeled,
@@ -7283,30 +7289,15 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             state.eastAMopTrailerKeys.delete(key);
             state.eastAHandSoftMopKeys.delete(key);
           }
-          const afld = hostiles.find((hostile) => (
-            hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14
-          ));
-          // Point-blank threats on the seed take priority over AFLD DPS.
-          const seedThreat = mopWave.length > 0
-            ? hostiles.filter((hostile) => (
-              (hostile.typeName === "E4" || hostile.typeName === "BGGY"
-                || hostile.typeName === "LTNK" || hostile.typeName === "E1")
-              && mopWave.some((unit) => missionEightDistance(unit, hostile) <= 2)
-            )).toSorted((left, right) => (
-              left.strength - right.strength || left.id - right.id
-            ))[0]
-            : undefined;
-          const mopTarget = seedThreat
-            ?? (afld && eastAEarlyCapture(state) ? afld : undefined)
-            ?? hostiles.filter((hostile) => (
-              mopPriority.has(hostile.typeName)
-              && (hostile.type === 4
-                || mopWave.some((attacker) => missionEightDistance(attacker, hostile) <= 5))
-            )).toSorted((left, right) => (
-              (mopPriority.get(left.typeName) ?? 20) - (mopPriority.get(right.typeName) ?? 20)
-              || left.strength - right.strength
-              || left.id - right.id
-            ))[0] ?? target;
+          const mopTarget = hostiles.filter((hostile) => (
+            mopPriority.has(hostile.typeName)
+            && (hostile.type === 4
+              || mopWave.some((attacker) => missionEightDistance(attacker, hostile) <= 5))
+          )).toSorted((left, right) => (
+            (mopPriority.get(left.typeName) ?? 20) - (mopPriority.get(right.typeName) ?? 20)
+            || left.strength - right.strength
+            || left.id - right.id
+          ))[0] ?? target;
           const mopVehicles = mopWave.filter((unit) => unit.type === 2);
           const mopInfantry = mopWave.filter((unit) => unit.type === 1);
           const orderedMop = [...mopVehicles, ...mopInfantry];
@@ -7318,8 +7309,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           ));
           for (let index = 0; index < approach.length; index += 10) {
             queueMissionEightRole(commands, `east-a-west-prod-attack-${stage}-${index / 10}`,
-              approach.slice(index, index + 10), mopTarget,
-              mopTarget.type === 4 ? 0 : MODIFIER_ALT, 30);
+              approach.slice(index, index + 10), mopTarget, 0, 30);
           }
           for (let index = 0; index < engaged.length; index += 10) {
             queueMissionEightRole(commands, `east-a-west-prod-fire-${stage}-${index / 10}`,
