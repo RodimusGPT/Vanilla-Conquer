@@ -169,6 +169,18 @@ the remnant dies (~tick 67k; next A-10 ~73k).
 **Still open:** protect/reinforce the single straggler through AFLD+PROC clear;
 or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 
+### v466–v502 three-lever pass (2026-07-31)
+
+| Lever | Result |
+|---|---|
+| **A-10 building damage** | Stock wasm: A-10s spawn (`a10Observed`) but structure HP is almost always `before==after==min` (GUN/AFLD). Only reliable non-zero was unit LTNK 300→251 (v451). HAND 800→792 coincides with ground fire. Engine building-tarcom in `Place_Special_Blast` made early LTNK/GUN strikes actually hit and **splash-wiped the engineer path** (v496–v497 capture fail). Reverted; keep stock. |
+| **Survive to next A-10 (~73k)** | Best class still dies ~68.1k. HARV is last friend @~45,55 (strength ~68) then BGGY kill; flees do not stick. Aggressive HARV stop/flee or immediate post-HAND kite **lost HAND kill** (v498/v501). Keep v490 escort+flee cadence. |
+| **Post-HAND economy** | Launch mass must stay **26** (v495@24 bled 22→8 on GUN). MOP only after `westCleanupStage≥9`. Post-HAND NUKE/GTWR sells still yield nothing useful (funds stuck ~43). |
+
+**Retained foothold (v490 / v502):** capture@46620, launch@55290, HAND kill min 33 @66510, stage 9, AFLD min **920**, end ~68100. Best AFLD chip remains **v466 min ~797** (slightly weaker HAND survivors).
+
+**Next safe levers:** longer-lived mop seed without peeling HAND mass; get HARV to SE safe cell without thrash; A-10 only after friendlies clear the pad (engine building-tarcom only with empty friendly radius — capture-safe validation required).
+
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 
 ### Scenario fail/win triggers (from packaged `SCG08EB.INI`)

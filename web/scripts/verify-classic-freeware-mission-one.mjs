@@ -2973,14 +2973,12 @@ const missionEightEastAPostSamNorthFlankRoute = [
 const missionEightEastAWestScreenPriorities = new Map([
   ["BGGY", 0], ["LTNK", 1], ["ARTY", 2], ["E4", 3], ["E3", 4], ["E1", 5],
 ]);
-// All rifles: 26×E1 fits the captured-FACT refund. Mixing late E3s exhausted
-// cash before launchCompletionCount and the wave never left home.
-// v450: keep home PROC (and power) through cash conversion so harvest funds a
-// true mop wave / optional WEAP+MTNK after the full 26-rifle HAND kill.
-// 26×E1 is the proven HAND-kill mass (v428+). Reserving credit by cutting to 23
-// left the wave stuck on production GUN (v489). Post-HAND mop cash must come
-// from leftover base sales, not by thinning the kill.
+// 26×E1 is the proven HAND-kill mass (v428+ / v490). v495 launched at 24 and
+// bled 22→8 on the production GUN before charge — launch mass must stay 26.
+// Post-HAND mop cash comes from leftover base sales + mop E1s after stage≥9,
+// not by thinning the kill (v489@23 also stalled on GUN).
 const missionEightEastAPostFactRifleCount = 26;
+const missionEightEastAPostFactAssaultProductionCount = 26;
 const missionEightEastAPostFactProductionCount = 26;
 const missionEightEastAPostFactHomeDefenseCount = 2;
 const missionEightEastAPostFactLaunchCompletionCount =
@@ -3051,7 +3049,8 @@ function eastAShouldOpenHandAssault(state, snapshot, hand, ticksSinceAir) {
 function eastACommitPostFactHomeReserve(state, snapshot) {
   // Keep one permanent home escort for HARV/BGGY screen so the mission can
   // live to the next A-10 (~73k). Committing every home guard into HAND left
-  // base BGGYs free to kill the harvester by ~67.5k (v466–v481).
+  // base BGGYs free to kill the harvester by ~67.5k (v466–v481). Full commit
+  // also failed to help HAND when launch mass was already thin (v495).
   const reservists = snapshot.objects.filter((candidate) => (
     candidate.owner === HOUSE_GDI && candidate.subObject === 0
     && candidate.strength > 0
@@ -4648,13 +4647,14 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       state.eastAMopTankOrderedTick ??= snapshot.tick;
     }
   }
-  // Post-HAND credit source (v482): sell leftover NUKE/GTWR/SILO (not PYLE —
-  // barracks still trains mop E1s) once HAND is down. Refund pays for mop
-  // rifles that never entered the HAND kill.
+  // Post-HAND credit source (v500): sell leftover NUKE/GTWR/SILO (not PYLE —
+  // barracks still trains mop E1s) once HAND is down. Raise the bank threshold
+  // so refunds fire immediately at funds=43 (v499 never sold). Keep FIX/PROC
+  // if present for harvest; only dump idle power/towers/silos.
   if (mission.variant === "east-a" && eastAEarlyCapture(state)
     && state.westCleanupStage >= 9
     && builtAssets.has("PYLE")
-    && funds < 300) {
+    && funds < 800) {
     const leftover = friendly.filter((object) => (
       object.type === 4
       && (object.typeName === "NUKE" || object.typeName === "GTWR" || object.typeName === "SILO")
@@ -4681,6 +4681,8 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
     }
   }
   const handIsDown = state.westCleanupStage >= 9;
+  // v496: all 26 FACT slots fund the HAND kill. Mop E1s only after HAND is
+  // down (pre-HAND MOP in v495 diverted cash and thinned launch timing).
   const postFactFundingSale = mission.variant === "east-a" && builtAssets.has("PYLE")
     && state.postFactSales.PROC?.goneTick !== undefined && postFactStartsFor("PROC") < 3
       ? "PROC"
@@ -4690,16 +4692,16 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         ? "FACT"
       : mission.variant === "east-a" && builtAssets.has("PYLE")
         && eastAEarlyCapture(state)
-        && state.eastAMopEconomyTick !== undefined
+        && handIsDown
         && postFactStartsFor("FACT") >= missionEightEastAPostFactProductionCount
         && postFactStartsFor("MOP") < missionEightEastAPostFactMopRifleCount
-        // Harvest path OR post-HAND cash-from-sales path (v482).
         && (builtAssets.has("WEAP")
           || state.eastAMopTankOrderedTick !== undefined
-          || handIsDown
           || funds < missionEightEastAWeapReserveCredits
           || postFactStartsFor("MOP") < 4
-          || funds >= missionEightEastAWeapReserveCredits + 100)
+          || funds >= missionEightEastAWeapReserveCredits + 100
+          || state.eastAMopEconomyTick !== undefined
+          || state.eastAMopCashReserveTick !== undefined)
         ? "MOP"
       : undefined;
   if (postFactFundingSale) {
@@ -6896,7 +6898,8 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
 
   // After HAND assault opens: escort stays home to swat BGGYs; HARV flees SE
   // once HAND is down (or earlier if escort is already screening). Escort is
-  // never selected with the HAND wave (v478 thrash).
+  // never selected with the HAND wave (v478 thrash). v501 stop+aggressive
+  // flee thinned HAND kill — keep the v490 cadence that preserves the kill.
   if (eastAEarlyCapture(state) && state.productionHandAssaultTick !== undefined) {
     const escorts = snapshot.objects.filter((object) => (
       object.owner === HOUSE_GDI && object.strength > 0 && object.subObject === 0
@@ -7447,6 +7450,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           ));
           // Always chip AFLD first (v466 AFLD 793). Kite only after a short
           // chip window if remnant is still thin and next A-10 is far.
+          // v501 immediate-kite lost HAND (min 92) — keep v490 chip-first.
           const handDoneEntry = [...state.westCleanupProgress].reverse().find((entry) => (
             entry.typeName === "HAND" && entry.stage === 8
           ));
