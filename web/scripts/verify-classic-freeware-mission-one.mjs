@@ -5201,20 +5201,27 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
               // stole the A-10 at 66000 (v456) and lost the kill.
               return state.westCleanupStage >= 9 ? -2 : 2;
             }
-            if (unit.typeName === "LTNK" || unit.typeName === "BGGY") {
-              // v539: once AFLD is gone, pad armor is the mop killer — A-10 it
-              // before PROC so the thin remnant can finish the refinery.
+            if (unit.typeName === "PROC") {
+              // v541: after AFLD, A-10 PROC first (direct Take_Damage chips
+              // structures). Mop peels pad armor on the ground.
               if (state.westCleanupStage >= 9
                 && !hostiles.some((h) => (
                   h.typeName === "AFLD" && h.cellX === 29 && h.cellY === 14
                 ))) {
                 return -1;
               }
-              return 3;
+              return 4;
             }
-            if (unit.typeName === "PROC") {
-              // After AFLD: PROC next structure; still below pad armor rank.
-              return state.westCleanupStage >= 9 ? 0 : 4;
+            if (unit.typeName === "LTNK" || unit.typeName === "BGGY") {
+              // Pad armor second for A-10 (scen-8 unit Take_Damage); mop still
+              // focuses soft LTNK on the ground during the second dive.
+              if (state.westCleanupStage >= 9
+                && !hostiles.some((h) => (
+                  h.typeName === "AFLD" && h.cellX === 29 && h.cellY === 14
+                ))) {
+                return 0;
+              }
+              return 3;
             }
             return 5;
           };
@@ -7625,7 +7632,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             && (airReady
               || state.airstrike.pending !== undefined
               || postAfldAirDischarged
-              || (postAfldAirOrder !== undefined && postAfldAirElapsed >= 120));
+              || (postAfldAirOrder !== undefined && postAfldAirElapsed >= 150));
           const waitSecondAir = thinAfterAfld && !secondAirDue;
           // First dive: wait for chip or ~180t after order (discharge alone at
           // 90t still saw 676→676 with mop walking into pad early).
@@ -7633,11 +7640,13 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             || (diveOrder !== undefined && diveElapsed >= 180)
             || (diveDischarged && diveElapsed >= 150)
             || (!afld && diveDischarged);
-          // Second dive: only after the post-AFLD A-10 has actually fired.
+          // Second dive: wait until post-AFLD A-10 has aged past napalm so
+          // direct Take_Damage has landed (v540 dived at discharge and died).
           const secondDiveReady = Boolean(state.eastAAfldClearedTick)
             && !afld
-            && (postAfldAirDischarged
-              || (postAfldAirOrder !== undefined && postAfldAirElapsed >= 120));
+            && postAfldAirOrder !== undefined
+            && (postAfldAirDischarged || postAfldAirElapsed >= 150)
+            && postAfldAirElapsed >= 150;
           const shouldDive = !waitSecondAir && (
             (afld && firstDiveReady)
             || (!afld && !thinAfterAfld && firstDiveReady)
@@ -7662,24 +7671,30 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
                 mopWave.slice(index, index + 10), kiteCell, MODIFIER_ALT, 30);
             }
           } else {
-            // Dive: AFLD first; once gone peel pad armor then PROC. Far units
-            // path via south approach so they do not walk the LTNK corridor.
-            const padThreat = hostiles.filter((hostile) => (
+            // Dive: AFLD first. Once gone, thin remnant ALL-IN softest pad
+            // armor then PROC (v540 split/structure focus died on LTNKs).
+            // Far units path via south approach.
+            const padThreats = hostiles.filter((hostile) => (
               (hostile.typeName === "LTNK" || hostile.typeName === "BGGY")
-              && missionEightDistance(hostile, { cellX: 27, cellY: 16 }) <= 8
+              && missionEightDistance(hostile, { cellX: 27, cellY: 16 }) <= 10
             )).toSorted((left, right) => (
               left.strength - right.strength
               || missionEightDistance(left, { cellX: 27, cellY: 16 })
                 - missionEightDistance(right, { cellX: 27, cellY: 16 })
               || left.id - right.id
-            ))[0];
-            // Target priority: AFLD > soft BGGY/hurt LTNK on pad > PROC > hard LTNK.
+            ));
+            const padThreat = padThreats[0];
+            const thinDive = mopWave.length <= missionEightEastAMopSecondAirHoldMax;
             let mopTarget = afld ?? proc ?? target;
-            if (!afld && padThreat) {
-              const softPad = padThreat.strength <= 160
+            if (!afld) {
+              // Thin second dive: always clear pad armor before PROC.
+              if (thinDive && padThreat) {
+                mopTarget = padThreat;
+              } else if (padThreat && (
+                padThreat.strength <= 180
                 || padThreat.typeName === "BGGY"
-                || mopWave.length >= 4;
-              if (softPad || !proc) {
+                || mopWave.length >= 4
+              )) {
                 mopTarget = padThreat;
               } else if (proc) {
                 mopTarget = proc;
@@ -7689,29 +7704,31 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
               right.strength - left.strength || left.id - right.id
             ));
             // Far units rally south of pad first (shorter, safer path).
+            const approachCell = thinDive
+              ? missionEightEastAMopAfldApproach
+              : missionEightEastAMopAfldApproach;
             const far = orderedMop.filter((attacker) => (
-              missionEightDistance(attacker, mopTarget) > 10
+              missionEightDistance(attacker, mopTarget) > 8
             ));
             const near = orderedMop.filter((attacker) => (
-              missionEightDistance(attacker, mopTarget) <= 10
+              missionEightDistance(attacker, mopTarget) <= 8
             ));
             if (far.length > 0) {
               for (let index = 0; index < far.length; index += 10) {
                 queueMissionEightRole(commands, `east-a-mop-approach-${index / 10}`,
-                  far.slice(index, index + 10), missionEightEastAMopAfldApproach,
-                  MODIFIER_ALT, 30);
+                  far.slice(index, index + 10), approachCell, MODIFIER_ALT, 24);
               }
             }
+            // Thin dive: entire near group on one target (no screen peel).
+            // Healthy wave: one screen on secondary pad threat if multi.
             let diveForce = near;
-            // With a healthy wave, one rifle peels the closest pad threat so
-            // the rest stay on AFLD/PROC. Thin waves all focus the structure.
-            if (padThreat && diveForce.length >= 4
-              && mopTarget !== padThreat
-              && diveForce.some((unit) => missionEightDistance(unit, padThreat) <= 4)) {
+            if (!thinDive && padThreats.length >= 2 && diveForce.length >= 4
+              && mopTarget !== padThreats[1]
+              && diveForce.some((unit) => missionEightDistance(unit, padThreats[1]) <= 4)) {
               const screen = diveForce.slice(-1);
               diveForce = diveForce.slice(0, -1);
               queueMissionEightRole(commands, "east-a-mop-dive-screen",
-                screen, padThreat, 0, 30);
+                screen, padThreats[1], 0, 30);
             }
             const approach = diveForce.filter((attacker) => (
               missionEightDistance(attacker, mopTarget) > 2
@@ -7721,11 +7738,11 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             ));
             for (let index = 0; index < approach.length; index += 10) {
               queueMissionEightRole(commands, `east-a-west-prod-attack-${stage}-${index / 10}`,
-                approach.slice(index, index + 10), mopTarget, 0, 30);
+                approach.slice(index, index + 10), mopTarget, 0, 24);
             }
             for (let index = 0; index < engaged.length; index += 10) {
               queueMissionEightRole(commands, `east-a-west-prod-fire-${stage}-${index / 10}`,
-                engaged.slice(index, index + 10), mopTarget, MODIFIER_CTRL, 30);
+                engaged.slice(index, index + 10), mopTarget, MODIFIER_CTRL, 24);
             }
           }
         }

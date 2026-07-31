@@ -281,7 +281,18 @@ or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 
 **Retained foothold (v540):** HAND min **6**, AFLD destroyed min **176**, second A-10 @80460 on LTNK, PROC min **645**, end ~**82811**. Still red: remnant dies on second pad dive; north base remains.
 
-**Next:** keep ≥2 through second dive; A-10/mop kill soft LTNK then PROC; clear north.
+### v541–v542 PROC kill + thin second dive + A-10 Take_Damage
+
+| Change | Result |
+|---|---|
+| Thin second dive: all-in soft pad then PROC; delay 150t | Survives to second A-10 @80460 |
+| A-10 rank PROC after AFLD (mop peels pad) | Order **@80460 PROC** |
+| Direct Take_Damage + Explosion on AFLD/PROC tarcom; scen-8 unit AP | Discharge still often flat; **mop kills AFLD+PROC** |
+| Stage advances to production NUKE | **buildingsKilled 10**, stage **11** |
+
+**Retained foothold (v542):** HAND min **6**, **AFLD + PROC destroyed**, second A-10 @80460 on PROC, NUKE min **~299**, end ~**82k**. Still red: remnant dies on NUKE/pad leftovers; north base remains.
+
+**Next:** keep ≥2 through NUKE mop; third A-10 / clear north SILOs.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 
