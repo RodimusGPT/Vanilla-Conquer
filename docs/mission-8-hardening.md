@@ -129,7 +129,7 @@ western stages 0–6, holds at safe staging, opens HAND assault at
 |---|---|
 | v412 class | HAND min ~104, no kill |
 | v424 | HAND min ~45, AI repairs, remnant dies |
-| **v428 / v431 / v432 / v436** | **HAND killed** (`westCleanupStage` 9 @~66600); AFLD/PROC remain; cleanupAlive 0 |
+| **v428 / v431 / v432 / v436 / v440 / v443 / v449** | **HAND killed** (`westCleanupStage` 9 @~66600); AFLD/PROC remain; cleanupAlive 0 |
 | v423 | Closer ridge hold — wiped before HAND damage |
 | v425 | Finisher reserve whole fight — HAND min 350, no kill |
 | v430 | Early launch@18 — died on production GUN |
@@ -138,17 +138,27 @@ western stages 0–6, holds at safe staging, opens HAND assault at
 | v437 | Launch@22 + trailers held off HAND — died on production GUN |
 | v438 | Home guards held off HAND — HAND min 51, no kill; home died at base |
 | v439 | open@6500 full mass — wave wiped early, HAND min 416 |
+| v441 | Skip early retained-power sale — GDI wiped ~42k (pre-capture) |
+| v442 | Bank 2 E1s from FACT (24 main) — died on production GUN |
+| v446 | Soft-pull 3 on HAND A-10 order — cA=3 live, HAND min 67 (repairs) |
+| v447–v448 | Soft-pull 2 + recommit — HAND min **17**, still repairs; no kill |
 
 **Current blocker (east-a):** post-HAND mop. The HAND kill requires the full
-rifle mass (any reserve of 2+ prevents the kill). That same mass dies on the
-last ~237 HP, leaving AFLD ~849 / PROC ~801. Scavenged leftovers are not enough.
+rifle mass. Soft-pull seeds preserve 2–3 rifles but leave HAND at 17–67 HP
+(AI repairs). Full-mass kill zeros cleanupAlive; AFLD ~849 / PROC ~801 remain.
+Post-HAND structure sales find nothing useful (funds stay ~43); no free MTNK
+survives to mop. Design-A WEAP path remains blocked (PROC sold mid-game).
 
-**Next levers (not yet proven):**
-1. Extra economy after FACT sale (more than 26 E1s) that arrives as a *true*
-   second wave after HAND is already dead — without thinning GUN/HAND mass.
-2. More efficient HAND kill (engine-assisted focus / better A-10 timing) that
-   leaves ≥6 rifles alive for mop.
-3. Vehicle mop (MTNK) if a non-Design-A cash path appears.
+**Closed three-lever pass (v441–v449):**
+1. **Extra economy** — thinning the 26-rifle FACT wave fails GUN; mid-game
+   power-sale skip fails pre-capture; late sales yield no mop E1s.
+2. **Efficient HAND kill / soft-pull** — best min HP 17 with live seed, but no
+   kill; full mass required for HAND death.
+3. **Vehicle mop** — no surviving MTNK/JEEP at HAND time; WEAP not buildable.
+
+**Still open:** engine-level focus / extra A-10 damage on HAND so full mass is
+not required for the last ~20 HP; or a harvest/PROC rebuild path that funds a
+true post-kill second wave without selling the early-game economy.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 

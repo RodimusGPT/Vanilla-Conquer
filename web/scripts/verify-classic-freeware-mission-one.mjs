@@ -2975,16 +2975,16 @@ const missionEightEastAWestScreenPriorities = new Map([
 ]);
 // All rifles: 26×E1 fits the captured-FACT refund. Mixing late E3s exhausted
 // cash before launchCompletionCount and the wave never left home.
-// v428/v432 (full wave, open@6800) kills HAND then dies on the last ~237 HP
-// with AFLD/PROC still up. Closed mop levers (v433–v439): finisher reserves,
-// pure mop reserves, launch@22 trailers, holding home guards off HAND,
-// open@6500. HAND kill requires the full mass; mop needs extra units or a
-// more efficient kill that leaves survivors.
+// v428/v432/v440 (full 26, open@6800) kills HAND. Soft-pull seeds (v446–v448)
+// preserve rifles but leave HAND at min 17–67 (repairs). Keep full mass on
+// HAND; mop economy + vehicle scavenge run after the kill when possible.
 const missionEightEastAPostFactRifleCount = 26;
 const missionEightEastAPostFactProductionCount = 26;
 const missionEightEastAPostFactHomeDefenseCount = 2;
 const missionEightEastAPostFactLaunchCompletionCount =
   missionEightEastAPostFactProductionCount;
+// Extra mop E1s after HAND assault opens, paid by leftover structure sales.
+const missionEightEastAPostFactMopRifleCount = 8;
 // Launch once the production turret has been airstrike-softened (~tick 51k)
 // rather than waiting until 54.5k while it repairs back to full.
 const missionEightEastAPostFactLaunchMinTick = 52_000;
@@ -3050,6 +3050,7 @@ function eastACommitPostFactHomeReserve(state, snapshot) {
     state.productionGunPeelKeys.add(key);
   }
 }
+
 
 function eastAPrepareEarlyCaptureCleanup(state, hostiles, snapshot) {
   if (!eastAEarlyCapture(state)) return;
@@ -3473,6 +3474,11 @@ const missionEightState = {
   postFactProductionOrders: [],
   postFactProductionCompletions: [],
   postFactCleanupLaunchTick: undefined,
+  // v441 mop levers: soft-retreat keys, trailer keys, mop-economy gate.
+  eastAHandSoftMopKeys: new Set(),
+  eastAHandSoftMopTick: undefined,
+  eastAMopTrailerKeys: new Set(),
+  eastAMopEconomyTick: undefined,
   postFactCleanupTransitStage: 0,
   postFactCleanupTransitProgress: [],
   southWithdrawalTargets: new Map(),
@@ -3926,9 +3932,14 @@ function observeMissionEightTurn(snapshot, friendly, hostiles) {
         if (!producedAtPyle) continue;
         clearMissionEightUnitRoleKey(key);
         const completionIndex = state.postFactProductionCompletions.length;
-        if (completionIndex < missionEightEastAPostFactHomeDefenseCount) {
+        const isMopTrailer = pendingPostFactOrder.fundingSale === "MOP";
+        if (completionIndex < missionEightEastAPostFactHomeDefenseCount && !isMopTrailer) {
           state.postFactHomeDefenseKeys.add(key);
           state.postFactHomeDefenseCohortKeys.add(key);
+        } else if (isMopTrailer) {
+          state.postFactCleanupCohortKeys.add(key);
+          state.eastAMopTrailerKeys.add(key);
+          state.strikeKeys.add(key);
         } else {
           state.postFactCleanupCohortKeys.add(key);
           if (state.postFactCleanupLaunchTick === undefined) {
@@ -3944,6 +3955,7 @@ function observeMissionEightTurn(snapshot, friendly, hostiles) {
           cellY: object.cellY,
           fundingSale: pendingPostFactOrder.fundingSale,
           orderTick: pendingPostFactOrder.tick,
+          mopTrailer: isMopTrailer,
         });
       }
     }
@@ -4513,6 +4525,34 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
   const postFactStartsFor = (fundingSale) => state.postFactProductionOrders.filter((order) => (
     order.fundingSale === fundingSale
   )).length;
+  // Lever 1: fire mop economy as soon as HAND assault opens so refunds can
+  // train trailers during the kill window (v443 sold too late / nothing left).
+  if (mission.variant === "east-a" && eastAEarlyCapture(state)
+    && state.postFactCleanupLaunchTick !== undefined
+    && state.productionHandAssaultTick !== undefined
+    && state.eastAMopEconomyTick === undefined) {
+    const mopSales = friendly.filter((object) => (
+      object.type === 4
+      && (object.objectFlags & (1 << 5))
+      && !state.soldStructureIds.has(object.id)
+      && object.typeName !== "PYLE"
+      && (object.typeName === "NUKE" || object.typeName === "SILO"
+        || object.typeName === "GTWR" || object.typeName === "FIX"
+        || object.typeName === "HQ")
+    ));
+    for (const structure of mopSales) {
+      sellMissionSevenStructure(commands, structure);
+      state.soldStructureIds.add(structure.id);
+      state.saleOrders.push({
+        tick: snapshot.tick,
+        typeName: structure.typeName,
+        cellX: structure.cellX,
+        cellY: structure.cellY,
+        reason: "post-HAND mop economy",
+      });
+    }
+    state.eastAMopEconomyTick = snapshot.tick;
+  }
   const postFactFundingSale = mission.variant === "east-a" && builtAssets.has("PYLE")
     && state.postFactSales.PROC?.goneTick !== undefined && postFactStartsFor("PROC") < 3
       ? "PROC"
@@ -4520,6 +4560,12 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         && state.engineer.factSale.goneTick !== undefined
         && postFactStartsFor("FACT") < missionEightEastAPostFactProductionCount
         ? "FACT"
+      : mission.variant === "east-a" && builtAssets.has("PYLE")
+        && eastAEarlyCapture(state)
+        && state.eastAMopEconomyTick !== undefined
+        && postFactStartsFor("FACT") >= missionEightEastAPostFactProductionCount
+        && postFactStartsFor("MOP") < missionEightEastAPostFactMopRifleCount
+        ? "MOP"
       : undefined;
   if (postFactFundingSale) {
     const postFactStartIndex = postFactStartsFor(postFactFundingSale);
@@ -7025,22 +7071,33 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           }
           return true;
         }
-        // Air window open: whole wave on HAND. Only peel face-flame while HAND
-        // is still healthy — once it is nearly dead, ignore micro so the last
-        // volleys finish it with more rifles still standing for AFLD.
-        // Early-capture: keep peeling point-blank E4 until HAND is almost dead.
-        // Full wave on HAND (v432 kill). Trailer mop rifles come from mop economy.
+        // Air window open: full wave on HAND (v432 kill). Soft-pull seeds are
+        // closed (v446–v448). Trailer E1s from mop economy stay off HAND.
         const handNearDead = hand && hand.strength <= (eastAEarlyCapture(state) ? 80 : 200);
+        const handEligible = hand
+          ? peeled.filter((unit) => !state.eastAMopTrailerKeys.has(objectKey(unit)))
+          : peeled;
+        const trailerHold = hand
+          ? peeled.filter((unit) => state.eastAMopTrailerKeys.has(objectKey(unit)))
+          : [];
+        if (trailerHold.length > 0 && hand) {
+          const hold = eastAHandWaitHoldCell(state);
+          for (let index = 0; index < trailerHold.length; index += 10) {
+            queueMissionEightRole(commands, `east-a-mop-trailer-hold-${index / 10}`,
+              trailerHold.slice(index, index + 10), hold, MODIFIER_ALT, 45);
+          }
+        }
+        const handAssaultWave = handEligible;
         const closeFlame = !handNearDead ? hostiles.filter((hostile) => (
           hostile.typeName === "E4"
-          && peeled.some((attacker) => missionEightDistance(attacker, hostile) <= 2)
+          && handAssaultWave.some((attacker) => missionEightDistance(attacker, hostile) <= 2)
         )).toSorted((left, right) => left.strength - right.strength || left.id - right.id)[0]
           : undefined;
         if (closeFlame) {
-          const threatened = peeled.filter((attacker) => (
+          const threatened = handAssaultWave.filter((attacker) => (
             missionEightDistance(attacker, closeFlame) <= 2
           ));
-          const rest = peeled.filter((attacker) => (
+          const rest = handAssaultWave.filter((attacker) => (
             missionEightDistance(attacker, closeFlame) > 2
           ));
           for (let index = 0; index < threatened.length; index += 10) {
@@ -7061,10 +7118,10 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           return true;
         }
         if (hand) {
-          const handEngaged = peeled.filter((attacker) => (
+          const handEngaged = handAssaultWave.filter((attacker) => (
             missionEightDistance(attacker, hand) <= 2
           ));
-          const handApproach = peeled.filter((attacker) => (
+          const handApproach = handAssaultWave.filter((attacker) => (
             missionEightDistance(attacker, hand) > 2
           ));
           for (let index = 0; index < handApproach.length; index += 10) {
@@ -7076,24 +7133,26 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
               handEngaged.slice(index, index + 10), hand, MODIFIER_CTRL, 30);
           }
         } else {
-          // HAND is down — press AFLD/PROC immediately. Early-capture used to
-          // park the remnant for the next A-10; v428 showed the remnant is
-          // dead within ~300 ticks, so any survivor must mop now. Commit the
-          // home-guard mop reserve and scavenge any other live GDI mobiles.
+          // HAND is down — press AFLD/PROC with trailers + any surviving
+          // vehicles (lever 3). Full-mass kill leaves cleanupAlive 0, so this
+          // path matters when mop economy delivers late E1s or a free tank.
           if (eastAEarlyCapture(state)) {
             eastACommitPostFactHomeReserve(state, snapshot);
           }
           const mopPriority = new Map([
             ["AFLD", 0], ["PROC", 1], ["NUKE", 2], ["SILO", 3], ["HAND", 4],
-            ["LTNK", 5], ["BGGY", 6], ["ARTY", 7],
+            ["LTNK", 5], ["BGGY", 6], ["ARTY", 7], ["MTNK", 8],
           ]);
           const mopWave = [...new Map([
             ...peeled,
+            ...trailerHold,
             ...snapshot.objects.filter((candidate) => (
               candidate.owner === HOUSE_GDI
               && (candidate.type === 1 || candidate.type === 2)
               && candidate.subObject === 0
               && candidate.strength > 0
+              && candidate.typeName !== "MCV"
+              && candidate.typeName !== "HARV"
             )),
           ].map((unit) => [objectKey(unit), unit])).values()];
           for (const unit of mopWave) {
@@ -7101,6 +7160,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             state.postFactCleanupCohortKeys.add(key);
             state.strikeKeys.add(key);
             state.productionGunPeelKeys.add(key);
+            state.eastAMopTrailerKeys.delete(key);
           }
           const mopTarget = hostiles.filter((hostile) => (
             mopPriority.has(hostile.typeName)
@@ -7111,10 +7171,13 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             || left.strength - right.strength
             || left.id - right.id
           ))[0] ?? target;
-          const approach = mopWave.filter((attacker) => (
+          const mopVehicles = mopWave.filter((unit) => unit.type === 2);
+          const mopInfantry = mopWave.filter((unit) => unit.type === 1);
+          const orderedMop = [...mopVehicles, ...mopInfantry];
+          const approach = orderedMop.filter((attacker) => (
             missionEightDistance(attacker, mopTarget) > 2
           ));
-          const engaged = mopWave.filter((attacker) => (
+          const engaged = orderedMop.filter((attacker) => (
             missionEightDistance(attacker, mopTarget) <= 2
           ));
           for (let index = 0; index < approach.length; index += 10) {
