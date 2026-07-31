@@ -2977,6 +2977,9 @@ const missionEightEastAWestScreenPriorities = new Map([
 // cash before launchCompletionCount and the wave never left home.
 // v450: keep home PROC (and power) through cash conversion so harvest funds a
 // true mop wave / optional WEAP+MTNK after the full 26-rifle HAND kill.
+// 26×E1 is the proven HAND-kill mass (v428+). Reserving credit by cutting to 23
+// left the wave stuck on production GUN (v489). Post-HAND mop cash must come
+// from leftover base sales, not by thinning the kill.
 const missionEightEastAPostFactRifleCount = 26;
 const missionEightEastAPostFactProductionCount = 26;
 const missionEightEastAPostFactHomeDefenseCount = 2;
@@ -3046,17 +3049,27 @@ function eastAShouldOpenHandAssault(state, snapshot, hand, ticksSinceAir) {
 
 
 function eastACommitPostFactHomeReserve(state, snapshot) {
-  for (const reservist of snapshot.objects.filter((candidate) => (
+  // Keep one permanent home escort for HARV/BGGY screen so the mission can
+  // live to the next A-10 (~73k). Committing every home guard into HAND left
+  // base BGGYs free to kill the harvester by ~67.5k (v466–v481).
+  const reservists = snapshot.objects.filter((candidate) => (
     candidate.owner === HOUSE_GDI && candidate.subObject === 0
     && candidate.strength > 0
     && state.postFactHomeDefenseKeys.has(objectKey(candidate))
-  ))) {
+  )).toSorted((left, right) => (
+    right.strength - left.strength || left.id - right.id
+  ));
+  const keepEscort = eastAEarlyCapture(state) ? 1 : 0;
+  for (const reservist of reservists.slice(0, Math.max(0, reservists.length - keepEscort))) {
     const key = objectKey(reservist);
     state.postFactHomeDefenseKeys.delete(key);
     state.postFactHomeDefenseCohortKeys.delete(key);
     state.postFactCleanupCohortKeys.add(key);
     state.strikeKeys.add(key);
     state.productionGunPeelKeys.add(key);
+  }
+  for (const escort of reservists.slice(Math.max(0, reservists.length - keepEscort))) {
+    state.eastAHarvEscortKeys.add(objectKey(escort));
   }
 }
 
@@ -3492,6 +3505,8 @@ const missionEightState = {
   eastAMopTankKeys: new Set(),
   eastAMopKiteTick: undefined,
   eastAHarvFleeTick: undefined,
+  eastAHarvEscortKeys: new Set(),
+  eastAMopCashReserveTick: undefined,
   postFactCleanupTransitStage: 0,
   postFactCleanupTransitProgress: [],
   southWithdrawalTargets: new Map(),
@@ -4462,6 +4477,8 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
           object.type === 4 && object.typeName === "NUKE"
           && object.id === state.retainedPowerId && !state.soldStructureIds.has(object.id)
         ));
+        // Sell GTWR + retained NUKE as classic (v484 keep-NUKE broke capture
+        // cash timing). Post-HAND mop cash instead sells any leftover after HAND.
         const supportStructures = [surplusTower, retainedPower].filter(Boolean);
         state.pyleConversion = {
           orderTick: snapshot.tick,
@@ -4631,6 +4648,39 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       state.eastAMopTankOrderedTick ??= snapshot.tick;
     }
   }
+  // Post-HAND credit source (v482): sell leftover NUKE/GTWR/SILO (not PYLE —
+  // barracks still trains mop E1s) once HAND is down. Refund pays for mop
+  // rifles that never entered the HAND kill.
+  if (mission.variant === "east-a" && eastAEarlyCapture(state)
+    && state.westCleanupStage >= 9
+    && builtAssets.has("PYLE")
+    && funds < 300) {
+    const leftover = friendly.filter((object) => (
+      object.type === 4
+      && (object.typeName === "NUKE" || object.typeName === "GTWR" || object.typeName === "SILO")
+      && (object.objectFlags & (1 << 5))
+      && !state.soldStructureIds.has(object.id)
+    )).toSorted((left, right) => (
+      // Prefer high refund: NUKE > GTWR > SILO
+      (left.typeName === "NUKE" ? 0 : left.typeName === "GTWR" ? 1 : 2)
+        - (right.typeName === "NUKE" ? 0 : right.typeName === "GTWR" ? 1 : 2)
+      || right.strength - left.strength
+      || left.id - right.id
+    ))[0];
+    if (leftover) {
+      sellMissionSevenStructure(commands, leftover);
+      state.soldStructureIds.add(leftover.id);
+      state.saleOrders.push({
+        tick: snapshot.tick,
+        typeName: leftover.typeName,
+        cellX: leftover.cellX,
+        cellY: leftover.cellY,
+        reason: "post-HAND mop cash",
+      });
+      state.eastAMopCashReserveTick ??= snapshot.tick;
+    }
+  }
+  const handIsDown = state.westCleanupStage >= 9;
   const postFactFundingSale = mission.variant === "east-a" && builtAssets.has("PYLE")
     && state.postFactSales.PROC?.goneTick !== undefined && postFactStartsFor("PROC") < 3
       ? "PROC"
@@ -4643,10 +4693,10 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         && state.eastAMopEconomyTick !== undefined
         && postFactStartsFor("FACT") >= missionEightEastAPostFactProductionCount
         && postFactStartsFor("MOP") < missionEightEastAPostFactMopRifleCount
-        // Leave a WEAP reserve once harvest has stacked enough; still train mop
-        // E1s while below the reserve or after WEAP exists/ordered.
+        // Harvest path OR post-HAND cash-from-sales path (v482).
         && (builtAssets.has("WEAP")
           || state.eastAMopTankOrderedTick !== undefined
+          || handIsDown
           || funds < missionEightEastAWeapReserveCredits
           || postFactStartsFor("MOP") < 4
           || funds >= missionEightEastAWeapReserveCredits + 100)
@@ -6844,20 +6894,44 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
   if (state.postFactCleanupLaunchTick === undefined) return false;
   state.westCleanupStartedTick ??= snapshot.tick;
 
-  // Park home HARV in the SE corner after HAND dies. Starting earlier thinned
-  // the HAND kill (v478/v480). Remnant still dies ~66.6k; HARV buys ~1k more
-  // ticks but not enough alone to reach the next A-10 (~73.2k).
-  if (eastAEarlyCapture(state) && state.westCleanupStage >= 9) {
+  // After HAND assault opens: escort stays home to swat BGGYs; HARV flees SE
+  // once HAND is down (or earlier if escort is already screening). Escort is
+  // never selected with the HAND wave (v478 thrash).
+  if (eastAEarlyCapture(state) && state.productionHandAssaultTick !== undefined) {
+    const escorts = snapshot.objects.filter((object) => (
+      object.owner === HOUSE_GDI && object.strength > 0 && object.subObject === 0
+      && (state.eastAHarvEscortKeys.has(objectKey(object))
+        || state.postFactHomeDefenseKeys.has(objectKey(object)))
+    ));
     const harvesters = snapshot.objects.filter((object) => (
       object.owner === HOUSE_GDI && object.typeName === "HARV"
       && object.subObject === 0 && object.strength > 0
     ));
-    if (harvesters.length > 0) {
+    const baseThreat = hostiles.filter((hostile) => (
+      (hostile.typeName === "BGGY" || hostile.typeName === "LTNK" || hostile.typeName === "E1")
+      && (harvesters.some((harv) => missionEightDistance(harv, hostile) <= 12)
+        || escorts.some((escort) => missionEightDistance(escort, hostile) <= 8)
+        || missionEightDistance(hostile, { cellX: 42, cellY: 52 }) <= 10)
+    )).toSorted((left, right) => left.strength - right.strength || left.id - right.id)[0];
+    if (escorts.length > 0 && baseThreat) {
+      for (let index = 0; index < escorts.length; index += 10) {
+        queueMissionEightRole(commands, `east-a-harv-escort-${index / 10}`,
+          escorts.slice(index, index + 10), baseThreat, 0, 45);
+      }
+    } else if (escorts.length > 0 && harvesters.length > 0) {
+      // Hold near HARV path so we re-engage when BGGYs arrive.
+      for (let index = 0; index < escorts.length; index += 10) {
+        queueMissionEightRole(commands, `east-a-harv-escort-hold-${index / 10}`,
+          escorts.slice(index, index + 10), { cellX: 48, cellY: 54 }, MODIFIER_ALT, 90);
+      }
+    }
+    if (harvesters.length > 0 && (state.westCleanupStage >= 9 || baseThreat)) {
       state.eastAHarvFleeTick ??= snapshot.tick;
+      // Force move (no ALT) so pathing is aggressive toward SE safe cell.
       for (let index = 0; index < harvesters.length; index += 10) {
         queueMissionEightRole(commands, `east-a-harv-flee-${index / 10}`,
           harvesters.slice(index, index + 10), missionEightEastAHarvSafeHold,
-          MODIFIER_ALT, 45);
+          0, 45);
       }
     }
   }
