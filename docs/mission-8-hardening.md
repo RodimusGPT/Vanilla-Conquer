@@ -130,7 +130,9 @@ western stages 0–6, holds at safe staging, opens HAND assault at
 | v412 class | HAND min ~104, no kill |
 | v424 | HAND min ~45, AI repairs, remnant dies |
 | **v428 / v431 / v432 / v436 / v440 / v443 / v449** | **HAND killed** (`westCleanupStage` 9 @~66600); AFLD/PROC remain; cleanupAlive 0 |
-| **v454 / v457 / v458** | **HAND killed + mop seed**: 1 approach straggler parked at assault open; AFLD chipped **1000→877**; seed dies ~300 ticks later |
+| **v454 / v457 / v458 / v462** | **HAND killed + mop seed**: 1 straggler at assault open; AFLD **1000→877–913**; seed dies ~300 ticks later |
+| v460 | Cap production-GUN A-10s to free mop A-10 — stuck on GUN, no HAND kill |
+| v461 | Seed tagged at stage-8 start (pre-assault) — thinned mass, HAND min 200 |
 | v423 | Closer ridge hold — wiped before HAND damage |
 | v425 | Finisher reserve whole fight — HAND min 350, no kill |
 | v430 | Early launch@18 — died on production GUN |

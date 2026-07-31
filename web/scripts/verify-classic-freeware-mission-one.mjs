@@ -5092,7 +5092,8 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
               return state.westCleanupStage >= 9 ? -2 : 2;
             }
             if (unit.typeName === "LTNK" || unit.typeName === "BGGY") {
-              return state.westCleanupStage >= 9 ? 1 : 3;
+              // After HAND, still prefer AFLD over pad armor for the mop A-10.
+              return state.westCleanupStage >= 9 ? 3 : 3;
             }
             if (unit.typeName === "PROC") return 4;
             return 5;
@@ -7116,8 +7117,8 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
       }
       if (peeled.length > 0 && stage >= 8) {
         if (!handAirWindow) {
-          // Stage-8 pre-assault: hold at western production staging until the
-          // air window. Closer ridge cells wiped the wave (v423).
+          // Stage-8 pre-assault: full peel holds for air (v461 early seed pull
+          // thinned the HAND mass and lost the kill).
           const peelHold = eastAHandWaitHoldCell(state);
           const holdThreat = hostiles.filter((hostile) => (
             (hostile.type === 1 || hostile.type === 2)
@@ -7143,9 +7144,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           }
           return true;
         }
-        // Air window open: full wave on HAND (v432 kill). At assault open,
-        // park the farthest units still on the approach as mop stragglers
-        // (v452 tagged at A-10 order — too late, everyone was already ≤8).
+        // Air window open: tag 1 far healthy seed, rest on HAND (v454/v458).
         const handNearDead = hand && hand.strength <= (eastAEarlyCapture(state) ? 80 : 200);
         if (hand && eastAEarlyCapture(state)
           && state.eastAHandSoftMopKeys.size === 0
@@ -7154,13 +7153,12 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           const stragglers = peeled.filter((unit) => (
             !state.eastAMopTrailerKeys.has(objectKey(unit))
             && missionEightDistance(unit, hand) >= missionEightEastAHandStragglerMopDistance
+            && unit.strength >= 35
           )).toSorted((left, right) => (
-            missionEightDistance(right, hand) - missionEightDistance(left, hand)
-            || right.strength - left.strength
+            right.strength - left.strength
+            || missionEightDistance(right, hand) - missionEightDistance(left, hand)
             || left.id - right.id
           ));
-          // v454: 1 straggler keeps HAND kill and chips AFLD 1000→897.
-          // v455 with 2 lost the HAND kill (min 113). Stay at one seed.
           const maxStragglers = Math.min(1, Math.max(0, peeled.length - 12));
           for (const unit of stragglers.slice(0, maxStragglers)) {
             state.eastAHandSoftMopKeys.add(objectKey(unit));
@@ -7174,26 +7172,29 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           ? peeled.filter((unit) => !state.eastAMopTrailerKeys.has(objectKey(unit))
             && !state.eastAHandSoftMopKeys.has(objectKey(unit)))
           : peeled;
-        const trailerHold = [
-          ...peeled.filter((unit) => state.eastAMopTrailerKeys.has(objectKey(unit))),
+        const trailerHoldUnique = [...new Map([
+          ...peeled.filter((unit) => state.eastAMopTrailerKeys.has(objectKey(unit))
+            || state.eastAHandSoftMopKeys.has(objectKey(unit))),
           ...snapshot.objects.filter((unit) => (
             (state.eastAHandSoftMopKeys.has(objectKey(unit))
               || state.eastAMopTrailerKeys.has(objectKey(unit)))
             && unit.owner === HOUSE_GDI && unit.strength > 0 && unit.subObject === 0
           )),
-        ];
-        const trailerHoldUnique = [...new Map(
-          trailerHold.map((unit) => [objectKey(unit), unit]),
-        ).values()];
+        ].map((unit) => [objectKey(unit), unit])).values()];
         if (trailerHoldUnique.length > 0 && hand) {
-          // Once HAND is soft, start the seed on AFLD so DPS is already up
-          // when HAND falls (v457: AFLD 877 then seed dies within 300 ticks).
-          const afld = hand.strength <= 200
-            ? hostiles.find((hostile) => (
-              hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14
-            ))
-            : undefined;
-          if (afld) {
+          const afld = hostiles.find((hostile) => (
+            hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14
+          ));
+          const seedThreat = hostiles.filter((hostile) => (
+            (hostile.typeName === "E4" || hostile.typeName === "BGGY")
+            && trailerHoldUnique.some((unit) => missionEightDistance(unit, hostile) <= 2)
+          )).toSorted((left, right) => left.strength - right.strength || left.id - right.id)[0];
+          if (seedThreat) {
+            for (let index = 0; index < trailerHoldUnique.length; index += 10) {
+              queueMissionEightRole(commands, `east-a-mop-seed-screen-${index / 10}`,
+                trailerHoldUnique.slice(index, index + 10), seedThreat, 0, 30);
+            }
+          } else if (afld && hand.strength <= 250) {
             for (let index = 0; index < trailerHoldUnique.length; index += 10) {
               queueMissionEightRole(commands, `east-a-mop-seed-afld-${index / 10}`,
                 trailerHoldUnique.slice(index, index + 10), afld, MODIFIER_CTRL, 30);
@@ -7252,15 +7253,15 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
               handEngaged.slice(index, index + 10), hand, MODIFIER_CTRL, 30);
           }
         } else {
-          // HAND is down — press AFLD/PROC with trailers + any surviving
-          // vehicles (lever 3). Full-mass kill leaves cleanupAlive 0, so this
-          // path matters when mop economy delivers late E1s or a free tank.
+          // HAND is down — press AFLD with mop seed + any survivors. Clear
+          // point-blank pad armor first so the seed is not free food (v458 dies
+          // within ~300 ticks on AFLD).
           if (eastAEarlyCapture(state)) {
             eastACommitPostFactHomeReserve(state, snapshot);
           }
           const mopPriority = new Map([
             ["AFLD", 0], ["PROC", 1], ["NUKE", 2], ["SILO", 3], ["HAND", 4],
-            ["LTNK", 5], ["BGGY", 6], ["ARTY", 7], ["MTNK", 8],
+            ["E4", 5], ["BGGY", 6], ["LTNK", 7], ["ARTY", 8], ["MTNK", 9],
           ]);
           const mopWave = [...new Map([
             ...peeled,
@@ -7282,15 +7283,30 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             state.eastAMopTrailerKeys.delete(key);
             state.eastAHandSoftMopKeys.delete(key);
           }
-          const mopTarget = hostiles.filter((hostile) => (
-            mopPriority.has(hostile.typeName)
-            && (hostile.type === 4
-              || mopWave.some((attacker) => missionEightDistance(attacker, hostile) <= 5))
-          )).toSorted((left, right) => (
-            (mopPriority.get(left.typeName) ?? 20) - (mopPriority.get(right.typeName) ?? 20)
-            || left.strength - right.strength
-            || left.id - right.id
-          ))[0] ?? target;
+          const afld = hostiles.find((hostile) => (
+            hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14
+          ));
+          // Point-blank threats on the seed take priority over AFLD DPS.
+          const seedThreat = mopWave.length > 0
+            ? hostiles.filter((hostile) => (
+              (hostile.typeName === "E4" || hostile.typeName === "BGGY"
+                || hostile.typeName === "LTNK" || hostile.typeName === "E1")
+              && mopWave.some((unit) => missionEightDistance(unit, hostile) <= 2)
+            )).toSorted((left, right) => (
+              left.strength - right.strength || left.id - right.id
+            ))[0]
+            : undefined;
+          const mopTarget = seedThreat
+            ?? (afld && eastAEarlyCapture(state) ? afld : undefined)
+            ?? hostiles.filter((hostile) => (
+              mopPriority.has(hostile.typeName)
+              && (hostile.type === 4
+                || mopWave.some((attacker) => missionEightDistance(attacker, hostile) <= 5))
+            )).toSorted((left, right) => (
+              (mopPriority.get(left.typeName) ?? 20) - (mopPriority.get(right.typeName) ?? 20)
+              || left.strength - right.strength
+              || left.id - right.id
+            ))[0] ?? target;
           const mopVehicles = mopWave.filter((unit) => unit.type === 2);
           const mopInfantry = mopWave.filter((unit) => unit.type === 1);
           const orderedMop = [...mopVehicles, ...mopInfantry];
@@ -7302,7 +7318,8 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           ));
           for (let index = 0; index < approach.length; index += 10) {
             queueMissionEightRole(commands, `east-a-west-prod-attack-${stage}-${index / 10}`,
-              approach.slice(index, index + 10), mopTarget, 0, 30);
+              approach.slice(index, index + 10), mopTarget,
+              mopTarget.type === 4 ? 0 : MODIFIER_ALT, 30);
           }
           for (let index = 0; index < engaged.length; index += 10) {
             queueMissionEightRole(commands, `east-a-west-prod-fire-${stage}-${index / 10}`,
