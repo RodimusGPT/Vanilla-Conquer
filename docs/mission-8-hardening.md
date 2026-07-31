@@ -250,7 +250,27 @@ or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 
 **Retained foothold (v532):** HAND min **6**, AFLD min **~505**, AFLD A-10 order @73230 a10Observed, end ~**74124**, capture OK. Still red: ground wipe near A-10 window; AFLD not destroyed; discharge telemetry often before==after on the late strike.
 
-**Next:** keep 1 ground unit past AFLD discharge; dive mop when AFLD is soft; clear PROC/pad armor.
+### v533 soft-AFLD dive + no AFLD auto-repair + tarcom force chip
+
+| Change | Result |
+|---|---|
+| Dive when AFLD ≤750; skip AFLD auto-repair (scen 8) | AFLD destroyed mid-HAND |
+| DROP_BOMBS force-chip all nearby AFLD (0x0A00) | **Splash-wiped HAND assault** (19→3 @~66.3k); end **67890** red |
+| Drop kite/HARV screen | N/A — dead before kite window |
+
+### v534–v537: no AFLD repair + kite-to-A10 + AFLD kill
+
+| Change | Result |
+|---|---|
+| Skip AI auto-repair on AFLD (scenario 8 only) | Seed stays **~676–688** (not 1000) |
+| Force-chip AFLD as tarcom, or proximity w/ friendly-clear | No HAND-wave splash wipe |
+| Always kite deep SE after HAND; dive only after post-HAND A-10 | Live through **@73230** AFLD order |
+| Fixed SE hold (no follow HARV) + airSoon dive-stage `{42,40}` | v536 **AFLD destroyed** min **102** @73590 |
+| Drop mop-HARV / kite screens | Stable 4–5 attackers through 73k |
+
+**Retained foothold (v536/v537):** capture@46620, launch@55290, HAND min **6**, AFLD **destroyed** (stage 9 done ~73.5k), AFLD A-10 @73230, end ~**74.8k** on PROC with cleanupAlive 1. Still red: mop dies on PROC/pad; north base + pad armor remain.
+
+**Next:** keep ≥2 ground through AFLD dive; finish PROC; clear remaining Nod.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 

@@ -685,17 +685,20 @@ int AircraftClass::Mission_Hunt(void)
             } else {
                 Fire_At(TarCom, 0);
                 /*
-                **	Web TRACE (Mission 8 east-a v529–v531): A-10 napalm on AFLD
-                **	shows a10Observed with HP flat even when the order targets
-                **	AFLD. As_Building(TarCom) is often null for cell tarcoms.
-                **	Apply direct Explosion_Damage to any enemy airfield within
-                **	bomb range of this A-10 during DROP_BOMBS only.
+                **	Web TRACE (Mission 8 east-a v529–v534): A-10 napalm on AFLD
+                **	shows a10Observed with HP flat for cell tarcoms / late passes.
+                **	v533 force-chipped every nearby AFLD (incl. during HAND A-10)
+                **	and splash-wiped the HAND assault (19→3 friendlies @~66.3k)
+                **	even though AFLD itself died. Only force-chip an enemy AFLD
+                **	when it is the tarcom, or when no allied ground is within
+                **	~3 cells of that AFLD (safe seed / late mop strike).
                 */
                 if (*this == AIRCRAFT_A10) {
                     int bomb_dmg = 100;
                     if (Class->Primary != WEAPON_NONE) {
                         bomb_dmg = Weapons[Class->Primary].Attack;
                     }
+                    BuildingClass* tar_afld = As_Building(TarCom);
                     for (int bi = 0; bi < Buildings.Count(); bi++) {
                         BuildingClass* bomb_bldg = Buildings.Ptr(bi);
                         if (bomb_bldg == NULL || bomb_bldg->IsInLimbo || bomb_bldg->Strength <= 0) {
@@ -707,10 +710,35 @@ int AircraftClass::Mission_Hunt(void)
                         if (House->Is_Ally(bomb_bldg)) {
                             continue;
                         }
-                        /* ~4 cells — DROP_BOMBS proximity window. */
-                        if (Distance(bomb_bldg) < 0x0400) {
-                            Explosion_Damage(bomb_bldg->Center_Coord(), bomb_dmg, this, WARHEAD_FIRE);
+                        bool is_tarcom = (bomb_bldg == tar_afld);
+                        if (!is_tarcom && Distance(bomb_bldg) >= 0x0600) {
+                            continue; /* ~6 cells proximity seed only */
                         }
+                        if (!is_tarcom) {
+                            /* Friendly-clear: do not splash HAND assault. */
+                            COORDINATE afld_center = bomb_bldg->Center_Coord();
+                            const int air_safe = 0x0300;
+                            bool friendly_near = false;
+                            int fi;
+                            for (fi = 0; fi < Infantry.Count() && !friendly_near; fi++) {
+                                InfantryClass* p = Infantry.Ptr(fi);
+                                if (p != NULL && !p->IsInLimbo && p->Strength > 0 && House->Is_Ally(p)
+                                    && ::Distance(p->Center_Coord(), afld_center) < air_safe) {
+                                    friendly_near = true;
+                                }
+                            }
+                            for (fi = 0; fi < Units.Count() && !friendly_near; fi++) {
+                                UnitClass* u = Units.Ptr(fi);
+                                if (u != NULL && !u->IsInLimbo && u->Strength > 0 && House->Is_Ally(u)
+                                    && ::Distance(u->Center_Coord(), afld_center) < air_safe) {
+                                    friendly_near = true;
+                                }
+                            }
+                            if (friendly_near) {
+                                continue;
+                            }
+                        }
+                        Explosion_Damage(bomb_bldg->Center_Coord(), bomb_dmg, this, WARHEAD_FIRE);
                     }
                 }
                 Map[::As_Cell(TarCom)].Incoming(Coord, true);
