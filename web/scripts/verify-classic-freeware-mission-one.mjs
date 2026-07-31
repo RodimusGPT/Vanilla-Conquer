@@ -2995,15 +2995,19 @@ const missionEightEastAWeapReserveCredits = 2_000;
 const missionEightEastAHandStragglerMopDistance = 8;
 // Safe of HAND flame, close enough to rush AFLD after the kill (v454 hold).
 const missionEightEastAHandStragglerMopHold = { cellX: 20, cellY: 24 };
-// Post-HAND kite cell south of pad LTNK — wait for next A-10 (~73k).
+// Post-HAND kite south of pad (legacy).
 const missionEightEastAMopKiteHold = { cellX: 18, cellY: 28 };
+// v523: after HAND, rally mop SE with HARV (away from pad LTNK/BGGY).
+// v522 kited at 18,28 with mopWave≤6 — at HAND death ca≈7 so the wave dived
+// AFLD and died by ~70.4k. SE rally + always-kite-until-A10 aims for ~73k.
+const missionEightEastAPostHandRally = { cellX: 48, cellY: 54 };
+// Clear of AFLD (29,14) for building-tarcom when next A-10 is imminent.
+const missionEightEastAPadClearHold = { cellX: 14, cellY: 38 };
 // Home mop-reserve park (south of pad, clear of HAND assault).
 const missionEightEastAMopReserveHold = { cellX: 22, cellY: 26 };
-// Home HARV hide from base BGGYs so the mission can live past remnant wipe.
-// Far SE corner — v502 HARV sat at 45,55 until death; push farther from BGGY.
-const missionEightEastAHarvSafeHold = { cellX: 58, cellY: 62 };
-// Intermediate SE waypoint when the deep corner is blocked.
-const missionEightEastAHarvFleeWaypoint = { cellX: 52, cellY: 58 };
+// HARV SE hide (same corridor as post-HAND mop rally).
+const missionEightEastAHarvFleeWaypoint = { cellX: 50, cellY: 55 };
+const missionEightEastAHarvSafeHold = { cellX: 56, cellY: 60 };
 // Launch once the production turret has been airstrike-softened (~tick 51k)
 // rather than waiting until 54.5k while it repairs back to full.
 const missionEightEastAPostFactLaunchMinTick = 52_000;
@@ -6988,9 +6992,8 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
       }
     }
     // Flee when HAND is down, base is threatened, or HARV is already hurt.
-    // Always-on flee from assault open (v505) thinned HAND kill (min 92).
-    // After HAND: re-stop every 240t so harvest AI cannot re-dock (v509 stuck
-    // at 46,55). Never UNIT_STOP while HAND is still up.
+    // After HAND: re-stop harvest AI + SE corridor (same rally as mop).
+    // Never UNIT_STOP while HAND is still up (v501 thrash).
     const harvHurt = harvesters.some((harv) => harv.strength < harv.maxStrength * 0.55);
     const handIsDown = state.westCleanupStage >= 9;
     const shouldFleeHarv = handIsDown || baseThreat
@@ -7006,17 +7009,47 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
       if (!atSafe) {
         if (handIsDown
           && (state.eastAHarvFleeStopTick === undefined
-            || snapshot.tick - state.eastAHarvFleeStopTick >= 240)) {
+            || snapshot.tick - state.eastAHarvFleeStopTick >= 180)) {
           state.eastAHarvFleeStopTick = snapshot.tick;
           queueMissionEightStop(commands, "east-a-harv-flee-stop", harvesters, 1);
         }
         const fleeTarget = atWaypoint
           ? missionEightEastAHarvSafeHold
           : missionEightEastAHarvFleeWaypoint;
-        const fleeCadence = handIsDown ? 15 : (baseThreat ? 30 : 60);
+        const fleeCadence = handIsDown ? 12 : (baseThreat ? 30 : 60);
         for (let index = 0; index < harvesters.length; index += 10) {
           queueMissionEightRole(commands, `east-a-harv-flee-${index / 10}`,
             harvesters.slice(index, index + 10), fleeTarget, 0, fleeCadence);
+        }
+      }
+    }
+    // After HAND: up to 3 mop screen BGGYs near HARV (v525 all-mop escort
+    // attrited the group earlier). Rest SE-kite.
+    if (handIsDown && harvesters.length > 0) {
+      const mopScreen = snapshot.objects.filter((object) => (
+        object.owner === HOUSE_GDI
+        && object.type === 1
+        && object.subObject === 0
+        && object.strength > 0
+        && object.typeName !== "HARV"
+        && (state.eastAMopReserveKeys.has(objectKey(object))
+          || state.strikeKeys.has(objectKey(object)))
+      )).toSorted((left, right) => (
+        missionEightDistance(left, harvesters[0]) - missionEightDistance(right, harvesters[0])
+        || right.strength - left.strength
+        || left.id - right.id
+      )).slice(0, 3);
+      if (mopScreen.length > 0 && baseThreat) {
+        for (let index = 0; index < mopScreen.length; index += 10) {
+          queueMissionEightRole(commands, `east-a-mop-harv-screen-${index / 10}`,
+            mopScreen.slice(index, index + 10), baseThreat, 0, 30);
+        }
+      } else if (mopScreen.length > 0) {
+        for (let index = 0; index < mopScreen.length; index += 10) {
+          queueMissionEightRole(commands, `east-a-mop-harv-escort-${index / 10}`,
+            mopScreen.slice(index, index + 10),
+            { cellX: harvesters[0].cellX, cellY: harvesters[0].cellY },
+            MODIFIER_ALT, 45);
         }
       }
     }
@@ -7540,13 +7573,14 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           const airReady = snapshot.sidebar.entries.some((entry) => (
             entry.assetName === "SW_AirStrike" && entry.completed
           ));
+          // Pull to pad-clear early (v523 died ~72765; next A-10 ~73230).
           const airSoon = state.airstrike.pending !== undefined
             || airReady
-            || (nextAirEta > 0 && nextAirEta <= 600);
-          // v513: after HAND is confirmed dead (this branch only runs when
-          // hand is null), kite remnant and wait for post-HAND AFLD A-10 so
-          // building-tarcom has a clear pad. Dive after that strike lands.
-          // Do not change stage-8 HAND assault (v508–v512 regressions).
+            || (nextAirEta > 0 && nextAirEta <= 1_200);
+          // v523: after HAND, always kite until post-HAND AFLD A-10 lands
+          // (no mopWave≤6 cap — v522 dived with ca≈7 and died by ~70.4k).
+          // Rally SE with HARV; when air is imminent hold SW clear of AFLD for
+          // building-tarcom; dive only after that strike.
           const handDoneEntry = [...state.westCleanupProgress].reverse().find((entry) => (
             entry.typeName === "HAND" && entry.stage === 8
           ));
@@ -7569,16 +7603,39 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           const shouldKite = eastAEarlyCapture(state)
             && state.westCleanupStage >= 9
             && mopWave.length > 0
-            && mopWave.length <= 6
             && !shouldDive;
           if (shouldKite) {
             state.eastAMopKiteTick ??= snapshot.tick;
+            // Prefer SE rally with HARV; pull to pad-clear SW when air is due.
+            const harvLive = snapshot.objects.find((object) => (
+              object.owner === HOUSE_GDI && object.typeName === "HARV"
+              && object.subObject === 0 && object.strength > 0
+            ));
             const kiteCell = airSoon
-              ? { cellX: 14, cellY: 34 }
-              : missionEightEastAMopKiteHold;
-            for (let index = 0; index < mopWave.length; index += 10) {
-              queueMissionEightRole(commands, `east-a-mop-kite-${index / 10}`,
-                mopWave.slice(index, index + 10), kiteCell, MODIFIER_ALT, 30);
+              ? missionEightEastAPadClearHold
+              : (harvLive
+                ? { cellX: harvLive.cellX, cellY: harvLive.cellY }
+                : missionEightEastAPostHandRally);
+            // Screen nearby pad armor only if it is already on the kite group;
+            // otherwise keep moving SE (do not re-engage the pad).
+            const kiteThreat = hostiles.filter((hostile) => (
+              (hostile.typeName === "LTNK" || hostile.typeName === "BGGY" || hostile.typeName === "E4")
+              && mopWave.some((unit) => missionEightDistance(unit, hostile) <= 2)
+            )).toSorted((left, right) => left.strength - right.strength || left.id - right.id)[0];
+            if (kiteThreat && mopWave.length >= 3) {
+              const screen = mopWave.slice(0, 1);
+              const rest = mopWave.slice(1);
+              queueMissionEightRole(commands, "east-a-mop-kite-screen",
+                screen, kiteThreat, 0, 30);
+              for (let index = 0; index < rest.length; index += 10) {
+                queueMissionEightRole(commands, `east-a-mop-kite-${index / 10}`,
+                  rest.slice(index, index + 10), kiteCell, MODIFIER_ALT, 30);
+              }
+            } else {
+              for (let index = 0; index < mopWave.length; index += 10) {
+                queueMissionEightRole(commands, `east-a-mop-kite-${index / 10}`,
+                  mopWave.slice(index, index + 10), kiteCell, MODIFIER_ALT, 30);
+              }
             }
           } else {
             const mopTarget = afld ?? proc ?? target;

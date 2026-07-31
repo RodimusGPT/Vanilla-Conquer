@@ -226,6 +226,19 @@ or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 
 **Next:** extend mop kite farther from pad LTNK/BGGY; keep HARV alive with mop screen after HAND; land AFLD A-10 at ~73k with pad clear for building-tarcom.
 
+### v523–v526 post-HAND kite / 73k window
+
+| Change | Result |
+|---|---|
+| Always kite after HAND (drop mopWave≤6 cap) + SE rally with HARV | HAND min 6 kept; mop lives deep into 70ks |
+| airSoon ≤1200t + pad-clear hold SW | **assert ~73481** — lives into next A-10 window |
+| A-10s spawn at end (A10 friendlies) | Order/target not always in TRACE dump; AFLD min still ~901 (no big napalm chip yet) |
+| All-mop escort HARV (v525) | Attrits earlier — closed; keep **3** screen max |
+
+**Retained foothold (v526):** HAND min **6**, AFLD **901**, MOP×2, stage 9, live friends through **~73.2k**, game-over **~73481** with A10s airborne. Still red (ground wipe; AFLD not cleared). Building-tarcom path is now reachable in time.
+
+**Next:** keep one ground unit alive through AFLD A-10 discharge; confirm AFLD HP drop from building-tarcom; dive mop after strike.
+
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 
 ### Scenario fail/win triggers (from packaged `SCG08EB.INI`)
