@@ -2994,7 +2994,10 @@ const missionEightEastAHandStragglerMopHold = { cellX: 20, cellY: 24 };
 // Post-HAND kite cell south of pad LTNK — wait for next A-10 (~73k).
 const missionEightEastAMopKiteHold = { cellX: 18, cellY: 28 };
 // Home HARV hide from base BGGYs so the mission can live past remnant wipe.
-const missionEightEastAHarvSafeHold = { cellX: 55, cellY: 60 };
+// Far SE corner — v502 HARV sat at 45,55 until death; push farther from BGGY.
+const missionEightEastAHarvSafeHold = { cellX: 58, cellY: 62 };
+// Intermediate SE waypoint when the deep corner is blocked.
+const missionEightEastAHarvFleeWaypoint = { cellX: 52, cellY: 58 };
 // Launch once the production turret has been airstrike-softened (~tick 51k)
 // rather than waiting until 54.5k while it repairs back to full.
 const missionEightEastAPostFactLaunchMinTick = 52_000;
@@ -6896,10 +6899,9 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
   if (state.postFactCleanupLaunchTick === undefined) return false;
   state.westCleanupStartedTick ??= snapshot.tick;
 
-  // After HAND assault opens: escort stays home to swat BGGYs; HARV flees SE
-  // once HAND is down (or earlier if escort is already screening). Escort is
-  // never selected with the HAND wave (v478 thrash). v501 stop+aggressive
-  // flee thinned HAND kill — keep the v490 cadence that preserves the kill.
+  // After HAND assault opens: escort stays home to swat BGGYs. HARV flees SE
+  // when HAND is down, threatened, or already hurt (v502 sat at 45,55). No
+  // UNIT_STOP (v501 thrash lost HAND). Escort never joins the HAND wave.
   if (eastAEarlyCapture(state) && state.productionHandAssaultTick !== undefined) {
     const escorts = snapshot.objects.filter((object) => (
       object.owner === HOUSE_GDI && object.strength > 0 && object.subObject === 0
@@ -6922,19 +6924,34 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           escorts.slice(index, index + 10), baseThreat, 0, 45);
       }
     } else if (escorts.length > 0 && harvesters.length > 0) {
-      // Hold near HARV path so we re-engage when BGGYs arrive.
       for (let index = 0; index < escorts.length; index += 10) {
         queueMissionEightRole(commands, `east-a-harv-escort-hold-${index / 10}`,
           escorts.slice(index, index + 10), { cellX: 48, cellY: 54 }, MODIFIER_ALT, 90);
       }
     }
-    if (harvesters.length > 0 && (state.westCleanupStage >= 9 || baseThreat)) {
+    // Flee when HAND is down, base is threatened, or HARV is already hurt.
+    // Always-on flee from assault open (v505) thinned HAND kill (min 92).
+    // No UNIT_STOP. Two-step SE waypoint then deep hold.
+    const harvHurt = harvesters.some((harv) => harv.strength < harv.maxStrength * 0.55);
+    const shouldFleeHarv = state.westCleanupStage >= 9 || baseThreat
+      || (state.westCleanupStage >= 8 && harvHurt);
+    if (harvesters.length > 0 && shouldFleeHarv) {
       state.eastAHarvFleeTick ??= snapshot.tick;
-      // Force move (no ALT) so pathing is aggressive toward SE safe cell.
-      for (let index = 0; index < harvesters.length; index += 10) {
-        queueMissionEightRole(commands, `east-a-harv-flee-${index / 10}`,
-          harvesters.slice(index, index + 10), missionEightEastAHarvSafeHold,
-          0, 45);
+      const atWaypoint = harvesters.every((harv) => (
+        missionEightDistance(harv, missionEightEastAHarvFleeWaypoint) <= 2
+      ));
+      const atSafe = harvesters.every((harv) => (
+        missionEightDistance(harv, missionEightEastAHarvSafeHold) <= 2
+      ));
+      if (!atSafe) {
+        const fleeTarget = atWaypoint
+          ? missionEightEastAHarvSafeHold
+          : missionEightEastAHarvFleeWaypoint;
+        const fleeCadence = (state.westCleanupStage >= 9 || baseThreat) ? 30 : 60;
+        for (let index = 0; index < harvesters.length; index += 10) {
+          queueMissionEightRole(commands, `east-a-harv-flee-${index / 10}`,
+            harvesters.slice(index, index + 10), fleeTarget, 0, fleeCadence);
+        }
       }
     }
   }
@@ -7339,12 +7356,28 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           // v458 sent seed at HAND ≤200. v464/v466 start the walk once HAND
           // A-10 is ordered — pad armor is sticky on HAND then. v467 immediate
           // walk from assault-open regressed AFLD 793→869 (seed dies early).
+          // v503: clear pad LTNK/BGGY that touch the seed before AFLD CTRL-fire
+          // so the seed lives longer for deeper AFLD chip (v466 class).
           const afld = (hand.strength <= 200 || handAirOrderedForSeed)
             ? hostiles.find((hostile) => (
               hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14
             ))
             : undefined;
-          if (afld) {
+          // Seed peels pad armor within 3 — v506 melee-only (≤1) kept seed on
+          // AFLD but HAND failed (min 92). Radius 3 (v504) preserved HAND kill
+          // (min 12) and still chipped AFLD; pad pull may also ease HAND mass.
+          const padBlocker = hostiles.filter((hostile) => (
+            (hostile.typeName === "LTNK" || hostile.typeName === "BGGY" || hostile.typeName === "E4")
+            && trailerHoldUnique.some((unit) => missionEightDistance(unit, hostile) <= 3)
+          )).toSorted((left, right) => (
+            left.strength - right.strength || left.id - right.id
+          ))[0];
+          if (padBlocker) {
+            for (let index = 0; index < trailerHoldUnique.length; index += 10) {
+              queueMissionEightRole(commands, `east-a-mop-seed-pad-${index / 10}`,
+                trailerHoldUnique.slice(index, index + 10), padBlocker, 0, 30);
+            }
+          } else if (afld) {
             for (let index = 0; index < trailerHoldUnique.length; index += 10) {
               queueMissionEightRole(commands, `east-a-mop-seed-afld-${index / 10}`,
                 trailerHoldUnique.slice(index, index + 10), afld, MODIFIER_CTRL, 30);
@@ -7448,9 +7481,10 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             (hostile.typeName === "LTNK" || hostile.typeName === "BGGY" || hostile.typeName === "E4")
             && mopWave.some((unit) => missionEightDistance(unit, hostile) <= 3)
           ));
-          // Always chip AFLD first (v466 AFLD 793). Kite only after a short
-          // chip window if remnant is still thin and next A-10 is far.
-          // v501 immediate-kite lost HAND (min 92) — keep v490 chip-first.
+          // Chip AFLD first while remnant is thick. Kite only after HAND is
+          // confirmed dead (stage ≥ 9 — v501 kited while HAND still up and
+          // lost the kill). Thin remnant (≤3) kites after a short chip window
+          // so we can live toward the next A-10 (~73k).
           const handDoneEntry = [...state.westCleanupProgress].reverse().find((entry) => (
             entry.typeName === "HAND" && entry.stage === 8
           ));
@@ -7458,10 +7492,13 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             ? snapshot.tick - handDoneEntry.tick
             : 0;
           const shouldKite = eastAEarlyCapture(state)
+            && state.westCleanupStage >= 9
             && mopWave.length > 0 && mopWave.length <= 3
             && !airSoon
-            && ticksSinceHand >= 250
-            && padThreatNear;
+            && (
+              mopWave.length === 1
+              || (ticksSinceHand >= 120 && (padThreatNear || ticksSinceHand >= 200))
+            );
           if (shouldKite) {
             state.eastAMopKiteTick ??= snapshot.tick;
             for (let index = 0; index < mopWave.length; index += 10) {

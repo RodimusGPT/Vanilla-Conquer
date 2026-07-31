@@ -179,7 +179,17 @@ or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 
 **Retained foothold (v490 / v502):** capture@46620, launch@55290, HAND kill min 33 @66510, stage 9, AFLD min **920**, end ~68100. Best AFLD chip remains **v466 min ~797** (slightly weaker HAND survivors).
 
-**Next safe levers:** longer-lived mop seed without peeling HAND mass; get HARV to SE safe cell without thrash; A-10 only after friendlies clear the pad (engine building-tarcom only with empty friendly radius — capture-safe validation required).
+### v503–v507 three-lever pass (2026-07-31 cont.)
+
+| Lever | Result |
+|---|---|
+| **A-10 (engine)** | Building-object tarcom for **AFLD / HAND / PROC only**, and only if no allied ground unit within ~3 cells. GUN/turret and unit tarcoms never upgraded (western GUN siege splash broke capture in v503). Capture@46620 preserved. HAND A-10 still ~800→792 (friendlies on pad → cell tarcom). No post-HAND A-10 yet (wipe before ~73k). |
+| **Mop seed** | Seed peels pad LTNK/BGGY within 3 before AFLD CTRL-fire. HAND kill **improved** (min **12** vs v502 33). AFLD min **952** (slightly worse than 920 — pad peel trades chip for seed/HAND stability). Melee-only peel (≤1) lost HAND (v506). |
+| **HARV SE** | Two-step flee waypoint `{52,58}` → `{58,62}` when stage≥8+hurt / stage≥9 / threat. No UNIT_STOP. Always-on flee from assault open lost HAND (v505). HARV drifts 38,53→46,55; still not deep SE; last friend to ~68.1k. |
+
+**Retained foothold (v507):** capture@46620, HAND kill min **12** @66480, stage 9, AFLD min **952**, end ~68186 with HARV last. Engine A-10 pad-ready when friendlies clear.
+
+**Next:** get a live friend past ~73k with mop kited off AFLD so restricted building-tarcom can hit AFLD; deepen AFLD chip without losing HAND min≤12.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 

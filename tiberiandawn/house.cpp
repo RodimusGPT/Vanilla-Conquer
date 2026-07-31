@@ -2770,7 +2770,47 @@ bool HouseClass::Place_Special_Blast(SpecialWeaponType id, CELL cell)
             } else {
                 strike = Bound(MPlayerUnitCount / 5, 1, 3);
             }
-            Create_Air_Reinforcement(this, AIRCRAFT_A10, strike, MISSION_HUNT, ::As_Target(cell), TARGET_NONE);
+            /*
+            ** Prefer an enemy building object tarcom for mop-critical structures
+            ** only (AFLD / HAND / PROC), and only when no allied ground unit is
+            ** within ~3 cells. Bare cell tarcoms let A-10s overfly without
+            ** applying napalm (web TRACE: AFLD HP flat while a10Observed).
+            ** GUN/turret tarcoms are intentionally NOT upgraded — western GUN
+            ** strikes during the engineer siege (v503/v497) splash-wiped capture
+            ** even with a friendly-near check. Unit tarcoms are also avoided
+            ** (base LTNK splash wiped capture in v496).
+            */
+            TARGET air_tarcom = ::As_Target(cell);
+            if (Map.In_Radar(cell)) {
+                BuildingClass* air_bldg = Map[cell].Cell_Building();
+                if (air_bldg != NULL && !air_bldg->IsInLimbo && !Is_Ally(air_bldg)
+                    && (*air_bldg == STRUCT_AIRSTRIP || *air_bldg == STRUCT_HAND
+                        || *air_bldg == STRUCT_REFINERY)) {
+                    COORDINATE air_center = air_bldg->Center_Coord();
+                    bool friendly_near = false;
+                    /* ~3 cells (0x0300 leptons); napalm splash is 1 cell. */
+                    const int air_safe = 0x0300;
+                    int i;
+                    for (i = 0; i < Infantry.Count() && !friendly_near; i++) {
+                        InfantryClass* p = Infantry.Ptr(i);
+                        if (p != NULL && !p->IsInLimbo && p->Strength > 0 && Is_Ally(p)
+                            && ::Distance(p->Center_Coord(), air_center) < air_safe) {
+                            friendly_near = true;
+                        }
+                    }
+                    for (i = 0; i < Units.Count() && !friendly_near; i++) {
+                        UnitClass* u = Units.Ptr(i);
+                        if (u != NULL && !u->IsInLimbo && u->Strength > 0 && Is_Ally(u)
+                            && ::Distance(u->Center_Coord(), air_center) < air_safe) {
+                            friendly_near = true;
+                        }
+                    }
+                    if (!friendly_near) {
+                        air_tarcom = air_bldg->As_Target();
+                    }
+                }
+            }
+            Create_Air_Reinforcement(this, AIRCRAFT_A10, strike, MISSION_HUNT, air_tarcom, TARGET_NONE);
             if (this == PlayerPtr) {
                 Map.IsTargettingMode = false;
             }
