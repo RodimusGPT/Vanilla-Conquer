@@ -2990,6 +2990,10 @@ const missionEightEastAWeapReserveCredits = 2_000;
 const missionEightEastAHandStragglerMopDistance = 8;
 // Safe of HAND flame, close enough to rush AFLD after the kill (v454 hold).
 const missionEightEastAHandStragglerMopHold = { cellX: 20, cellY: 24 };
+// Post-HAND kite cell south of pad LTNK — wait for next A-10 (~73k).
+const missionEightEastAMopKiteHold = { cellX: 18, cellY: 28 };
+// Home HARV hide from base BGGYs so the mission can live past remnant wipe.
+const missionEightEastAHarvSafeHold = { cellX: 55, cellY: 60 };
 // Launch once the production turret has been airstrike-softened (~tick 51k)
 // rather than waiting until 54.5k while it repairs back to full.
 const missionEightEastAPostFactLaunchMinTick = 52_000;
@@ -3486,6 +3490,8 @@ const missionEightState = {
   eastAMopEconomyTick: undefined,
   eastAMopTankOrderedTick: undefined,
   eastAMopTankKeys: new Set(),
+  eastAMopKiteTick: undefined,
+  eastAHarvFleeTick: undefined,
   postFactCleanupTransitStage: 0,
   postFactCleanupTransitProgress: [],
   southWithdrawalTargets: new Map(),
@@ -4085,9 +4091,20 @@ function observeMissionEightTurn(snapshot, friendly, hostiles) {
     const a10Observed = friendly.some((object) => object.type === 3 && object.typeName === "A10");
     const targetDamaged = !pendingTarget || pendingTarget.strength < state.airstrike.pending.targetStrength;
     const elapsed = snapshot.tick - state.airstrike.pending.orderTick;
-    // A-10 damage often lands after the aircraft is first observed. Wait long
-    // enough to record real softening before clearing the pending slot.
-    if (discharged && (targetDamaged || elapsed >= 120 || (a10Observed && elapsed >= 90))) {
+    // Track min strength while pending so late napalm is still recorded after
+    // the sidebar discharges (v466 GUN discharges looked like 0 damage).
+    if (pendingTarget) {
+      state.airstrike.pending.minStrength = Math.min(
+        state.airstrike.pending.minStrength ?? pendingTarget.strength,
+        pendingTarget.strength,
+      );
+    } else {
+      state.airstrike.pending.minStrength = 0;
+    }
+    // Keep the original clear window (90/120) so recharge is not delayed; hard
+    // timeout only if place failed and completed never flipped.
+    if ((discharged && (targetDamaged || elapsed >= 120 || (a10Observed && elapsed >= 90)))
+      || elapsed >= 480) {
       state.airstrike.discharges.push({
         orderTick: state.airstrike.pending.orderTick,
         effectTick: snapshot.tick,
@@ -4095,7 +4112,13 @@ function observeMissionEightTurn(snapshot, friendly, hostiles) {
         a10Observed,
         targetDamaged,
         targetStrengthBefore: state.airstrike.pending.targetStrength,
-        targetStrengthAfter: pendingTarget?.strength ?? 0,
+        targetStrengthAfter: pendingTarget?.strength
+          ?? state.airstrike.pending.minStrength
+          ?? 0,
+        targetStrengthMin: state.airstrike.pending.minStrength
+          ?? pendingTarget?.strength
+          ?? 0,
+        timedOut: !discharged && elapsed >= 480,
       });
       state.airstrike.pending = undefined;
     }
@@ -5154,6 +5177,7 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         targetKey: objectKey(target),
         targetType: target.typeName,
         targetStrength: target.strength,
+        minStrength: target.strength,
       };
     }
   }
@@ -6820,6 +6844,24 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
   if (state.postFactCleanupLaunchTick === undefined) return false;
   state.westCleanupStartedTick ??= snapshot.tick;
 
+  // Park home HARV in the SE corner after HAND dies. Starting earlier thinned
+  // the HAND kill (v478/v480). Remnant still dies ~66.6k; HARV buys ~1k more
+  // ticks but not enough alone to reach the next A-10 (~73.2k).
+  if (eastAEarlyCapture(state) && state.westCleanupStage >= 9) {
+    const harvesters = snapshot.objects.filter((object) => (
+      object.owner === HOUSE_GDI && object.typeName === "HARV"
+      && object.subObject === 0 && object.strength > 0
+    ));
+    if (harvesters.length > 0) {
+      state.eastAHarvFleeTick ??= snapshot.tick;
+      for (let index = 0; index < harvesters.length; index += 10) {
+        queueMissionEightRole(commands, `east-a-harv-flee-${index / 10}`,
+          harvesters.slice(index, index + 10), missionEightEastAHarvSafeHold,
+          MODIFIER_ALT, 45);
+      }
+    }
+  }
+
   while (state.westCleanupStage < missionEightEastAWestCleanupTargets.length) {
     const stage = state.westCleanupStage;
     const cleanupStrike = strike;
@@ -7284,9 +7326,8 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
               handEngaged.slice(index, index + 10), hand, MODIFIER_CTRL, 30);
           }
         } else {
-          // HAND is down — all-in AFLD only (v468). v466 still split DPS onto
-          // PROC (840) while AFLD sat at 793; pad armor within 5 stole focus.
-          // Never chase LTNK/BGGY — thin remnant dies either way; max AFLD chip.
+          // HAND is down — all-in AFLD, but kite a thin remnant until the next
+          // A-10 window (~73k). v466 dives immediately and dies by ~66.6k.
           if (eastAEarlyCapture(state)) {
             eastACommitPostFactHomeReserve(state, snapshot);
           }
@@ -7316,23 +7357,59 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           const proc = hostiles.find((hostile) => (
             hostile.typeName === "PROC" && hostile.cellX === 25 && hostile.cellY === 17
           ));
-          const mopTarget = afld ?? proc ?? target;
-          const orderedMop = mopWave.toSorted((left, right) => (
-            right.strength - left.strength || left.id - right.id
+          const lastAir = state.airstrike.orders.reduce((maxTick, order) => (
+            Math.max(maxTick, order.tick)
+          ), 0);
+          const nextAirEta = lastAir > 0 ? lastAir + 7_230 - snapshot.tick : 0;
+          const airReady = snapshot.sidebar.entries.some((entry) => (
+            entry.assetName === "SW_AirStrike" && entry.completed
           ));
-          const approach = orderedMop.filter((attacker) => (
-            missionEightDistance(attacker, mopTarget) > 2
+          const airSoon = state.airstrike.pending !== undefined
+            || airReady
+            || (nextAirEta > 0 && nextAirEta <= 600);
+          const padThreatNear = mopWave.length > 0 && hostiles.some((hostile) => (
+            (hostile.typeName === "LTNK" || hostile.typeName === "BGGY" || hostile.typeName === "E4")
+            && mopWave.some((unit) => missionEightDistance(unit, hostile) <= 3)
           ));
-          const engaged = orderedMop.filter((attacker) => (
-            missionEightDistance(attacker, mopTarget) <= 2
+          // Always chip AFLD first (v466 AFLD 793). Kite only after a short
+          // chip window if remnant is still thin and next A-10 is far.
+          const handDoneEntry = [...state.westCleanupProgress].reverse().find((entry) => (
+            entry.typeName === "HAND" && entry.stage === 8
           ));
-          for (let index = 0; index < approach.length; index += 10) {
-            queueMissionEightRole(commands, `east-a-west-prod-attack-${stage}-${index / 10}`,
-              approach.slice(index, index + 10), mopTarget, 0, 30);
-          }
-          for (let index = 0; index < engaged.length; index += 10) {
-            queueMissionEightRole(commands, `east-a-west-prod-fire-${stage}-${index / 10}`,
-              engaged.slice(index, index + 10), mopTarget, MODIFIER_CTRL, 30);
+          const ticksSinceHand = handDoneEntry?.tick !== undefined
+            ? snapshot.tick - handDoneEntry.tick
+            : 0;
+          const shouldKite = eastAEarlyCapture(state)
+            && mopWave.length > 0 && mopWave.length <= 3
+            && !airSoon
+            && ticksSinceHand >= 250
+            && padThreatNear;
+          if (shouldKite) {
+            state.eastAMopKiteTick ??= snapshot.tick;
+            for (let index = 0; index < mopWave.length; index += 10) {
+              queueMissionEightRole(commands, `east-a-mop-kite-${index / 10}`,
+                mopWave.slice(index, index + 10), missionEightEastAMopKiteHold,
+                MODIFIER_ALT, 30);
+            }
+          } else {
+            const mopTarget = afld ?? proc ?? target;
+            const orderedMop = mopWave.toSorted((left, right) => (
+              right.strength - left.strength || left.id - right.id
+            ));
+            const approach = orderedMop.filter((attacker) => (
+              missionEightDistance(attacker, mopTarget) > 2
+            ));
+            const engaged = orderedMop.filter((attacker) => (
+              missionEightDistance(attacker, mopTarget) <= 2
+            ));
+            for (let index = 0; index < approach.length; index += 10) {
+              queueMissionEightRole(commands, `east-a-west-prod-attack-${stage}-${index / 10}`,
+                approach.slice(index, index + 10), mopTarget, 0, 30);
+            }
+            for (let index = 0; index < engaged.length; index += 10) {
+              queueMissionEightRole(commands, `east-a-west-prod-fire-${stage}-${index / 10}`,
+                engaged.slice(index, index + 10), mopTarget, MODIFIER_CTRL, 30);
+            }
           }
         }
         return true;
