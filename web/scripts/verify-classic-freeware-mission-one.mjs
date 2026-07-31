@@ -2975,16 +2975,21 @@ const missionEightEastAWestScreenPriorities = new Map([
 ]);
 // All rifles: 26×E1 fits the captured-FACT refund. Mixing late E3s exhausted
 // cash before launchCompletionCount and the wave never left home.
-// v428/v432/v440 (full 26, open@6800) kills HAND. Soft-pull seeds (v446–v448)
-// preserve rifles but leave HAND at min 17–67 (repairs). Keep full mass on
-// HAND; mop economy + vehicle scavenge run after the kill when possible.
+// v450: keep home PROC (and power) through cash conversion so harvest funds a
+// true mop wave / optional WEAP+MTNK after the full 26-rifle HAND kill.
 const missionEightEastAPostFactRifleCount = 26;
 const missionEightEastAPostFactProductionCount = 26;
 const missionEightEastAPostFactHomeDefenseCount = 2;
 const missionEightEastAPostFactLaunchCompletionCount =
   missionEightEastAPostFactProductionCount;
-// Extra mop E1s after HAND assault opens, paid by leftover structure sales.
-const missionEightEastAPostFactMopRifleCount = 8;
+// Mop E1s only if harvest/WEAP path is ever reopened; default path uses
+// combat stragglers (units still > this many cells from HAND when the A-10
+// is ordered) as the mop seed so engaged rifles stay on the kill.
+const missionEightEastAPostFactMopRifleCount = 12;
+const missionEightEastAWeapReserveCredits = 2_000;
+const missionEightEastAHandStragglerMopDistance = 8;
+// Safe of HAND flame, close enough to rush AFLD after the kill (v454 hold).
+const missionEightEastAHandStragglerMopHold = { cellX: 20, cellY: 24 };
 // Launch once the production turret has been airstrike-softened (~tick 51k)
 // rather than waiting until 54.5k while it repairs back to full.
 const missionEightEastAPostFactLaunchMinTick = 52_000;
@@ -3479,6 +3484,8 @@ const missionEightState = {
   eastAHandSoftMopTick: undefined,
   eastAMopTrailerKeys: new Set(),
   eastAMopEconomyTick: undefined,
+  eastAMopTankOrderedTick: undefined,
+  eastAMopTankKeys: new Set(),
   postFactCleanupTransitStage: 0,
   postFactCleanupTransitProgress: [],
   southWithdrawalTargets: new Map(),
@@ -3962,6 +3969,23 @@ function observeMissionEightTurn(snapshot, friendly, hostiles) {
     state.postFactLiveMobileKeys = new Set(liveMobiles.map(objectKey));
   }
 
+  // Tag newly built mop MTNKs (harvest WEAP path) so they stay off HAND.
+  if (state.eastAMopTankOrderedTick !== undefined) {
+    for (const tank of friendly.filter((object) => (
+      object.typeName === "MTNK" && object.strength > 0
+      && !state.eastAMopTankKeys.has(objectKey(object))
+      && !state.baselineFriendlyKeys.has(objectKey(object))
+    ))) {
+      const key = objectKey(tank);
+      // Only tag tanks that appear after the mop order.
+      if (snapshot.tick < state.eastAMopTankOrderedTick) continue;
+      state.eastAMopTankKeys.add(key);
+      state.eastAMopTrailerKeys.add(key);
+      state.postFactCleanupCohortKeys.add(key);
+      state.strikeKeys.add(key);
+    }
+  }
+
   for (const object of friendly.filter((candidate) => candidate.type === 1 || candidate.type === 2)) {
     const key = objectKey(object);
     if (state.baselineFriendlyKeys.has(key) || state.productionKeys.has(key)) continue;
@@ -4368,6 +4392,8 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         || left.id - right.id
       ));
       state.retainedPowerId = powerPlants[0]?.id;
+      // Restore classic conversion (sell PROC + surplus NUKE). Keep-PROC
+      // harvest paths (v450–v451) failed pre-capture — PROC refund is load-bearing.
       const conversionStructures = friendly.filter((object) => (
         object.type === 4 && (object.objectFlags & (1 << 5))
         && !state.soldStructureIds.has(object.id)
@@ -4525,33 +4551,62 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
   const postFactStartsFor = (fundingSale) => state.postFactProductionOrders.filter((order) => (
     order.fundingSale === fundingSale
   )).length;
-  // Lever 1: fire mop economy as soon as HAND assault opens so refunds can
-  // train trailers during the kill window (v443 sold too late / nothing left).
+  // Harvest mop economy (v450): once the main 26 have launched, spend harvest
+  // income on mop E1s (and optionally WEAP). Never sell PROC/NUKE here.
   if (mission.variant === "east-a" && eastAEarlyCapture(state)
     && state.postFactCleanupLaunchTick !== undefined
-    && state.productionHandAssaultTick !== undefined
     && state.eastAMopEconomyTick === undefined) {
-    const mopSales = friendly.filter((object) => (
-      object.type === 4
-      && (object.objectFlags & (1 << 5))
-      && !state.soldStructureIds.has(object.id)
-      && object.typeName !== "PYLE"
-      && (object.typeName === "NUKE" || object.typeName === "SILO"
-        || object.typeName === "GTWR" || object.typeName === "FIX"
-        || object.typeName === "HQ")
-    ));
-    for (const structure of mopSales) {
-      sellMissionSevenStructure(commands, structure);
-      state.soldStructureIds.add(structure.id);
-      state.saleOrders.push({
-        tick: snapshot.tick,
-        typeName: structure.typeName,
-        cellX: structure.cellX,
-        cellY: structure.cellY,
-        reason: "post-HAND mop economy",
-      });
-    }
     state.eastAMopEconomyTick = snapshot.tick;
+  }
+  // Optional WEAP from harvest after the rifle wave is funded.
+  if (mission.variant === "east-a" && eastAEarlyCapture(state)
+    && state.postFactCleanupLaunchTick !== undefined
+    && builtAssets.has("PROC") && builtAssets.has("PYLE")
+    && !builtAssets.has("WEAP") && !engineerQueued) {
+    const weapEntry = snapshot.sidebar.entries.find((entry) => (
+      entry.assetName === "WEAP" && entry.objectType === 15
+    ));
+    if (weapEntry?.completed && snapshot.placement) {
+      const cell = missionEightLegalPlacement(snapshot, weapEntry);
+      if (cell) {
+        commands.push({
+          type: COMMAND_SIDEBAR,
+          args: [SIDEBAR_PLACE, weapEntry.buildableType, weapEntry.buildableId,
+            cell.x, cell.y, 0, 0],
+        });
+        state.placedSites.push({
+          assetName: "WEAP", tick: snapshot.tick, cellX: cell.cellX, cellY: cell.cellY,
+        });
+        placements += 1;
+      }
+    } else if (weapEntry && !weapEntry.constructing && !weapEntry.completed
+      && !weapEntry.onHold && !weapEntry.busy
+      && funds >= weapEntry.cost + 400
+      && postFactStartsFor("FACT") >= missionEightEastAPostFactProductionCount) {
+      startMissionEightProduction(commands, weapEntry);
+      state.structureStarts.push({
+        assetName: "WEAP", tick: snapshot.tick, cost: weapEntry.cost,
+      });
+      funds -= weapEntry.cost;
+    } else if (weapEntry?.completed && !snapshot.placement) {
+      commands.push({
+        type: COMMAND_SIDEBAR,
+        args: [SIDEBAR_START_PLACEMENT, weapEntry.buildableType, weapEntry.buildableId,
+          0, 0, 0, 0],
+      });
+      placementStarts += 1;
+    }
+  }
+  // MTNK mop vehicle once WEAP is up (lever 3 without Design-A FACT WEAP).
+  if (mission.variant === "east-a" && eastAEarlyCapture(state)
+    && builtAssets.has("WEAP") && !engineerQueued) {
+    const mtnk = snapshot.sidebar.entries.find((entry) => entry.assetName === "MTNK");
+    if (mtnk && !mtnk.constructing && !mtnk.completed && !mtnk.onHold && !mtnk.busy
+      && funds >= mtnk.cost) {
+      startMissionEightProduction(commands, mtnk);
+      funds -= mtnk.cost;
+      state.eastAMopTankOrderedTick ??= snapshot.tick;
+    }
   }
   const postFactFundingSale = mission.variant === "east-a" && builtAssets.has("PYLE")
     && state.postFactSales.PROC?.goneTick !== undefined && postFactStartsFor("PROC") < 3
@@ -4565,6 +4620,13 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         && state.eastAMopEconomyTick !== undefined
         && postFactStartsFor("FACT") >= missionEightEastAPostFactProductionCount
         && postFactStartsFor("MOP") < missionEightEastAPostFactMopRifleCount
+        // Leave a WEAP reserve once harvest has stacked enough; still train mop
+        // E1s while below the reserve or after WEAP exists/ordered.
+        && (builtAssets.has("WEAP")
+          || state.eastAMopTankOrderedTick !== undefined
+          || funds < missionEightEastAWeapReserveCredits
+          || postFactStartsFor("MOP") < 4
+          || funds >= missionEightEastAWeapReserveCredits + 100)
         ? "MOP"
       : undefined;
   if (postFactFundingSale) {
@@ -4574,7 +4636,12 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       : "E1";
     const infantry = snapshot.sidebar.entries.find((entry) => entry.assetName === assetName);
     if (infantry && !infantry.constructing && !infantry.completed
-      && !infantry.onHold && !infantry.busy && funds >= infantry.cost) {
+      && !infantry.onHold && !infantry.busy && funds >= infantry.cost
+      // Prefer WEAP over mop E1s once we can afford the factory.
+      && !(postFactFundingSale === "MOP"
+        && !builtAssets.has("WEAP")
+        && funds >= missionEightEastAWeapReserveCredits
+        && postFactStartsFor("MOP") >= 4)) {
       state.postFactProductionOrders.push({
         tick: snapshot.tick,
         assetName: infantry.assetName,
@@ -5015,13 +5082,18 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
             // pad armor once HAND is gone, then the rest of the production chain.
             // Soft HAND always outranks pad armor so a finishing A-10 lands on
             // the building rather than a nearby LTNK while rifles are dying.
+            // After HAND is gone, AFLD is the only mop target that matters.
             if (unit.typeName === "HAND") {
               return unit.strength <= 280 ? -1 : 0;
+            }
+            if (unit.typeName === "AFLD") {
+              // Only after HAND is gone — prioritizing AFLD while HAND lived
+              // stole the A-10 at 66000 (v456) and lost the kill.
+              return state.westCleanupStage >= 9 ? -2 : 2;
             }
             if (unit.typeName === "LTNK" || unit.typeName === "BGGY") {
               return state.westCleanupStage >= 9 ? 1 : 3;
             }
-            if (unit.typeName === "AFLD") return 2;
             if (unit.typeName === "PROC") return 4;
             return 5;
           };
@@ -7071,20 +7143,67 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           }
           return true;
         }
-        // Air window open: full wave on HAND (v432 kill). Soft-pull seeds are
-        // closed (v446–v448). Trailer E1s from mop economy stay off HAND.
+        // Air window open: full wave on HAND (v432 kill). At assault open,
+        // park the farthest units still on the approach as mop stragglers
+        // (v452 tagged at A-10 order — too late, everyone was already ≤8).
         const handNearDead = hand && hand.strength <= (eastAEarlyCapture(state) ? 80 : 200);
+        if (hand && eastAEarlyCapture(state)
+          && state.eastAHandSoftMopKeys.size === 0
+          && state.productionHandAssaultTick !== undefined
+          && snapshot.tick <= state.productionHandAssaultTick + 90) {
+          const stragglers = peeled.filter((unit) => (
+            !state.eastAMopTrailerKeys.has(objectKey(unit))
+            && missionEightDistance(unit, hand) >= missionEightEastAHandStragglerMopDistance
+          )).toSorted((left, right) => (
+            missionEightDistance(right, hand) - missionEightDistance(left, hand)
+            || right.strength - left.strength
+            || left.id - right.id
+          ));
+          // v454: 1 straggler keeps HAND kill and chips AFLD 1000→897.
+          // v455 with 2 lost the HAND kill (min 113). Stay at one seed.
+          const maxStragglers = Math.min(1, Math.max(0, peeled.length - 12));
+          for (const unit of stragglers.slice(0, maxStragglers)) {
+            state.eastAHandSoftMopKeys.add(objectKey(unit));
+            state.eastAMopTrailerKeys.add(objectKey(unit));
+          }
+          if (maxStragglers > 0 && stragglers.length > 0) {
+            state.eastAHandSoftMopTick = snapshot.tick;
+          }
+        }
         const handEligible = hand
-          ? peeled.filter((unit) => !state.eastAMopTrailerKeys.has(objectKey(unit)))
+          ? peeled.filter((unit) => !state.eastAMopTrailerKeys.has(objectKey(unit))
+            && !state.eastAHandSoftMopKeys.has(objectKey(unit)))
           : peeled;
-        const trailerHold = hand
-          ? peeled.filter((unit) => state.eastAMopTrailerKeys.has(objectKey(unit)))
-          : [];
-        if (trailerHold.length > 0 && hand) {
-          const hold = eastAHandWaitHoldCell(state);
-          for (let index = 0; index < trailerHold.length; index += 10) {
-            queueMissionEightRole(commands, `east-a-mop-trailer-hold-${index / 10}`,
-              trailerHold.slice(index, index + 10), hold, MODIFIER_ALT, 45);
+        const trailerHold = [
+          ...peeled.filter((unit) => state.eastAMopTrailerKeys.has(objectKey(unit))),
+          ...snapshot.objects.filter((unit) => (
+            (state.eastAHandSoftMopKeys.has(objectKey(unit))
+              || state.eastAMopTrailerKeys.has(objectKey(unit)))
+            && unit.owner === HOUSE_GDI && unit.strength > 0 && unit.subObject === 0
+          )),
+        ];
+        const trailerHoldUnique = [...new Map(
+          trailerHold.map((unit) => [objectKey(unit), unit]),
+        ).values()];
+        if (trailerHoldUnique.length > 0 && hand) {
+          // Once HAND is soft, start the seed on AFLD so DPS is already up
+          // when HAND falls (v457: AFLD 877 then seed dies within 300 ticks).
+          const afld = hand.strength <= 200
+            ? hostiles.find((hostile) => (
+              hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14
+            ))
+            : undefined;
+          if (afld) {
+            for (let index = 0; index < trailerHoldUnique.length; index += 10) {
+              queueMissionEightRole(commands, `east-a-mop-seed-afld-${index / 10}`,
+                trailerHoldUnique.slice(index, index + 10), afld, MODIFIER_CTRL, 30);
+            }
+          } else {
+            const hold = missionEightEastAHandStragglerMopHold;
+            for (let index = 0; index < trailerHoldUnique.length; index += 10) {
+              queueMissionEightRole(commands, `east-a-mop-trailer-hold-${index / 10}`,
+                trailerHoldUnique.slice(index, index + 10), hold, MODIFIER_ALT, 45);
+            }
           }
         }
         const handAssaultWave = handEligible;
@@ -7145,7 +7264,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           ]);
           const mopWave = [...new Map([
             ...peeled,
-            ...trailerHold,
+            ...trailerHoldUnique,
             ...snapshot.objects.filter((candidate) => (
               candidate.owner === HOUSE_GDI
               && (candidate.type === 1 || candidate.type === 2)
@@ -7161,6 +7280,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             state.strikeKeys.add(key);
             state.productionGunPeelKeys.add(key);
             state.eastAMopTrailerKeys.delete(key);
+            state.eastAHandSoftMopKeys.delete(key);
           }
           const mopTarget = hostiles.filter((hostile) => (
             mopPriority.has(hostile.typeName)

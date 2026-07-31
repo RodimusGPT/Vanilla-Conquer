@@ -130,6 +130,7 @@ western stages 0–6, holds at safe staging, opens HAND assault at
 | v412 class | HAND min ~104, no kill |
 | v424 | HAND min ~45, AI repairs, remnant dies |
 | **v428 / v431 / v432 / v436 / v440 / v443 / v449** | **HAND killed** (`westCleanupStage` 9 @~66600); AFLD/PROC remain; cleanupAlive 0 |
+| **v454 / v457 / v458** | **HAND killed + mop seed**: 1 approach straggler parked at assault open; AFLD chipped **1000→877**; seed dies ~300 ticks later |
 | v423 | Closer ridge hold — wiped before HAND damage |
 | v425 | Finisher reserve whole fight — HAND min 350, no kill |
 | v430 | Early launch@18 — died on production GUN |
@@ -149,16 +150,22 @@ rifle mass. Soft-pull seeds preserve 2–3 rifles but leave HAND at 17–67 HP
 Post-HAND structure sales find nothing useful (funds stay ~43); no free MTNK
 survives to mop. Design-A WEAP path remains blocked (PROC sold mid-game).
 
-**Closed three-lever pass (v441–v449):**
-1. **Extra economy** — thinning the 26-rifle FACT wave fails GUN; mid-game
-   power-sale skip fails pre-capture; late sales yield no mop E1s.
-2. **Efficient HAND kill / soft-pull** — best min HP 17 with live seed, but no
-   kill; full mass required for HAND death.
-3. **Vehicle mop** — no surviving MTNK/JEEP at HAND time; WEAP not buildable.
+**Closed three-lever pass (v441–v449) + harvest/straggler follow-up (v450–v458):**
+1. **Extra economy / keep PROC** — thinning FACT wave fails GUN; skip mid-game
+   power sale or keep-PROC without PROC refund fails pre-capture; late sales
+   yield no mop E1s (funds ~43).
+2. **Soft-pull of engaged rifles** — best HAND min 17 with live seed, no kill.
+3. **Vehicle mop / WEAP** — no free tanks at HAND time; WEAP needs PROC (sold).
+4. **Approach straggler (v454/v457/v458)** — park 1 unit still ≥8 cells from
+   HAND at assault open: **HAND still dies**, seed lives through kill, **AFLD
+   1000→877**, then seed dies within ~300 ticks. Two stragglers lose HAND kill.
 
-**Still open:** engine-level focus / extra A-10 damage on HAND so full mass is
-not required for the last ~20 HP; or a harvest/PROC rebuild path that funds a
-true post-kill second wave without selling the early-game economy.
+**Current best mop evidence:** HAND dead + AFLD −123 HP + 1 cleanup survivor
+for one sample. Need longer seed survival and/or a second A-10 on AFLD before
+the remnant dies (~tick 67k; next A-10 ~73k).
+
+**Still open:** protect/reinforce the single straggler through AFLD+PROC clear;
+or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 
