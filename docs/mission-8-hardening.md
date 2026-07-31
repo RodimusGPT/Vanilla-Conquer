@@ -270,7 +270,18 @@ or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 
 **Retained foothold (v536/v537):** capture@46620, launch@55290, HAND min **6**, AFLD **destroyed** (stage 9 done ~73.5k), AFLD A-10 @73230, end ~**74.8k** on PROC with cleanupAlive 1. Still red: mop dies on PROC/pad; north base + pad armor remain.
 
-**Next:** keep ≥2 ground through AFLD dive; finish PROC; clear remaining Nod.
+### v539–v540 thin re-kite + second A-10 on pad LTNK
+
+| Change | Result |
+|---|---|
+| After AFLD falls with ≤3 mop, re-kite SE for next recharge | Live through **@80460** second A-10 |
+| A-10 rank: pad LTNK/BGGY before PROC once AFLD gone | Second strike targets **LTNK** |
+| Delay first dive; south approach; no early second-dive eta | v540 holds **3 attackers** to ~81.6k |
+| Cell-tarcom AFLD force chip + double pulse | Late AFLD still often 676→676 (mop kills AFLD) |
+
+**Retained foothold (v540):** HAND min **6**, AFLD destroyed min **176**, second A-10 @80460 on LTNK, PROC min **645**, end ~**82811**. Still red: remnant dies on second pad dive; north base remains.
+
+**Next:** keep ≥2 through second dive; A-10/mop kill soft LTNK then PROC; clear north.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 

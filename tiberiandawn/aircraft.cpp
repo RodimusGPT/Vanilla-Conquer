@@ -699,6 +699,23 @@ int AircraftClass::Mission_Hunt(void)
                         bomb_dmg = Weapons[Class->Primary].Attack;
                     }
                     BuildingClass* tar_afld = As_Building(TarCom);
+                    /*
+                    **	Also resolve cell tarcoms: late Mission 8 AFLD orders still
+                    **	show a10Observed with 676→676 when As_Building(TarCom) is
+                    **	null but the order cell is the airstrip.
+                    */
+                    if (tar_afld == NULL && Target_Legal(TarCom)) {
+                        CELL tar_cell = ::As_Cell(TarCom);
+                        if (Map.In_Radar(tar_cell)) {
+                            BuildingClass* cell_bldg = Map[tar_cell].Cell_Building();
+                            if (cell_bldg != NULL && !cell_bldg->IsInLimbo
+                                && cell_bldg->Strength > 0
+                                && *cell_bldg == STRUCT_AIRSTRIP
+                                && !House->Is_Ally(cell_bldg)) {
+                                tar_afld = cell_bldg;
+                            }
+                        }
+                    }
                     for (int bi = 0; bi < Buildings.Count(); bi++) {
                         BuildingClass* bomb_bldg = Buildings.Ptr(bi);
                         if (bomb_bldg == NULL || bomb_bldg->IsInLimbo || bomb_bldg->Strength <= 0) {
@@ -738,7 +755,11 @@ int AircraftClass::Mission_Hunt(void)
                                 continue;
                             }
                         }
-                        Explosion_Damage(bomb_bldg->Center_Coord(), bomb_dmg, this, WARHEAD_FIRE);
+                        /* Tarcom AFLD: double pulse so late 73k pass chips soft pad. */
+                        int pulse = is_tarcom ? 2 : 1;
+                        for (int pi = 0; pi < pulse; pi++) {
+                            Explosion_Damage(bomb_bldg->Center_Coord(), bomb_dmg, this, WARHEAD_FIRE);
+                        }
                     }
                 }
                 Map[::As_Cell(TarCom)].Incoming(Coord, true);
