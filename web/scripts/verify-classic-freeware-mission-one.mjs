@@ -7173,6 +7173,33 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             state.eastAHandSoftMopTick = snapshot.tick;
           }
         }
+        // Second seed at HAND A-10 order (v466): HAND only drops ≤200 after the
+        // mass is already dead (v465 no-op). Peeling one healthy trail unit when
+        // the A-10 is ordered leaves ≥10 on the kill (v455 open-with-2 lost it).
+        const handAirOrderedForSeed = state.airstrike.orders.some((order) => (
+          order.target === "HAND" && order.cellX === 27 && order.cellY === 17
+        ));
+        if (hand && eastAEarlyCapture(state) && handAirOrderedForSeed
+          && state.eastAHandSoftMopKeys.size === 1) {
+          const assaultNow = peeled.filter((unit) => (
+            !state.eastAMopTrailerKeys.has(objectKey(unit))
+            && !state.eastAHandSoftMopKeys.has(objectKey(unit))
+          ));
+          if (assaultNow.length >= 10) {
+            const latePool = assaultNow.filter((unit) => (
+              unit.strength >= 40
+              && missionEightDistance(unit, hand) >= 4
+            )).toSorted((left, right) => (
+              missionEightDistance(right, hand) - missionEightDistance(left, hand)
+              || right.strength - left.strength
+              || left.id - right.id
+            ));
+            if (latePool[0]) {
+              state.eastAHandSoftMopKeys.add(objectKey(latePool[0]));
+              state.eastAMopTrailerKeys.add(objectKey(latePool[0]));
+            }
+          }
+        }
         const handEligible = hand
           ? peeled.filter((unit) => !state.eastAMopTrailerKeys.has(objectKey(unit))
             && !state.eastAHandSoftMopKeys.has(objectKey(unit)))
@@ -7189,17 +7216,12 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           trailerHold.map((unit) => [objectKey(unit), unit]),
         ).values()];
         if (trailerHoldUnique.length > 0 && hand) {
-          // v458 sent seed at HAND ≤200. v464 also starts the walk once HAND
-          // A-10 is ordered — pad armor is sticky on HAND then, and the seed
-          // reaches AFLD closer to the kill with more HP left.
-          const handAirOrdered = state.airstrike.orders.some((order) => (
-            order.target === "HAND" && order.cellX === 27 && order.cellY === 17
+          // v467: send seeds to AFLD as soon as they are tagged (assault open /
+          // second peel). Earlier walks chip more before pad armor frees up
+          // (v466 started only on HAND A-10 order → AFLD 793).
+          const afld = hostiles.find((hostile) => (
+            hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14
           ));
-          const afld = (hand.strength <= 200 || handAirOrdered)
-            ? hostiles.find((hostile) => (
-              hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14
-            ))
-            : undefined;
           if (afld) {
             for (let index = 0; index < trailerHoldUnique.length; index += 10) {
               queueMissionEightRole(commands, `east-a-mop-seed-afld-${index / 10}`,
