@@ -129,16 +129,26 @@ western stages 0–6, holds at safe staging, opens HAND assault at
 |---|---|
 | v412 class | HAND min ~104, no kill |
 | v424 | HAND min ~45, AI repairs, remnant dies |
-| **v428 / v431 / v432** | **HAND killed** (`westCleanupStage` 9 @~66600); AFLD/PROC remain; cleanupAlive 0 |
+| **v428 / v431 / v432 / v436** | **HAND killed** (`westCleanupStage` 9 @~66600); AFLD/PROC remain; cleanupAlive 0 |
 | v423 | Closer ridge hold — wiped before HAND damage |
-| v425 | Finisher reserve — HAND min 350, no kill |
+| v425 | Finisher reserve whole fight — HAND min 350, no kill |
 | v430 | Early launch@18 — died on production GUN |
+| v433 | Late finisher release@250 — HAND min 64, repaired |
+| v434–v435 | Pure mop reserve (2 off HAND) — HAND min 64, no kill |
+| v437 | Launch@22 + trailers held off HAND — died on production GUN |
+| v438 | Home guards held off HAND — HAND min 51, no kill; home died at base |
+| v439 | open@6500 full mass — wave wiped early, HAND min 416 |
 
-**Current blocker (east-a):** post-HAND mop. The HAND kill costs the entire
-cleanup wave (~6 rifles die dealing the last ~237 HP). AFLD ~849 and PROC ~801
-remain; scavenged non-cleanup mobiles are not enough. Next levers: durable
-finishers that do not starve the HAND kill, post-HAND economy for a second
-rifle trickle, or a second A-10 + remnant that actually reaches AFLD.
+**Current blocker (east-a):** post-HAND mop. The HAND kill requires the full
+rifle mass (any reserve of 2+ prevents the kill). That same mass dies on the
+last ~237 HP, leaving AFLD ~849 / PROC ~801. Scavenged leftovers are not enough.
+
+**Next levers (not yet proven):**
+1. Extra economy after FACT sale (more than 26 E1s) that arrives as a *true*
+   second wave after HAND is already dead — without thinning GUN/HAND mass.
+2. More efficient HAND kill (engine-assisted focus / better A-10 timing) that
+   leaves ≥6 rifles alive for mop.
+3. Vehicle mop (MTNK) if a non-Design-A cash path appears.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 

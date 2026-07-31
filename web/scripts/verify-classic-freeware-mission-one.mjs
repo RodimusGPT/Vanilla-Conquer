@@ -2975,11 +2975,13 @@ const missionEightEastAWestScreenPriorities = new Map([
 ]);
 // All rifles: 26×E1 fits the captured-FACT refund. Mixing late E3s exhausted
 // cash before launchCompletionCount and the wave never left home.
-// v428 (full wave, open@6800) kills HAND; early launch@18 (v430) died on the
-// production GUN. Keep the full cohort for the HAND kill.
+// v428/v432 (full wave, open@6800) kills HAND then dies on the last ~237 HP
+// with AFLD/PROC still up. Closed mop levers (v433–v439): finisher reserves,
+// pure mop reserves, launch@22 trailers, holding home guards off HAND,
+// open@6500. HAND kill requires the full mass; mop needs extra units or a
+// more efficient kill that leaves survivors.
 const missionEightEastAPostFactRifleCount = 26;
 const missionEightEastAPostFactProductionCount = 26;
-// Two home guards; the rest of the post-FACT wave joins the production cleanup.
 const missionEightEastAPostFactHomeDefenseCount = 2;
 const missionEightEastAPostFactLaunchCompletionCount =
   missionEightEastAPostFactProductionCount;
@@ -3019,9 +3021,9 @@ function eastAEarlyCapture(state) {
 }
 
 function eastAShouldOpenHandAssault(state, snapshot, hand, ticksSinceAir) {
-  // Early-capture: open ~300 ticks before the legacy 7100 pad so rifles put
-  // damage on HAND before the paired A-10 (v424 ordered air on full-HP HAND
-  // and died at ~45). Too-early opens (6400) wiped the wave before air.
+  // Early-capture: open@6800 is the only timing that has killed HAND (v428/
+  // v432). Earlier opens (6400/6500) wipe before air; later leaves HAND full
+  // when the A-10 lands. Post-HAND mop remains the open problem.
   if (eastAEarlyCapture(state)) {
     return ticksSinceAir >= 6_800
       || state.airstrike.pending !== undefined
@@ -3031,6 +3033,7 @@ function eastAShouldOpenHandAssault(state, snapshot, hand, ticksSinceAir) {
     || state.airstrike.pending !== undefined
     || (hand !== undefined && hand.strength <= 500);
 }
+
 
 
 function eastACommitPostFactHomeReserve(state, snapshot) {
@@ -6980,6 +6983,8 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
       if (state.productionHandAssaultTick === undefined
         && eastAShouldOpenHandAssault(state, snapshot, hand, ticksSinceAir)) {
         state.productionHandAssaultTick = snapshot.tick;
+        // Commit home guards — v438 held them back and HAND only reached min
+        // 51 (no kill). The HAND kill needs the full mass; mop needs survivors.
         eastACommitPostFactHomeReserve(state, snapshot);
       }
       const handAirWindow = state.productionHandAssaultTick !== undefined;
@@ -7024,8 +7029,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
         // is still healthy — once it is nearly dead, ignore micro so the last
         // volleys finish it with more rifles still standing for AFLD.
         // Early-capture: keep peeling point-blank E4 until HAND is almost dead.
-        // Ignoring flames from 280 HP lets flamethrowers wipe the remnant that
-        // would otherwise mop AFLD after the v428 HAND kill.
+        // Full wave on HAND (v432 kill). Trailer mop rifles come from mop economy.
         const handNearDead = hand && hand.strength <= (eastAEarlyCapture(state) ? 80 : 200);
         const closeFlame = !handNearDead ? hostiles.filter((hostile) => (
           hostile.typeName === "E4"
@@ -7074,8 +7078,11 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
         } else {
           // HAND is down — press AFLD/PROC immediately. Early-capture used to
           // park the remnant for the next A-10; v428 showed the remnant is
-          // dead within ~300 ticks, so any survivor must mop now. Also scavenge
-          // any non-cleanup GDI mobiles (v431 still had F=2 with cA=0).
+          // dead within ~300 ticks, so any survivor must mop now. Commit the
+          // home-guard mop reserve and scavenge any other live GDI mobiles.
+          if (eastAEarlyCapture(state)) {
+            eastACommitPostFactHomeReserve(state, snapshot);
+          }
           const mopPriority = new Map([
             ["AFLD", 0], ["PROC", 1], ["NUKE", 2], ["SILO", 3], ["HAND", 4],
             ["LTNK", 5], ["BGGY", 6], ["ARTY", 7],
