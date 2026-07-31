@@ -198,9 +198,21 @@ or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 | HARV flee/baseThreat during stage 8 | Thrashes selection; lost HAND (v510) — closed |
 | HARV re-stop every 240t only after HAND | Small end-tick gain (~68.5k); HARV still sits ~46,55 on tiberium |
 
-**Retained foothold (v513):** HAND min **12**, stage 9, AFLD min **964**, end ~**68567**, capture OK. Engine A-10 building-tarcom still unused (no post-HAND A-10; wipe before 73k).
+**Retained foothold (v513):** HAND min **12**, stage 9, AFLD min **964**, end ~**68567**, capture OK. Engine A-10 building-tarcom still unused (no post-HAND A-10; wipe before 73k). Pure v513 is **stable** (3/3 TRACE HAND min 12).
 
-**Next:** keep seeds alive through HAND collapse *without* pullback (e.g. seed holds south of AFLD once chipped, not on pad); force HARV east of harvest patch after HAND without stage-8 thrash.
+### v514–v519 closed (all lost HAND kill vs stable v513)
+
+| Experiment | HAND | Notes |
+|---|---|---|
+| Timed all-seed south-hold after AFLD chip | fail min 56 | Frees pad armor mid-kill (same class as HAND-HP pullback) |
+| Dual seed: #1 AFLD, #2 south reserve | fail min 38 | Pad peel needs both seeds on-pad |
+| All seeds south during HAND (no AFLD chip) | fail min 28 | On-pad seed/pad peel is **load-bearing** for HAND kill |
+| HARV flee waypoint only 52,58→50,55 | fail min 38 | Even flee-target constant changes thrash/timing enough to lose kill |
+| HARV flee only after stage≥9 (no stage-8 hurt) | fail min 56 | Stage-8 hurt flee is part of the stable command stream |
+
+**Implication:** Seeds must stay on AFLD/pad during HAND. Post-HAND mop is empty because seeds die with the assault. HARV SE is brittle — small flee changes desync the kill. Path to 73k needs a **new** live friend (post-HAND production) or a non-thrashing HARV channel that does not alter pre-HAND command stream.
+
+**Next:** produce 1–2 mop E1s **before** HAND dies from leftover cash (without cutting launch 26); or post-HAND structure sell that actually fires; do not move seeds off pad until `westCleanupStage ≥ 9`.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 
