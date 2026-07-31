@@ -7175,7 +7175,8 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
         }
         // Second seed at HAND A-10 order (v466): HAND only drops ≤200 after the
         // mass is already dead (v465 no-op). Peeling one healthy trail unit when
-        // the A-10 is ordered leaves ≥10 on the kill (v455 open-with-2 lost it).
+        // the A-10 is ordered leaves ≥10 on the kill (v455 open-with-2 lost it;
+        // v470 third seed with keep≥9 lost HAND — min 95 then repair to 521).
         const handAirOrderedForSeed = state.airstrike.orders.some((order) => (
           order.target === "HAND" && order.cellX === 27 && order.cellY === 17
         ));
@@ -7216,12 +7217,14 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           trailerHold.map((unit) => [objectKey(unit), unit]),
         ).values()];
         if (trailerHoldUnique.length > 0 && hand) {
-          // v467: send seeds to AFLD as soon as they are tagged (assault open /
-          // second peel). Earlier walks chip more before pad armor frees up
-          // (v466 started only on HAND A-10 order → AFLD 793).
-          const afld = hostiles.find((hostile) => (
-            hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14
-          ));
+          // v458 sent seed at HAND ≤200. v464/v466 start the walk once HAND
+          // A-10 is ordered — pad armor is sticky on HAND then. v467 immediate
+          // walk from assault-open regressed AFLD 793→869 (seed dies early).
+          const afld = (hand.strength <= 200 || handAirOrderedForSeed)
+            ? hostiles.find((hostile) => (
+              hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14
+            ))
+            : undefined;
           if (afld) {
             for (let index = 0; index < trailerHoldUnique.length; index += 10) {
               queueMissionEightRole(commands, `east-a-mop-seed-afld-${index / 10}`,
@@ -7281,16 +7284,12 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
               handEngaged.slice(index, index + 10), hand, MODIFIER_CTRL, 30);
           }
         } else {
-          // HAND is down — press AFLD/PROC with trailers + any surviving
-          // mobiles (v458 priority). Do not divert to pad armor unless it is
-          // within 5 cells of the mop wave (v462 threat-clear lost AFLD DPS).
+          // HAND is down — all-in AFLD only (v468). v466 still split DPS onto
+          // PROC (840) while AFLD sat at 793; pad armor within 5 stole focus.
+          // Never chase LTNK/BGGY — thin remnant dies either way; max AFLD chip.
           if (eastAEarlyCapture(state)) {
             eastACommitPostFactHomeReserve(state, snapshot);
           }
-          const mopPriority = new Map([
-            ["AFLD", 0], ["PROC", 1], ["NUKE", 2], ["SILO", 3], ["HAND", 4],
-            ["LTNK", 5], ["BGGY", 6], ["ARTY", 7], ["MTNK", 8],
-          ]);
           const mopWave = [...new Map([
             ...peeled,
             ...trailerHoldUnique,
@@ -7311,18 +7310,16 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             state.eastAMopTrailerKeys.delete(key);
             state.eastAHandSoftMopKeys.delete(key);
           }
-          const mopTarget = hostiles.filter((hostile) => (
-            mopPriority.has(hostile.typeName)
-            && (hostile.type === 4
-              || mopWave.some((attacker) => missionEightDistance(attacker, hostile) <= 5))
-          )).toSorted((left, right) => (
-            (mopPriority.get(left.typeName) ?? 20) - (mopPriority.get(right.typeName) ?? 20)
-            || left.strength - right.strength
-            || left.id - right.id
-          ))[0] ?? target;
-          const mopVehicles = mopWave.filter((unit) => unit.type === 2);
-          const mopInfantry = mopWave.filter((unit) => unit.type === 1);
-          const orderedMop = [...mopVehicles, ...mopInfantry];
+          const afld = hostiles.find((hostile) => (
+            hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14
+          ));
+          const proc = hostiles.find((hostile) => (
+            hostile.typeName === "PROC" && hostile.cellX === 25 && hostile.cellY === 17
+          ));
+          const mopTarget = afld ?? proc ?? target;
+          const orderedMop = mopWave.toSorted((left, right) => (
+            right.strength - left.strength || left.id - right.id
+          ));
           const approach = orderedMop.filter((attacker) => (
             missionEightDistance(attacker, mopTarget) > 2
           ));
