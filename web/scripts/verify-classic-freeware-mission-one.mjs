@@ -3507,6 +3507,7 @@ const missionEightState = {
   eastAMopTankKeys: new Set(),
   eastAMopKiteTick: undefined,
   eastAHarvFleeTick: undefined,
+  eastAHarvFleeStopTick: undefined,
   eastAHarvEscortKeys: new Set(),
   eastAMopCashReserveTick: undefined,
   postFactCleanupTransitStage: 0,
@@ -6931,9 +6932,11 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
     }
     // Flee when HAND is down, base is threatened, or HARV is already hurt.
     // Always-on flee from assault open (v505) thinned HAND kill (min 92).
-    // No UNIT_STOP. Two-step SE waypoint then deep hold.
+    // After HAND: re-stop every 240t so harvest AI cannot re-dock (v509 stuck
+    // at 46,55). Never UNIT_STOP while HAND is still up.
     const harvHurt = harvesters.some((harv) => harv.strength < harv.maxStrength * 0.55);
-    const shouldFleeHarv = state.westCleanupStage >= 9 || baseThreat
+    const handIsDown = state.westCleanupStage >= 9;
+    const shouldFleeHarv = handIsDown || baseThreat
       || (state.westCleanupStage >= 8 && harvHurt);
     if (harvesters.length > 0 && shouldFleeHarv) {
       state.eastAHarvFleeTick ??= snapshot.tick;
@@ -6944,10 +6947,16 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
         missionEightDistance(harv, missionEightEastAHarvSafeHold) <= 2
       ));
       if (!atSafe) {
+        if (handIsDown
+          && (state.eastAHarvFleeStopTick === undefined
+            || snapshot.tick - state.eastAHarvFleeStopTick >= 240)) {
+          state.eastAHarvFleeStopTick = snapshot.tick;
+          queueMissionEightStop(commands, "east-a-harv-flee-stop", harvesters, 1);
+        }
         const fleeTarget = atWaypoint
           ? missionEightEastAHarvSafeHold
           : missionEightEastAHarvFleeWaypoint;
-        const fleeCadence = (state.westCleanupStage >= 9 || baseThreat) ? 30 : 60;
+        const fleeCadence = handIsDown ? 15 : (baseThreat ? 30 : 60);
         for (let index = 0; index < harvesters.length; index += 10) {
           queueMissionEightRole(commands, `east-a-harv-flee-${index / 10}`,
             harvesters.slice(index, index + 10), fleeTarget, 0, fleeCadence);
@@ -7477,34 +7486,42 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           const airSoon = state.airstrike.pending !== undefined
             || airReady
             || (nextAirEta > 0 && nextAirEta <= 600);
-          const padThreatNear = mopWave.length > 0 && hostiles.some((hostile) => (
-            (hostile.typeName === "LTNK" || hostile.typeName === "BGGY" || hostile.typeName === "E4")
-            && mopWave.some((unit) => missionEightDistance(unit, hostile) <= 3)
-          ));
-          // Chip AFLD first while remnant is thick. Kite only after HAND is
-          // confirmed dead (stage ≥ 9 — v501 kited while HAND still up and
-          // lost the kill). Thin remnant (≤3) kites after a short chip window
-          // so we can live toward the next A-10 (~73k).
+          // v513: after HAND is confirmed dead (this branch only runs when
+          // hand is null), kite remnant and wait for post-HAND AFLD A-10 so
+          // building-tarcom has a clear pad. Dive after that strike lands.
+          // Do not change stage-8 HAND assault (v508–v512 regressions).
           const handDoneEntry = [...state.westCleanupProgress].reverse().find((entry) => (
             entry.typeName === "HAND" && entry.stage === 8
           ));
-          const ticksSinceHand = handDoneEntry?.tick !== undefined
-            ? snapshot.tick - handDoneEntry.tick
-            : 0;
+          const handDeadTick = handDoneEntry?.tick;
+          const postHandAfldOrder = handDeadTick !== undefined
+            ? state.airstrike.orders.find((order) => (
+              order.target === "AFLD" && order.cellX === 29 && order.cellY === 14
+              && order.tick >= handDeadTick
+            ))
+            : undefined;
+          const postHandAfldDischarged = Boolean(postHandAfldOrder
+            && state.airstrike.discharges.some((discharge) => (
+              discharge.orderTick === postHandAfldOrder.tick
+            )));
+          const postHandAfldElapsed = postHandAfldOrder !== undefined
+            ? snapshot.tick - postHandAfldOrder.tick
+            : -1;
+          const shouldDive = postHandAfldDischarged
+            || (postHandAfldOrder !== undefined && postHandAfldElapsed >= 150);
           const shouldKite = eastAEarlyCapture(state)
             && state.westCleanupStage >= 9
-            && mopWave.length > 0 && mopWave.length <= 3
-            && !airSoon
-            && (
-              mopWave.length === 1
-              || (ticksSinceHand >= 120 && (padThreatNear || ticksSinceHand >= 200))
-            );
+            && mopWave.length > 0
+            && mopWave.length <= 6
+            && !shouldDive;
           if (shouldKite) {
             state.eastAMopKiteTick ??= snapshot.tick;
+            const kiteCell = airSoon
+              ? { cellX: 14, cellY: 34 }
+              : missionEightEastAMopKiteHold;
             for (let index = 0; index < mopWave.length; index += 10) {
               queueMissionEightRole(commands, `east-a-mop-kite-${index / 10}`,
-                mopWave.slice(index, index + 10), missionEightEastAMopKiteHold,
-                MODIFIER_ALT, 30);
+                mopWave.slice(index, index + 10), kiteCell, MODIFIER_ALT, 30);
             }
           } else {
             const mopTarget = afld ?? proc ?? target;

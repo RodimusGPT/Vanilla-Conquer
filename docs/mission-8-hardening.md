@@ -189,7 +189,18 @@ or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 
 **Retained foothold (v507):** capture@46620, HAND kill min **12** @66480, stage 9, AFLD min **952**, end ~68186 with HARV last. Engine A-10 pad-ready when friendlies clear.
 
-**Next:** get a live friend past ~73k with mop kited off AFLD so restricted building-tarcom can hit AFLD; deepen AFLD chip without losing HAND min≤12.
+### v508–v513 survival pass
+
+| Change | Result |
+|---|---|
+| Post-HAND kite-until-AFLD-A10 then dive | Correct logic, but `cleanupAlive` is already 0 within ~120t of HAND death — nothing left to kite |
+| Seed pullback at HAND ≤80/100 | Brief ca=1 (v509 end **69483**) but later runs **lost HAND kill** (pad armor rejoined) — closed |
+| HARV flee/baseThreat during stage 8 | Thrashes selection; lost HAND (v510) — closed |
+| HARV re-stop every 240t only after HAND | Small end-tick gain (~68.5k); HARV still sits ~46,55 on tiberium |
+
+**Retained foothold (v513):** HAND min **12**, stage 9, AFLD min **964**, end ~**68567**, capture OK. Engine A-10 building-tarcom still unused (no post-HAND A-10; wipe before 73k).
+
+**Next:** keep seeds alive through HAND collapse *without* pullback (e.g. seed holds south of AFLD once chipped, not on pad); force HARV east of harvest patch after HAND without stage-8 thrash.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 
