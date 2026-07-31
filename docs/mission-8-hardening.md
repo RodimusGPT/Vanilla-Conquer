@@ -118,6 +118,28 @@ flank/strike/south-ready; suppress local-threat peel during GUN stage; repeat
 A-10 on GUN while APC holds basin (420t cooldown). `transportDeathTick` ~75750
 (+17k vs v393); GUN repairs to 400, still no `captureTick`.
 
+**v400–v401:** FACT capture landed (`captureTick` ~46620). Post-FACT rifle wave
+and cleanup launch survive past ~55k.
+
+**v402–v424 (uncommitted stack, then v423–v432):** Early-capture path skips
+western stages 0–6, holds at safe staging, opens HAND assault at
+`ticksSinceAir >= 6800` (or pending A-10 / HAND ≤200).
+
+| Run | Result |
+|---|---|
+| v412 class | HAND min ~104, no kill |
+| v424 | HAND min ~45, AI repairs, remnant dies |
+| **v428 / v431 / v432** | **HAND killed** (`westCleanupStage` 9 @~66600); AFLD/PROC remain; cleanupAlive 0 |
+| v423 | Closer ridge hold — wiped before HAND damage |
+| v425 | Finisher reserve — HAND min 350, no kill |
+| v430 | Early launch@18 — died on production GUN |
+
+**Current blocker (east-a):** post-HAND mop. The HAND kill costs the entire
+cleanup wave (~6 rifles die dealing the last ~237 HP). AFLD ~849 and PROC ~801
+remain; scavenged non-cleanup mobiles are not enough. Next levers: durable
+finishers that do not starve the HAND kill, post-HAND economy for a second
+rifle trickle, or a second A-10 + remnant that actually reaches AFLD.
+
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 
 ### Scenario fail/win triggers (from packaged `SCG08EB.INI`)

@@ -2975,6 +2975,8 @@ const missionEightEastAWestScreenPriorities = new Map([
 ]);
 // All rifles: 26×E1 fits the captured-FACT refund. Mixing late E3s exhausted
 // cash before launchCompletionCount and the wave never left home.
+// v428 (full wave, open@6800) kills HAND; early launch@18 (v430) died on the
+// production GUN. Keep the full cohort for the HAND kill.
 const missionEightEastAPostFactRifleCount = 26;
 const missionEightEastAPostFactProductionCount = 26;
 // Two home guards; the rest of the post-FACT wave joins the production cleanup.
@@ -2994,11 +2996,87 @@ function eastAPostFactLaunchMinTick(state) {
 }
 
 function eastAProductionGunHoldTimeout(state) {
-  return state.engineer.captureTick !== undefined
-    && state.engineer.captureTick < 50_000
-    ? 4_500
-    : 10_500;
+  return eastAEarlyCapture(state) ? 1_200 : 10_500;
 }
+
+// Early-capture stage-7 parks on the southwest SAM line (safe from the
+// production turret). Stage-8 pre-assault waits at western production staging
+// — closer ridge cells ({18,22}/{23,20}) wiped the wave before HAND took
+// damage (v423). Best prior class held farther back and left HAND at ~104.
+function eastAProductionGunHoldCell(state) {
+  return eastAEarlyCapture(state) ? { cellX: 9, cellY: 22 } : missionEightEastAProductionStaging;
+}
+
+function eastAHandWaitHoldCell(state) {
+  return eastAEarlyCapture(state)
+    ? missionEightEastAProductionStaging
+    : eastAProductionGunHoldCell(state);
+}
+
+function eastAEarlyCapture(state) {
+  return state.engineer.captureTick !== undefined
+    && state.engineer.captureTick < 50_000;
+}
+
+function eastAShouldOpenHandAssault(state, snapshot, hand, ticksSinceAir) {
+  // Early-capture: open ~300 ticks before the legacy 7100 pad so rifles put
+  // damage on HAND before the paired A-10 (v424 ordered air on full-HP HAND
+  // and died at ~45). Too-early opens (6400) wiped the wave before air.
+  if (eastAEarlyCapture(state)) {
+    return ticksSinceAir >= 6_800
+      || state.airstrike.pending !== undefined
+      || (hand !== undefined && hand.strength <= 200);
+  }
+  return ticksSinceAir >= 7_100
+    || state.airstrike.pending !== undefined
+    || (hand !== undefined && hand.strength <= 500);
+}
+
+
+function eastACommitPostFactHomeReserve(state, snapshot) {
+  for (const reservist of snapshot.objects.filter((candidate) => (
+    candidate.owner === HOUSE_GDI && candidate.subObject === 0
+    && candidate.strength > 0
+    && state.postFactHomeDefenseKeys.has(objectKey(candidate))
+  ))) {
+    const key = objectKey(reservist);
+    state.postFactHomeDefenseKeys.delete(key);
+    state.postFactHomeDefenseCohortKeys.delete(key);
+    state.postFactCleanupCohortKeys.add(key);
+    state.strikeKeys.add(key);
+    state.productionGunPeelKeys.add(key);
+  }
+}
+
+function eastAPrepareEarlyCaptureCleanup(state, hostiles, snapshot) {
+  if (!eastAEarlyCapture(state)) return;
+  while (state.westCleanupStage < 7) {
+    const site = missionEightEastAWestCleanupTargets[state.westCleanupStage];
+    const target = hostiles.find((hostile) => (
+      hostile.typeName === site.typeName
+      && hostile.cellX === site.cellX && hostile.cellY === site.cellY
+    ));
+    state.westCleanupProgress.push({
+      tick: snapshot.tick,
+      stage: state.westCleanupStage,
+      label: site.label,
+      typeName: site.typeName,
+      cellX: site.cellX,
+      cellY: site.cellY,
+      absentAtStart: target === undefined,
+      skippedForEarlyCapture: true,
+    });
+    state.westCleanupStage += 1;
+  }
+  state.westCleanupDeferredFromStage ??= 3;
+  state.productionGunHoldStartedTick ??= snapshot.tick;
+}
+
+const missionEightEastAPostFactCleanupTransitRoute = [
+  { cellX: 29, cellY: 40, label: "cleanup southern crossing" },
+  { cellX: 21, cellY: 30, label: "cleanup basin assembly" },
+  { cellX: 12, cellY: 12, label: "cleanup western assembly" },
+];
 // Charge only when the turret is badly softened. ~217 still wiped a 15-rifle
 // wave in ~600 ticks; wait for deeper damage or a post-hold airstrike pass.
 const missionEightEastAProductionGunSoftStrength = 150;
@@ -4819,12 +4897,33 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       ))
       ? productionGun
       : undefined;
-    // Once the production charge (or HAND peel) is committed, prefer A-10s on
-    // HAND/AFLD over the turret. Keep post-hold GUN soft-passes available so
-    // the charge does not walk into a fully repaired turret.
+    const lastProductionGunHoldStrike = productionGun
+      && state.postFactCleanupLaunchTick !== undefined
+      && state.westCleanupStage === 7
+      ? state.airstrike.orders.findLast((order) => (
+        order.target === "GUN"
+        && order.cellX === missionEightEastAProductionGunSite.cellX
+        && order.cellY === missionEightEastAProductionGunSite.cellY
+        && order.tick >= state.postFactCleanupLaunchTick
+      ))
+      : undefined;
+    const productionGunHoldStrikeDue = productionGun
+      && state.postFactCleanupLaunchTick !== undefined
+      && state.westCleanupStage === 7
+      && productionGun.strength > missionEightEastAProductionGunSoftStrength
+      && (!lastProductionGunHoldStrike
+        || snapshot.tick >= lastProductionGunHoldStrike.tick
+          + (eastAEarlyCapture(state) ? 300 : 360))
+      ? productionGun
+      : undefined;
+    // Once the production turret is soft (or HAND peel) is committed, prefer
+    // A-10s on HAND/AFLD over the turret. Charging while the GUN is still
+    // healthy disabled hold-strikes and sent A-10s to HAND too early.
+    const productionGunAssaultReady = !productionGun
+      || productionGun.strength <= missionEightEastAProductionGunSoftStrength;
     const peelCommitted = state.productionGunPeelKeys.size > 0
       || state.westCleanupStage >= 8
-      || state.productionGunChargeTick !== undefined;
+      || (state.productionGunChargeTick !== undefined && productionGunAssaultReady);
     // Base armor gets priority only before the production assault is the focus.
     const baseArmorThreat = mission.variant === "east-a" && !peelCommitted
       ? hostiles.filter((hostile) => (
@@ -4865,7 +4964,11 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
           const rank = (unit) => {
             // HAND first (the only target whose kill we have reproduced), then
             // pad armor once HAND is gone, then the rest of the production chain.
-            if (unit.typeName === "HAND") return 0;
+            // Soft HAND always outranks pad armor so a finishing A-10 lands on
+            // the building rather than a nearby LTNK while rifles are dying.
+            if (unit.typeName === "HAND") {
+              return unit.strength <= 280 ? -1 : 0;
+            }
             if (unit.typeName === "LTNK" || unit.typeName === "BGGY") {
               return state.westCleanupStage >= 9 ? 1 : 3;
             }
@@ -4884,6 +4987,7 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       || left.id - right.id
     ))[0];
     const target = engineerUnloadPathArtyStrikeTarget
+      ?? productionGunHoldStrikeDue
       ?? productionGunPrelaunchTarget
       ?? westernGunStrikeTarget
       ?? ((peelCommitted
@@ -6591,6 +6695,7 @@ function queueMissionEightSouthTransit(snapshot, hostiles, attackers, commands) 
 function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
   const state = missionEightState;
   if (mission.variant !== "east-a" || state.factDeathTick === undefined) return false;
+  if (state.postFactCleanupLaunchTick === undefined) return false;
   state.westCleanupStartedTick ??= snapshot.tick;
 
   while (state.westCleanupStage < missionEightEastAWestCleanupTargets.length) {
@@ -6606,21 +6711,6 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
         state.productionGunMinimumStrength ?? productionGun.strength,
         productionGun.strength,
       );
-    }
-    // This guard belongs inside the loop: destroying stage 2 advances to stage
-    // 3 in the same turn, and an outer guard would leak one production-turret
-    // order before the next snapshot. Keep that pre-launch force moving west,
-    // where it cannot draw Nod's production armor toward the GDI home base.
-    if (stage >= 3 && state.postFactCleanupLaunchTick === undefined) {
-      const westernReserve = hostiles.find((hostile) => (
-        hostile.typeName === "NUKE" && hostile.cellX === 6 && hostile.cellY === 8
-      ));
-      for (let index = 0; index < cleanupStrike.length; index += 10) {
-        queueMissionEightRole(commands, `east-a-west-prelaunch-${index / 10}`,
-          cleanupStrike.slice(index, index + 10), westernReserve ?? { cellX: 10, cellY: 10 },
-          westernReserve ? 0 : MODIFIER_ALT, westernReserve ? 30 : 90);
-      }
-      return true;
     }
     // After launch, do not bleed the wave clearing silos while the production
     // turret is still healthy. Hold the full ridge force until the GUN is soft
@@ -6647,8 +6737,12 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
       const previouslySoft = (state.productionGunMinimumStrength ?? 999)
         <= missionEightEastAProductionGunSoftStrength + 70;
       const forceChargeAfterHold = holdDuration >= eastAProductionGunHoldTimeout(state)
+        && productionGun.strength <= missionEightEastAProductionGunSoftStrength + 50
         // Post-hold soft-pass: charge once the turret is mid-health. Full-HP
         // early charges wipe finishers; A-10-on-HAND first did not reduce HAND.
+        || (eastAEarlyCapture(state) && sincePostHoldAirstrike !== undefined
+          && sincePostHoldAirstrike >= 180
+          && productionGun.strength <= missionEightEastAProductionGunSoftStrength)
         || (sincePostHoldAirstrike !== undefined && sincePostHoldAirstrike >= 300
           && productionGun.strength <= 300)
         || (previouslySoft && holdDuration >= 2_700
@@ -6664,7 +6758,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           || left.strength - right.strength
           || left.id - right.id
         ))[0];
-        const holdTarget = holdThreat ?? missionEightEastAProductionStaging;
+        const holdTarget = holdThreat ?? eastAProductionGunHoldCell(state);
         for (let index = 0; index < cleanupStrike.length; index += 10) {
           queueMissionEightRole(commands, `east-a-west-pregun-hold-${index / 10}`,
             cleanupStrike.slice(index, index + 10), holdTarget,
@@ -6761,6 +6855,10 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
       const previouslySoft = (state.productionGunMinimumStrength ?? 999)
         <= missionEightEastAProductionGunSoftStrength + 70;
       const forceChargeAfterHold = holdDuration >= eastAProductionGunHoldTimeout(state)
+        && target.strength <= missionEightEastAProductionGunSoftStrength + 50
+        || (eastAEarlyCapture(state) && sincePostHoldAirstrike !== undefined
+          && sincePostHoldAirstrike >= 180
+          && target.strength <= missionEightEastAProductionGunSoftStrength)
         || (sincePostHoldAirstrike !== undefined && sincePostHoldAirstrike >= 300
           && target.strength <= 300)
         || (previouslySoft && holdDuration >= 2_700 && target.strength <= 280);
@@ -6775,7 +6873,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           || left.strength - right.strength
           || left.id - right.id
         ))[0];
-        const holdTarget = holdThreat ?? missionEightEastAProductionStaging;
+        const holdTarget = holdThreat ?? eastAProductionGunHoldCell(state);
         for (let index = 0; index < cleanupStrike.length; index += 10) {
           queueMissionEightRole(commands, `east-a-west-gun-hold-${index / 10}`,
             cleanupStrike.slice(index, index + 10), holdTarget,
@@ -6785,18 +6883,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
       }
       state.productionGunChargeTick = snapshot.tick;
       state.productionGunChargeStrength = target.strength;
-      // Commit the tiny home reserve once the production surge starts.
-      for (const reservist of snapshot.objects.filter((candidate) => (
-        candidate.owner === HOUSE_GDI && candidate.subObject === 0
-        && candidate.strength > 0
-        && state.postFactHomeDefenseKeys.has(objectKey(candidate))
-      ))) {
-        const key = objectKey(reservist);
-        state.postFactHomeDefenseKeys.delete(key);
-        state.postFactHomeDefenseCohortKeys.delete(key);
-        state.postFactCleanupCohortKeys.add(key);
-        state.strikeKeys.add(key);
-      }
+      eastACommitPostFactHomeReserve(state, snapshot);
     } else if (isProductionGun) {
       state.productionGunHoldLastStrength = target.strength;
     }
@@ -6863,6 +6950,15 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
         }
       }
       // After the gun is gone, everyone is a HAND attacker.
+      if (stage === 7 && eastAEarlyCapture(state)
+        && target.typeName === missionEightEastAProductionGunSite.typeName
+        && target.cellX === missionEightEastAProductionGunSite.cellX
+        && target.cellY === missionEightEastAProductionGunSite.cellY
+        && target.strength > 0 && target.strength <= 40) {
+        for (const attacker of cleanupStrike) {
+          state.productionGunPeelKeys.add(objectKey(attacker));
+        }
+      }
       if (stage >= 8) {
         for (const attacker of cleanupStrike) {
           state.productionGunPeelKeys.add(objectKey(attacker));
@@ -6881,40 +6977,25 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
         Math.max(maxTick, order.tick)
       ), 0);
       const ticksSinceAir = snapshot.tick - lastAirTick;
-      // Open just before A-10 ready. Latched — re-checking ticksSinceAir after
-      // the HAND order used to send the wave home mid-rush. 7100 is the only
-      // open that has reliably killed HAND; 6500–6900 dies with HAND still up.
       if (state.productionHandAssaultTick === undefined
-        && (ticksSinceAir >= 7_100
-          || state.airstrike.pending !== undefined
-          || (hand !== undefined && hand.strength <= 500))) {
+        && eastAShouldOpenHandAssault(state, snapshot, hand, ticksSinceAir)) {
         state.productionHandAssaultTick = snapshot.tick;
-        // Commit the home reserve into the production assault once the pad
-        // push starts — two late rifles help mop AFLD after HAND falls.
-        for (const reservist of snapshot.objects.filter((candidate) => (
-          candidate.owner === HOUSE_GDI && candidate.subObject === 0
-          && candidate.strength > 0
-          && state.postFactHomeDefenseKeys.has(objectKey(candidate))
-        ))) {
-          const key = objectKey(reservist);
-          state.postFactHomeDefenseKeys.delete(key);
-          state.postFactHomeDefenseCohortKeys.delete(key);
-          state.postFactCleanupCohortKeys.add(key);
-          state.strikeKeys.add(key);
-          state.productionGunPeelKeys.add(key);
-        }
+        eastACommitPostFactHomeReserve(state, snapshot);
       }
       const handAirWindow = state.productionHandAssaultTick !== undefined;
       if (peeled.length > 0 && stage === 7) {
+        const peelHold = eastAProductionGunHoldCell(state);
         for (let index = 0; index < peeled.length; index += 10) {
           queueMissionEightRole(commands, `east-a-west-peel-stage-${index / 10}`,
-            peeled.slice(index, index + 10), missionEightEastAProductionStaging,
+            peeled.slice(index, index + 10), peelHold,
             MODIFIER_ALT, 30);
         }
       }
       if (peeled.length > 0 && stage >= 8) {
         if (!handAirWindow) {
-          // Screen threats that walk onto the ridge; otherwise hold staging.
+          // Stage-8 pre-assault: hold at western production staging until the
+          // air window. Closer ridge cells wiped the wave (v423).
+          const peelHold = eastAHandWaitHoldCell(state);
           const holdThreat = hostiles.filter((hostile) => (
             (hostile.type === 1 || hostile.type === 2)
             && missionEightEastAWestScreenPriorities.has(hostile.typeName)
@@ -6933,7 +7014,7 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           } else {
             for (let index = 0; index < peeled.length; index += 10) {
               queueMissionEightRole(commands, `east-a-west-peel-hold-stage-${index / 10}`,
-                peeled.slice(index, index + 10), missionEightEastAProductionStaging,
+                peeled.slice(index, index + 10), peelHold,
                 MODIFIER_ALT, 30);
             }
           }
@@ -6942,7 +7023,10 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
         // Air window open: whole wave on HAND. Only peel face-flame while HAND
         // is still healthy — once it is nearly dead, ignore micro so the last
         // volleys finish it with more rifles still standing for AFLD.
-        const handNearDead = hand && hand.strength <= 200;
+        // Early-capture: keep peeling point-blank E4 until HAND is almost dead.
+        // Ignoring flames from 280 HP lets flamethrowers wipe the remnant that
+        // would otherwise mop AFLD after the v428 HAND kill.
+        const handNearDead = hand && hand.strength <= (eastAEarlyCapture(state) ? 80 : 200);
         const closeFlame = !handNearDead ? hostiles.filter((hostile) => (
           hostile.typeName === "E4"
           && peeled.some((attacker) => missionEightDistance(attacker, hostile) <= 2)
@@ -6988,26 +7072,42 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
               handEngaged.slice(index, index + 10), hand, MODIFIER_CTRL, 30);
           }
         } else {
-          // HAND is down — press AFLD/PROC immediately. Waiting for the next
-          // A-10 with a tiny remnant lets LTNK/BGGY finish the survivors before
-          // the next air window (~tick 72.9k; remnant is dead by ~66.8k).
+          // HAND is down — press AFLD/PROC immediately. Early-capture used to
+          // park the remnant for the next A-10; v428 showed the remnant is
+          // dead within ~300 ticks, so any survivor must mop now. Also scavenge
+          // any non-cleanup GDI mobiles (v431 still had F=2 with cA=0).
           const mopPriority = new Map([
             ["AFLD", 0], ["PROC", 1], ["NUKE", 2], ["SILO", 3], ["HAND", 4],
             ["LTNK", 5], ["BGGY", 6], ["ARTY", 7],
           ]);
+          const mopWave = [...new Map([
+            ...peeled,
+            ...snapshot.objects.filter((candidate) => (
+              candidate.owner === HOUSE_GDI
+              && (candidate.type === 1 || candidate.type === 2)
+              && candidate.subObject === 0
+              && candidate.strength > 0
+            )),
+          ].map((unit) => [objectKey(unit), unit])).values()];
+          for (const unit of mopWave) {
+            const key = objectKey(unit);
+            state.postFactCleanupCohortKeys.add(key);
+            state.strikeKeys.add(key);
+            state.productionGunPeelKeys.add(key);
+          }
           const mopTarget = hostiles.filter((hostile) => (
             mopPriority.has(hostile.typeName)
             && (hostile.type === 4
-              || peeled.some((attacker) => missionEightDistance(attacker, hostile) <= 5))
+              || mopWave.some((attacker) => missionEightDistance(attacker, hostile) <= 5))
           )).toSorted((left, right) => (
             (mopPriority.get(left.typeName) ?? 20) - (mopPriority.get(right.typeName) ?? 20)
             || left.strength - right.strength
             || left.id - right.id
           ))[0] ?? target;
-          const approach = peeled.filter((attacker) => (
+          const approach = mopWave.filter((attacker) => (
             missionEightDistance(attacker, mopTarget) > 2
           ));
-          const engaged = peeled.filter((attacker) => (
+          const engaged = mopWave.filter((attacker) => (
             missionEightDistance(attacker, mopTarget) <= 2
           ));
           for (let index = 0; index < approach.length; index += 10) {
@@ -7042,6 +7142,9 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
       }
       if (approach.length > 0 || engaged.length > 0 || peeled.length > 0) return true;
     }
+    // Post-HAND: do not park a thin remnant for the next A-10. v428 killed
+    // HAND then lost every cleanup rifle within ~300 ticks — survivors must
+    // keep pressing AFLD/PROC immediately.
     for (let index = 0; index < cleanupStrike.length; index += 10) {
       queueMissionEightRole(commands, `east-a-west-cleanup-${stage}-${index / 10}`,
         cleanupStrike.slice(index, index + 10), target, 0, 30);
@@ -8378,6 +8481,11 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       && snapshot.tick >= eastAPostFactLaunchMinTick(state)) {
       state.postFactCleanupLaunchTick = snapshot.tick;
       releaseMissionEightNorthHold(state, snapshot);
+      if (eastAEarlyCapture(state)) {
+        state.postFactCleanupTransitStage =
+          missionEightEastAPostFactCleanupTransitRoute.length;
+        eastAPrepareEarlyCaptureCleanup(state, hostiles, snapshot);
+      }
       const liveHomeCohort = attackers.filter((attacker) => (
         state.postFactHomeDefenseCohortKeys.has(objectKey(attacker))
       ));
@@ -8981,6 +9089,17 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     }
   }
   let strike = attackers.filter((attacker) => state.strikeKeys.has(objectKey(attacker)));
+  if (mission.variant === "east-a" && state.postFactCleanupLaunchTick !== undefined) {
+    const liveCleanup = attackers.filter((attacker) => (
+      state.postFactCleanupCohortKeys.has(objectKey(attacker)) && attacker.strength > 0
+    ));
+    if (liveCleanup.length > 0) {
+      for (const attacker of liveCleanup) {
+        state.strikeKeys.add(objectKey(attacker));
+      }
+      strike = attackers.filter((attacker) => state.strikeKeys.has(objectKey(attacker)));
+    }
+  }
   if (mission.variant === "east-b" && state.eastBSamSpineFinisherHoldKeys.size > 0) {
     const westernSamHold = hostiles.find((hostile) => (
       hostile.typeName === "SAM" && hostile.cellX === 13 && hostile.cellY === 16
@@ -9049,12 +9168,9 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
       if (strike.length === 0) return;
     }
   }
-  const postFactCleanupTransitRoute = [
-    { cellX: 29, cellY: 40, label: "cleanup southern crossing" },
-    { cellX: 21, cellY: 30, label: "cleanup basin assembly" },
-    { cellX: 12, cellY: 12, label: "cleanup western assembly" },
-  ];
+  const postFactCleanupTransitRoute = missionEightEastAPostFactCleanupTransitRoute;
   if (mission.variant === "east-a" && state.postFactCleanupLaunchTick !== undefined
+    && !eastAEarlyCapture(state)
     && state.postFactCleanupTransitStage < postFactCleanupTransitRoute.length) {
     const cleanupStrike = strike.filter((attacker) => (
       state.postFactCleanupCohortKeys.has(objectKey(attacker))
