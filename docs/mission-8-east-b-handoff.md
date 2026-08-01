@@ -11,12 +11,12 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — western SAM dead (held); **western GUN dead @~38700** (v399/v400 2v1); post-GUN spine hard-rail + no demote; free dies ~88 HP before NW SAM; remaining SAMs **400**; no A-10 |
 | Branch | `browser-port` |
-| Commit | `7bcfdbb` |
+| Commit | `fdaf9b0` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v400c / goal l86–l94 — attack-in-place closed (free@15 worse than free@108); GUN **0 @38700** free@**108** NW **400** minNeut **7** |
+| Last TRACE suite | v400c / goal l95–l97 — civ-screen/FIX closed (anchor → gunMin 190 no kill; FIX never built); best still GUN **0 @38700** free@**108** NW **400** minNeut **7** |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -198,6 +198,10 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Attack-in-place (pin fire cell + slow attack cadence) | GUN kill held (l92/l93) but free residual **15** @14,22 worse than l85 **108** @11,22; NW still 400 |
 | Ultra-strict dist-4-only GUN engage | free@17,20 dist 6 never fires; gunMin ~210 (l74) |
 | freeReady y≤40 (with freeT=3) | weaker than y≤36 rendezvous for 2v1 kill path (l72) |
+| Pre-free FIX from FACT cash + mid-pad heal | l95–l96: **fixSeen false** — free already live when funds hit 2816; gate `freePostWestLive&lt;1 && funds≥1300` never opens; free bleeds mid-north anyway (l86) |
+| Village E3 cap5 / freeT≥3 top-up | l96: funds sit **~90** after freeT=3; E3 costs 300 — no-op; closed |
+| Post-west hospital MTNK anchor (1 armor hold) | l96/l97: gunMin **190** no kill; freeT 3→2 @36900; minNeut 8 but lose **38253** earlier than l85 **38995** — **reverted** |
+| Always-on hospital anchor (pre-west too) | l95: western SAM **never dies**; assault thinned; freeT→0; lose civ@38122 — **reverted** |
 
 ### Latest TRACE shape (v76)
 
@@ -408,12 +412,12 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 ### Next (ordered)
 
-1. **After GUN dead: spine north x≈12–13 → NW SAM (12,5)** — GUN kill held v399; survivors must reach NW fire line with HP >0. NE rim approach is closed (pathfind).
-2. **Preserve free HP through GUN 2v1** — l68 kills GUN but free@~67; earlier rendezvous / more simultaneous DPS.
-3. **Village/civ screen during free push** — minNeut 7; lose ~38.9k before remaining-SAM chip.
-4. **Post-GUN rebuild cash** — funds ~90 after freeT=3; optional last-NUKE sell only after GUN dead (keep power through 2v1).
+1. **After GUN dead: spine north x≈12–13 → NW SAM (12,5)** — GUN kill held v399/l85 free@108; survivors die ~300t before NW fire line. NE rim closed (pathfind). Primary open lever.
+2. **Preserve free HP through GUN 2v1 without cutting DPS** — peel/standoff/inplace closed (under-kill or free@15). Need path that keeps free@≥108 and still kills GUN.
+3. **Civ screen that does not thin free GUN DPS** — MTNK hospital anchors closed (l95–l97). Infantry-only or post-GUN-only ideas only if they do not drop freeT before GUN.
+4. **Post-GUN rebuild cash** — last-NUKE after GUN → funds ~240 still ≪800; remaining SAMs need rebuild cohort.
 5. **allSamsDead → A-10 → map clear** (still blocked on remaining SAMs@400).
-6. **minNeut ≥ 9** without regressing free@400 escape / GUN kill.
+6. **minNeut ≥ 9** without regressing GUN kill / free@108 (pure anchor levers closed).
 
 ---
 
@@ -434,6 +438,10 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 | Commit | Note |
 |---|---|
+| *(l95–l97)* | docs: close civ-screen/FIX levers (anchor gunMin 190; FIX never built) |
+| `fdaf9b0` | docs: close attack-in-place (l91–l94 free@15 worse than free@108) |
+| `3f99523` | docs: handoff hash for v400c survivor/FIX avoid |
+| `7bcfdbb` | docs: close survivor peel/FIX levers (l86–l90 vs l85) |
 | *(v390)* | **Western SAM kill** — no SAM auto-repair + last-HP fire line + proximity finish chip |
 | `90e2af2` | v389 GUN respawn re-engage (samMin 98 held) |
 | `b8e691b` | v386 nadir burst + post-western-SAM push (samMin 98 held) |
