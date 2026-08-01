@@ -3016,6 +3016,9 @@ const missionEightEastAMopDiveStage = { cellX: 42, cellY: 40 };
 const missionEightEastAMopAfldApproach = { cellX: 36, cellY: 30 };
 // Thin remnant after AFLD: wait for second A-10 rather than suicide on PROC.
 const missionEightEastAMopSecondAirHoldMax = 3;
+// v551: after production chain, hold SE of pad away from BGGY@20,28 and
+// pad-edge E1. {38,26} sat under E1 fire and died @83k short of third A-10.
+const missionEightEastAPostProdHold = { cellX: 48, cellY: 36 };
 // Launch once the production turret has been airstrike-softened (~tick 51k)
 // rather than waiting until 54.5k while it repairs back to full.
 const missionEightEastAPostFactLaunchMinTick = 52_000;
@@ -3526,6 +3529,7 @@ const missionEightState = {
   eastAMopKiteTick: undefined,
   eastAAfldClearedTick: undefined,
   eastAProcClearedTick: undefined,
+  eastAProdChainDoneTick: undefined,
   eastAHarvFleeTick: undefined,
   eastAHarvFleeStopTick: undefined,
   eastAMopReserveKeys: new Set(),
@@ -7153,13 +7157,15 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
       });
       // After the production turret falls, keep pressing HAND/AFLD/PROC with
       // the remaining force. Resume deferred western silos only after the
-      // production base chain (stages 8–11) is finished.
+      // production base chain (stages 8–11) is finished — and only after the
+      // next A-10 (v546 marched north at stage 3 immediately and died to
+      // mid-map BGGY with cleanupAlive 2 @~83k).
       if (stage === 7) {
         state.westCleanupStage = 8;
       } else if (stage === 11 && state.westCleanupDeferredFromStage !== undefined) {
-        const resume = state.westCleanupDeferredFromStage;
-        state.westCleanupDeferredFromStage = undefined;
-        state.westCleanupStage = resume;
+        state.eastAProdChainDoneTick ??= snapshot.tick;
+        // Exit production stages; post-while north-hold kites until third A-10.
+        state.westCleanupStage = missionEightEastAWestCleanupTargets.length;
       } else {
         state.westCleanupStage += 1;
       }
@@ -7632,12 +7638,16 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           const latestMopAirElapsed = latestMopAir !== undefined
             ? snapshot.tick - latestMopAir.tick
             : -1;
-          // Dive window 150–900t after latest post-HAND mop A-10.
-          // After PROC dies, only dive on orders placed *after* PROC death
-          // (third cycle) so the remnant re-kites instead of suiciding on NUKE.
+          // Dive window after latest post-HAND mop A-10.
+          // Thin remnant: 150–520t only (v549 stayed to 900t, bled 3→2, died
+          // @83k short of third A-10). Full wave keeps 150–900t for AFLD.
+          // After PROC dies, only dive on orders placed *after* PROC death.
+          const diveWindowEnd = (!afld && mopWave.length <= missionEightEastAMopSecondAirHoldMax)
+            ? 520
+            : 900;
           let mopDiveWindow = latestMopAir !== undefined
             && latestMopAirElapsed >= 150
-            && latestMopAirElapsed <= 900;
+            && latestMopAirElapsed <= diveWindowEnd;
           if (mopDiveWindow && !proc && state.eastAProcClearedTick !== undefined) {
             mopDiveWindow = latestMopAir.tick >= state.eastAProcClearedTick;
           }
@@ -7656,14 +7666,29 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             && !shouldDive;
           if (shouldKite) {
             state.eastAMopKiteTick ??= snapshot.tick;
-            // Deep SE between A-10s; creep to dive-stage only when air is due
-            // and we still have a healthy (non-thin) wave for the first AFLD push.
-            const kiteCell = (thinRemnant || !airSoon)
-              ? missionEightEastAHarvSafeHold
-              : missionEightEastAMopDiveStage;
-            for (let index = 0; index < mopWave.length; index += 10) {
-              queueMissionEightRole(commands, `east-a-mop-kite-${index / 10}`,
-                mopWave.slice(index, index + 10), kiteCell, MODIFIER_ALT, 30);
+            // v552: between A-10s hold at post-prod cell (48,36), not deep SE
+            // HarvSafeHold — the SE path crossed BGGY@20,28 and bled 5→3
+            // before the second A-10 (v546–v551). Creep to dive-stage only
+            // when air is due.
+            const kiteCell = airSoon
+              ? missionEightEastAMopDiveStage
+              : missionEightEastAPostProdHold;
+            // Full-stack clear contact threats; otherwise park.
+            const kiteThreat = hostiles.filter((hostile) => (
+              (hostile.typeName === "BGGY" || hostile.typeName === "LTNK"
+                || hostile.typeName === "E1" || hostile.typeName === "E4")
+              && mopWave.some((unit) => missionEightDistance(unit, hostile) <= 3)
+            )).toSorted((left, right) => left.strength - right.strength || left.id - right.id)[0];
+            if (kiteThreat) {
+              for (let index = 0; index < mopWave.length; index += 10) {
+                queueMissionEightRole(commands, `east-a-mop-kite-clear-${index / 10}`,
+                  mopWave.slice(index, index + 10), kiteThreat, 0, 24);
+              }
+            } else {
+              for (let index = 0; index < mopWave.length; index += 10) {
+                queueMissionEightRole(commands, `east-a-mop-kite-${index / 10}`,
+                  mopWave.slice(index, index + 10), kiteCell, MODIFIER_ALT, 30);
+              }
             }
           } else {
             // Dive priority: AFLD > soft pad > PROC > NUKE > current target.
@@ -7767,12 +7792,143 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
       }
       if (approach.length > 0 || engaged.length > 0 || peeled.length > 0) return true;
     }
+    // Deferred western NUKE/SILO after production chain + third A-10.
+    // v552 hit 120k with 2 SILOs left and 3 E1 at 15,19 stuck on approach —
+    // when no mobile threats remain, all-in CTRL on the structure.
+    if (state.eastAProdChainDoneTick !== undefined && stage < 7) {
+      const pathThreat = hostiles.filter((hostile) => (
+        (hostile.typeName === "BGGY" || hostile.typeName === "LTNK"
+          || hostile.typeName === "E1" || hostile.typeName === "E4")
+        && cleanupStrike.some((unit) => missionEightDistance(unit, hostile) <= 5)
+      )).toSorted((left, right) => left.strength - right.strength || left.id - right.id)[0];
+      const ordered = cleanupStrike.toSorted((left, right) => (
+        right.strength - left.strength || left.id - right.id
+      ));
+      const mobileLeft = hostiles.some((hostile) => (
+        hostile.type === 1 || hostile.type === 2
+      ));
+      if (!mobileLeft || !pathThreat) {
+        for (let index = 0; index < ordered.length; index += 10) {
+          queueMissionEightRole(commands, `east-a-north-finish-${stage}-${index / 10}`,
+            ordered.slice(index, index + 10), target, MODIFIER_CTRL, 12);
+        }
+        return true;
+      }
+      const far = ordered.filter((unit) => missionEightDistance(unit, target) > 4);
+      const near = ordered.filter((unit) => missionEightDistance(unit, target) <= 4);
+      if (far.length > 0) {
+        for (let index = 0; index < far.length; index += 10) {
+          queueMissionEightRole(commands, `east-a-north-approach-${index / 10}`,
+            far.slice(index, index + 10), target, 0, 18);
+        }
+      }
+      let force = near;
+      if (pathThreat && force.length >= 2
+        && force.some((unit) => missionEightDistance(unit, pathThreat) <= 3)) {
+        queueMissionEightRole(commands, "east-a-north-peel",
+          force.slice(0, 1), pathThreat, 0, 24);
+        force = force.slice(1);
+      }
+      for (let index = 0; index < force.length; index += 10) {
+        queueMissionEightRole(commands, `east-a-north-strike-${stage}-${index / 10}`,
+          force.slice(index, index + 10), target, MODIFIER_CTRL, 12);
+      }
+      return true;
+    }
     // Post-HAND: do not park a thin remnant for the next A-10. v428 killed
     // HAND then lost every cleanup rifle within ~300 ticks — survivors must
     // keep pressing AFLD/PROC immediately.
     for (let index = 0; index < cleanupStrike.length; index += 10) {
       queueMissionEightRole(commands, `east-a-west-cleanup-${stage}-${index / 10}`,
         cleanupStrike.slice(index, index + 10), target, 0, 30);
+    }
+    return true;
+  }
+
+  // v553: all enemy buildings gone — hunt remaining infantry/vehicles so we
+  // do not time out or die idle with 4 E1 left (v553 lose @103k).
+  if (state.eastAProdChainDoneTick !== undefined) {
+    const enemyBuildings = hostiles.filter((hostile) => hostile.type === 4);
+    const enemyMobiles = hostiles.filter((hostile) => (
+      (hostile.type === 1 || hostile.type === 2) && hostile.strength > 0
+    )).toSorted((left, right) => left.strength - right.strength || left.id - right.id);
+    if (enemyBuildings.length === 0 && enemyMobiles.length > 0) {
+      const hunters = snapshot.objects.filter((object) => (
+        object.owner === HOUSE_GDI
+        && (object.type === 1 || object.type === 2)
+        && object.subObject === 0
+        && object.strength > 0
+        && object.typeName !== "MCV"
+        && object.typeName !== "HARV"
+      ));
+      if (hunters.length > 0) {
+        const prey = enemyMobiles[0];
+        for (let index = 0; index < hunters.length; index += 10) {
+          queueMissionEightRole(commands, `east-a-mop-hunt-${index / 10}`,
+            hunters.slice(index, index + 10), prey, 0, 18);
+        }
+        return true;
+      }
+    }
+  }
+
+  // v547: production chain (HAND→AFLD→PROC→prod NUKE) done; deferred western
+  // NUKE/SILO still pending. SE-kite the remnant until the next A-10, then
+  // resume stage 3. Immediate resume (v546) walked 2 rifles into BGGY@20,28.
+  if (state.eastAProdChainDoneTick !== undefined
+    && state.westCleanupDeferredFromStage !== undefined) {
+    const northAirOrder = state.airstrike.orders.find((order) => (
+      order.tick >= state.eastAProdChainDoneTick
+    ));
+    const northAirElapsed = northAirOrder !== undefined
+      ? snapshot.tick - northAirOrder.tick
+      : -1;
+    // Resume deferred western cleanup once the third A-10 has aged in.
+    if (northAirOrder !== undefined && northAirElapsed >= 150) {
+      state.westCleanupStage = state.westCleanupDeferredFromStage;
+      state.westCleanupDeferredFromStage = undefined;
+      return true;
+    }
+    // Any live GDI combat ground unit — strikeKeys can drop out after stage
+    // advances past the production list (v547 mopHold empty → no commands).
+    const mopHold = snapshot.objects.filter((object) => (
+      object.owner === HOUSE_GDI
+      && (object.type === 1 || object.type === 2)
+      && object.subObject === 0
+      && object.strength > 0
+      && object.typeName !== "MCV"
+      && object.typeName !== "HARV"
+    ));
+    for (const unit of mopHold) {
+      state.strikeKeys.add(objectKey(unit));
+      state.postFactCleanupCohortKeys.add(objectKey(unit));
+    }
+    if (mopHold.length === 0) {
+      state.westCleanupCompletedTick ??= snapshot.tick;
+      return false;
+    }
+    // Full-stack soft threats near the group or hold cell, else park at hold.
+    // Split peels left the stack under E1 fire (v549–v550 died @83k).
+    const holdCell = missionEightEastAPostProdHold;
+    const holdThreat = hostiles.filter((hostile) => (
+      (hostile.typeName === "BGGY" || hostile.typeName === "LTNK"
+        || hostile.typeName === "E1" || hostile.typeName === "E3" || hostile.typeName === "E4")
+      && (mopHold.some((unit) => missionEightDistance(unit, hostile) <= 4)
+        || missionEightDistance(hostile, holdCell) <= 5)
+    )).toSorted((left, right) => left.strength - right.strength || left.id - right.id)[0];
+    const ordered = mopHold.toSorted((left, right) => (
+      right.strength - left.strength || left.id - right.id
+    ));
+    if (holdThreat) {
+      for (let index = 0; index < ordered.length; index += 10) {
+        queueMissionEightRole(commands, `east-a-north-hold-clear-${index / 10}`,
+          ordered.slice(index, index + 10), holdThreat, 0, 24);
+      }
+    } else {
+      for (let index = 0; index < ordered.length; index += 10) {
+        queueMissionEightRole(commands, `east-a-north-hold-kite-${index / 10}`,
+          ordered.slice(index, index + 10), holdCell, MODIFIER_ALT, 30);
+      }
     }
     return true;
   }

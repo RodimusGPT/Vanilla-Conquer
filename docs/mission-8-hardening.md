@@ -303,7 +303,18 @@ or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 
 **Retained foothold (v546):** HAND min **6**, **AFLD + PROC + production NUKE destroyed**, buildingsKilled **11**, cleanupAlive **2**, 3 attackers through ~82k, end ~**82980**. Still red: dies on north base / BGGY leftovers; no third A-10 yet.
 
-**Next:** third A-10 @~87.7k; keep ≥2 into north SILO/NUKE clear.
+### v547–v554 third A-10 + north clear + almost-win
+
+| Change | Result |
+|---|---|
+| Gate deferred north resume until post-prod-chain A-10 | Avoids BGGY wipe after stage 11 |
+| Inter-A-10 kite at `{48,36}` not deep SE | **5 attackers stable 74k–86k** (was 5→3) |
+| Third+ A-10s @87690+ on NUKE/SILO | North power falls; **readyTicks through 116k** |
+| All-in CTRL on last buildings; hunt leftover E1 | v552: **2 SILO left, 3 E1 live @120k timeout**; v554: **all buildings gone**, die to 4 E1 |
+
+**Retained foothold (v554):** HAND min **6**, third A-10 reached, production + north chain cleared (bk **17** or 2 SILO at timeout), cleanupAlive **2–3**. Still red: timeout with 2 SILO **or** wipe vs last infantry.
+
+**Next:** finish last SILO/E1 before 120k; confirm win.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 
