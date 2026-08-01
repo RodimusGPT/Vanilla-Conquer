@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead (held); free→strike works (v395n); remaining 4 SAMs still 400; WEAP often dies post-west; lose civ / all-destr |
+| Status | **RED** — western SAM dead (held); free→strike + pad escape (v396h); remaining 4 SAMs still 400; free dies ~30,49 before NW |
 | Branch | `browser-port` |
-| Commit | `5f90ff0` |
+| Commit | *(update after push)* |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v395n — western SAM **0**; free tank **strike=1** @36.6k moves NW briefly (`35,51→34,48`); **no remaining-SAM chip** (all 400); WEAP often **0** by free spawn; routeStage **8–9**; minNeut **6–7**; no A-10 |
+| Last TRACE suite | v396h — western SAM **0**; free **strike=1** @36.6k path `34,55→30,49` (HP 262→93) then dies; remaining SAMs **400**; WEAP repairs mid-window then dies; minNeut **6**; no A-10 |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -136,26 +136,33 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Finisher logistics | Village loan chain + free MTNK→strike (not village re-home) while SAM chipped |
 | Emergency cash | Can sell NUKE when strike empty + SAM chipped + funds &lt; 800 (funds often stuck ~740) |
 
-### Post-west (v390–v395n) — held
+### Post-west (v390–v396h) — held
 
 | Area | Evidence |
 |---|---|
-| Western SAM kill | **Held** — dead ~tick 33.0k (samMin 15 → 0) |
-| Free→strike promote | **Held** — post-west free tank lands in `strikeKeys` (was bg=1 strike=0 forever in v395b) |
-| Dead-SAM gate | Hostiles corpse at (13,16) no longer blocks `queueEastBSamPostWesternSamPush` (strength>0 check) |
-| Post-west free cohort | `eastBPostWestProducedTankKeys` — only tanks emerged after western death count for rebuild/push |
-| Typed remaining-SAM route | NW → SE → SW → NE approaches with `typeName:SAM` |
+| Western SAM kill | **Held** — dead ~tick 33.0k |
+| Free→strike promote | **Held** — post-west free in `strikeKeys` |
+| Dead-SAM gate | Corpse at (13,16) no longer blocks push |
+| Pad escape | Force-move north while y≥50; reached **y=49** (v396h) |
+| WEAP repair | Post-west heals below 95% (334→400 mid-window) |
+| Secure release | Leave when WEAP &lt;65% HP or picket timeout 300t |
 
 ### Still broken
 
 | Symptom | Detail |
 |---|---|
-| Remaining 4 SAMs | All stay **400**; free strike tank dies near base (~28–35,x 48–54) before NW SAM |
-| Free tank path | Micro-hops NW; still bleeds HP to base raiders; pathfind sometimes drifts south into village |
-| WEAP post-west | Often **0** by free@36.6k (v394 held WEAP@400 through lose — do not fully regress that) |
-| Civ margin | minNeut **6–7** (need ≥9); post-west deaths from ~34.5k while village thin |
-| A-10 / map clear | Blocked until all five SAMs dead |
-| Rebuild economy | Funds often stuck ~740 while banking MTNK; WEAP repair + raiders drain cash |
+| Remaining 4 SAMs | All **400** — free dies ~`30,49` @~93 HP |
+| Free spawn HP | Emerges ~262 into pad war (no defenders while free builds) |
+| WEAP / civs | WEAP dies after free leaves; minNeut **6** |
+| A-10 / clear | Needs all five SAMs dead |
+| Next | Keep a defender until free emerges; free@400 on escape |
+
+### Avoid
+
+| Idea | Why |
+|---|---|
+| E3 pad-screen before free MTNK | v396f/g spent rebuild cash → no free, WEAP dead |
+| Forever-picket free on WEAP | v396 free+WEAP both die |
 
 ### Latest TRACE shape (v76)
 

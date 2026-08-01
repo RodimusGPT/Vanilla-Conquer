@@ -3375,6 +3375,8 @@ const missionEightState = {
   eastBProducedTankKeys: new Set(),
   // Free tanks that emerged after western SAM death — remaining-SAM rebuild cohort.
   eastBPostWestProducedTankKeys: new Set(),
+  // First post-west free emergence tick (timed SAM release if picket never quiets).
+  eastBPostWestFreeEmergeTick: undefined,
   eastBPreviousTanks: new Map(),
   eastBTankCohortReadyTick: undefined,
   // Free/base MTNKs pre-positioned at western support hold; released at GUN stage.
@@ -3790,6 +3792,7 @@ function observeMissionEightTurn(snapshot, friendly, hostiles) {
       state.eastBProducedTankKeys.add(key);
       if (eastBWesternSamDead(hostiles) && state.allSamsDeadTick === undefined) {
         state.eastBPostWestProducedTankKeys.add(key);
+        state.eastBPostWestFreeEmergeTick ??= snapshot.tick;
       }
       if (state.assaultTick !== undefined
         && state.eastBSamSpineFinisherKey === undefined
@@ -4358,7 +4361,10 @@ function queueMissionEightRepairs(snapshot, friendly, commands) {
   const importantEastB = (weapNeedsRepair || bankForRebuildTank)
     ? new Set(["WEAP", "PROC"])
     : new Set(["WEAP", "PROC", "NUKE", "PYLE", "FACT"]);
-  const repairCadence = eastBCriticalRepair ? 180 : 900;
+  // TRACE v395n: WEAP stuck @304 (76%) while banking skipped repair, then died
+  // unguarded. Always heal WEAP post-west when below 95%; faster cadence.
+  const postWestWeapRepair = eastBCriticalRepair && eastBWesternSamDead();
+  const repairCadence = postWestWeapRepair ? 60 : (eastBCriticalRepair ? 180 : 900);
   for (const building of friendly.filter((object) => (
     object.type === 4 && object.strength < object.maxStrength
     && !(object.objectFlags & (1 << 1))
@@ -4369,12 +4375,13 @@ function queueMissionEightRepairs(snapshot, friendly, commands) {
           : true)
         : true)
     // Hold only cosmetic WEAP repair while banking MTNK. Always repair when
-    // WEAP drops below 75% — TRACE v393d WEAP 304→0 undefended after 35.4k.
+    // WEAP drops below 95% post-west (v395n) or 75% otherwise.
     && !(bankForRebuildTank
       && object.typeName === "WEAP"
-      && object.strength >= Math.ceil(object.maxStrength * 0.75)
+      && object.strength >= Math.ceil(object.maxStrength
+        * (postWestWeapRepair ? 0.95 : 0.75))
       && funds < 900)
-    && funds >= 200
+    && funds >= (postWestWeapRepair && object.typeName === "WEAP" ? 100 : 200)
     && snapshot.tick - (state.repairTicks.get(object.id) ?? -repairCadence) >= repairCadence
   )).toSorted((left, right) => {
     // WEAP first — without it the post-west rebuild cannot produce tanks.
@@ -4987,11 +4994,14 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       && object.strength > 0
     )).length;
     const westernSamDeadForSale = eastBWesternSamDead(hostiles);
+    // Fund 1st free rebuild, or 2nd free (picket) while first free holds WEAP.
+    // TRACE v396 free=1 funds~0 after spawn — never produced a partner tank.
     const postWestNeedsCash = westernSamDeadForSale
       && state.allSamsDeadTick === undefined
-      && state.eastBPostWestRebuildReadyTick === undefined
+      && (state.eastBPostWestRebuildReadyTick === undefined
+        || freeEastBPostWestTanks < 2)
       && (villageTanksForSale < missionEightEastBVillageTankCountLate
-        || freeEastBPostWestTanks < eastBPostWestRebuildTankCount);
+        || freeEastBPostWestTanks < 2);
     if (state.eastBVillageEmergencySellTick === undefined
       && postWestNeedsCash
       && liveFunds < 800
@@ -5178,6 +5188,10 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       ?? snapshot.sidebar.entries.find((entry) => entry.assetName === "E1");
     // While banking for the next tank, still allow E3 if we cannot afford MTNK
     // this tick (funds in [300,799]) so rockets stockpile beside staged tanks.
+    // While banking for the next tank, still allow E3 if we cannot afford MTNK
+    // this tick (funds in [300,799]) so rockets stockpile beside staged tanks.
+    // Do NOT spend post-west rebuild cash on pad-screen E3 before free MTNK
+    // (TRACE v396f/g: E3 spend → no free tank, WEAP dead).
     const eastBInfantryReserve = mission.variant === "east-b" && eastBBankingForArmor
       ? 800
       : mission.variant === "east-b" && eastBSamPackPhase && eastBStrikeRockets < 4
@@ -6836,7 +6850,8 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
           }
         }
       }
-      eastBPostWestPromoteCombatTanks(attackers, hostiles);
+      // hostiles only — friendly scan uses empty list (WEAP cell defaults).
+      eastBPostWestPromoteCombatTanks(attackers, hostiles, []);
     } else if (villageProtectAfterWest) {
       let needVillage = villageTankTarget - liveVillageTanks;
       if (needVillage > 0) {
@@ -8656,12 +8671,83 @@ function eastBHealthyOffVillageTanks(attackers) {
   ));
 }
 
+function eastBWeapCell(friendly = []) {
+  const weap = friendly.find((object) => (
+    object.type === 4 && object.typeName === "WEAP" && object.strength > 0
+  ));
+  if (weap) {
+    return {
+      cellX: weap.cellX, cellY: weap.cellY,
+      strength: weap.strength, maxStrength: weap.maxStrength, known: true,
+    };
+  }
+  // Unknown (caller omitted buildings) — do not treat as dead.
+  return {
+    cellX: 36, cellY: 55, strength: 400, maxStrength: 400, known: false,
+  };
+}
+
+function eastBWeapThreatNear(hostiles, weapCell, radius = 12) {
+  return hostiles.some((hostile) => (
+    (hostile.type === 1 || hostile.type === 2)
+    && missionEightDistance(hostile, weapCell) <= radius
+  ));
+}
+
+function eastBNearestWeapThreat(hostiles, weapCell, radius = 12) {
+  return hostiles.filter((hostile) => (
+    (hostile.type === 1 || hostile.type === 2)
+    && missionEightDistance(hostile, weapCell) <= radius
+  )).toSorted((left, right) => (
+    missionEightDistance(left, weapCell) - missionEightDistance(right, weapCell)
+    || left.strength - right.strength
+    || left.id - right.id
+  ))[0];
+}
+
+// Factory is secure enough to release free armor for remaining SAMs.
+// TRACE v395n: free@36.6k with WEAP@0 died on the pad under raiders.
+// TRACE v396/b: free picketed and died with WEAP by 37.2k (before 900t timeout).
+// Prefer: short picket, abandon critically-hurt WEAP, release free for SAMs.
+function eastBWeapSecureForSamPush(hostiles, friendly = [], tick = 0) {
+  const weapLive = friendly.length > 0
+    ? friendly.find((object) => (
+      object.type === 4 && object.typeName === "WEAP" && object.strength > 0
+    ))
+    : undefined;
+  if (friendly.length > 0 && !weapLive) {
+    // WEAP confirmed dead — push SAMs (only chance left).
+    return true;
+  }
+  const weap = eastBWeapCell(friendly);
+  // WEAP already critically hurt — free cannot save it; go kill SAMs with full HP.
+  // TRACE v396 free@36600 WEAP@241 (60%) — picketing both died by 37.2k.
+  if (weap.known && weap.strength > 0
+    && weap.strength < Math.ceil(weap.maxStrength * 0.65)) {
+    return true;
+  }
+  // Timed release after 300 ticks of picket (free dies ~600t if held longer).
+  const emerge = missionEightState.eastBPostWestFreeEmergeTick;
+  if (emerge !== undefined && tick > 0 && tick - emerge >= 300) {
+    return true;
+  }
+  if (weap.known && weap.strength < Math.ceil(weap.maxStrength * 0.9)) return false;
+  if (eastBWeapThreatNear(hostiles, weap, 7)) return false;
+  return true;
+}
+
 // Post-west free tanks for remaining-SAM combat only.
-// TRACE v395b: sole free sat on WEAP picket → release when quiet after ready.
-// TRACE v395c: pre-kill free/survivors pushed NW and wiped → only post-west free.
-function eastBPostWestPromoteCombatTanks(attackers, hostiles = []) {
+// TRACE v395b: sole free sat on WEAP picket forever.
+// TRACE v395n: free left while WEAP dying → pad raiders killed free + WEAP.
+// Phase: free pickets/clears WEAP first; release to strike only when factory secure.
+function eastBPostWestPromoteCombatTanks(attackers, hostiles = [], friendly = [],
+  tick = 0) {
   const state = missionEightState;
   const rebuildReady = state.eastBPostWestRebuildReadyTick !== undefined;
+  const weap = eastBWeapCell(friendly);
+  const weapThreat = eastBWeapThreatNear(hostiles, weap, 12);
+  // tick=0 in assignRoles (no timeout); push path passes snapshot.tick.
+  const weapSecure = eastBWeapSecureForSamPush(hostiles, friendly, tick);
   let baseMtnk = attackers.filter((unit) => (
     unit.typeName === "MTNK" && state.baseGuardKeys.has(objectKey(unit))
     && unit.strength > 0
@@ -8673,12 +8759,17 @@ function eastBPostWestPromoteCombatTanks(attackers, hostiles = []) {
     && !state.baseGuardKeys.has(objectKey(unit))
     && unit.strength >= 40
   )).toSorted((left, right) => right.strength - left.strength || left.id - right.id);
-  const weapCell = { cellX: 36, cellY: 55 };
-  const weapThreat = hostiles.some((hostile) => (
-    (hostile.type === 1 || hostile.type === 2)
-    && missionEightDistance(hostile, weapCell) <= 10
-  ));
-  if (weapThreat && baseMtnk.length < 1 && freePostWest.length >= 2) {
+  // Staff WEAP picket from free while factory is not secure (hurt or threatened).
+  // Prefer keeping the sole free on the pad until WEAP is healthy (v395n).
+  if (!weapSecure && weap.strength > 0 && baseMtnk.length < 1 && freePostWest.length > 0) {
+    const key = objectKey(freePostWest[freePostWest.length - 1]);
+    clearMissionEightUnitRoleKey(key);
+    state.baseGuardKeys.add(key);
+    baseMtnk = attackers.filter((unit) => (
+      unit.typeName === "MTNK" && state.baseGuardKeys.has(objectKey(unit))
+      && unit.strength > 0
+    ));
+  } else if (weapThreat && baseMtnk.length < 1 && freePostWest.length >= 2) {
     const key = objectKey(freePostWest[freePostWest.length - 1]);
     clearMissionEightUnitRoleKey(key);
     state.baseGuardKeys.add(key);
@@ -8698,17 +8789,19 @@ function eastBPostWestPromoteCombatTanks(attackers, hostiles = []) {
     unit.typeName === "MTNK" && state.villageGuardKeys.has(objectKey(unit))
     && unit.strength > 0
   ));
-  if (villageMtnk.length < 1 && freeAfter.length >= 2) {
+  // Village only from surplus after WEAP secure + ≥1 free for SAM.
+  if (weapSecure && villageMtnk.length < 1 && freeAfter.length >= 2) {
     const key = objectKey(freeAfter[freeAfter.length - 1]);
     clearMissionEightUnitRoleKey(key);
     state.villageGuardKeys.add(key);
   }
-  // After rebuild-ready: release post-west free from quiet WEAP picket → strike.
-  if (rebuildReady && baseMtnk.length >= 1 && !weapThreat) {
+  // Release post-west free from WEAP picket only when factory is secure and tank
+  // is healthy enough to survive the NW rail (TRACE v395n free died @105 HP).
+  if (rebuildReady && weapSecure && baseMtnk.length >= 1) {
     for (const tank of baseMtnk) {
       const key = objectKey(tank);
       if (!state.eastBPostWestProducedTankKeys.has(key)) continue;
-      if (tank.strength < 60) continue;
+      if (tank.strength < Math.ceil(tank.maxStrength * 0.7)) continue;
       state.baseGuardKeys.delete(key);
       state.strikeKeys.add(key);
     }
@@ -8723,9 +8816,17 @@ function eastBPostWestPromoteCombatTanks(attackers, hostiles = []) {
     const key = objectKey(tank);
     if (!state.eastBPostWestProducedTankKeys.has(key)) continue;
     if (state.villageGuardKeys.has(key)) continue;
-    if (state.baseGuardKeys.has(key) && (!rebuildReady || weapThreat)) continue;
+    // Hold base picket while factory not secure.
+    if (state.baseGuardKeys.has(key) && !weapSecure) continue;
+    if (state.baseGuardKeys.has(key) && (!rebuildReady || !weapSecure)) continue;
     if (state.scoutKeys.has(key)) continue;
     const freeNow = !state.villageGuardKeys.has(key) && !state.baseGuardKeys.has(key);
+    // Do not promote free→strike while WEAP needs the free tank.
+    if (freeNow && !weapSecure && weap.strength > 0) {
+      state.baseGuardKeys.add(key);
+      state.strikeKeys.delete(key);
+      continue;
+    }
     if (!state.strikeKeys.has(key) && !freeNow) continue;
     if (freeNow) {
       state.strikeKeys.add(key);
@@ -8744,18 +8845,17 @@ function eastBWeapAlive(friendlyOrAttackers = []) {
   ));
 }
 
-function eastBPostWestNeedsRebuild(attackers, hostiles, friendly = []) {
+function eastBPostWestNeedsRebuild(attackers, hostiles, friendly = [], tick = 0) {
   if (mission.variant !== "east-b") return false;
   if (!eastBWesternSamDead(hostiles)) return false;
   if (missionEightState.allSamsDeadTick !== undefined) return false;
   if (missionEightState.eastBPostWestRebuildReadyTick !== undefined) return false;
-  // Post-west free tank ready → leave rebuild even if WEAP already died
-  // (TRACE v395l free@36.6k with WEAP@49 must still push remaining SAMs).
-  if (eastBHealthyOffVillageTanks(attackers).length >= eastBPostWestRebuildTankCount) {
+  const freeHealthy = eastBHealthyOffVillageTanks(attackers).length;
+  if (freeHealthy >= eastBPostWestRebuildTankCount
+    && eastBWeapSecureForSamPush(hostiles, friendly, tick)) {
     return false;
   }
-  // Stay in rebuild while WEAP is down or free healthy cohort is thin.
-  if (friendly.length > 0 && !eastBWeapAlive(friendly)) return true;
+  // Stay in rebuild while free cohort thin or WEAP still needs a free picket.
   return true;
 }
 
@@ -8764,12 +8864,12 @@ function eastBPostWestMarkRebuildReady(attackers, hostiles, tick, friendly = [])
   if (!eastBWesternSamDead(hostiles)) return;
   if (missionEightState.allSamsDeadTick !== undefined) return;
   if (missionEightState.eastBPostWestRebuildReadyTick !== undefined) return;
-  // Ready when ≥1 healthy post-west free tank exists — do not require WEAP live
-  // (TRACE v395l WEAP dying at free spawn blocked ready latch).
-  void friendly;
-  if (eastBHealthyOffVillageTanks(attackers).length >= eastBPostWestRebuildTankCount) {
-    missionEightState.eastBPostWestRebuildReadyTick = tick;
+  // Ready when free tank exists AND factory is secure (or picket timeout).
+  if (eastBHealthyOffVillageTanks(attackers).length < eastBPostWestRebuildTankCount) {
+    return;
   }
+  if (!eastBWeapSecureForSamPush(hostiles, friendly, tick)) return;
+  missionEightState.eastBPostWestRebuildReadyTick = tick;
 }
 
 function eastBSamCloseCell(tank) {
@@ -8906,19 +9006,13 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
   ));
   // Promote free produced tanks into strike before any push (TRACE v394f/v395b
   // free=1 strike=0 — combat force never left the factory pad).
-  eastBPostWestPromoteCombatTanks(attackers, hostiles);
   eastBPostWestMarkRebuildReady(attackers, hostiles, snapshot.tick, friendlies);
-  let tanks = eastBPostWestPromoteCombatTanks(attackers, hostiles);
-  if (tanks.length === 0) {
-    tanks = strike.filter((attacker) => (
-      attacker.typeName === "MTNK" && attacker.strength > 0
-    ));
-  }
-  // Last resort: post-west free MTNK not on village — TRACE v395c/v395d.
-  if (tanks.length === 0 && state.eastBPostWestRebuildReadyTick !== undefined) {
+  let tanks = eastBPostWestPromoteCombatTanks(attackers, hostiles, friendlies,
+    snapshot.tick);
+  if (tanks.length === 0 && eastBWeapSecureForSamPush(hostiles, friendlies, snapshot.tick)) {
     tanks = attackers.filter((attacker) => (
       attacker.typeName === "MTNK"
-      && attacker.strength >= 40
+      && attacker.strength >= Math.ceil(attacker.maxStrength * 0.55)
       && state.eastBPostWestProducedTankKeys.has(objectKey(attacker))
       && !state.villageGuardKeys.has(objectKey(attacker))
     ));
@@ -8928,17 +9022,61 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
       state.strikeKeys.add(key);
     }
   }
-  // Rebuild hold until a post-west free tank is ready. TRACE v395i/j: pre-kill
-  // free on strike fell through to NW and died. TRACE v395k: forcing spine
-  // survivors all the way to WEAP across mid-map also wiped them — park western
-  // survivors at support hold {13,32}, only near-base tanks picket WEAP.
-  if (eastBPostWestNeedsRebuild(attackers, hostiles, friendlies)) {
+  if (tanks.length === 0) {
+    tanks = strike.filter((attacker) => (
+      attacker.typeName === "MTNK" && attacker.strength > 0
+      && state.eastBPostWestProducedTankKeys.has(objectKey(attacker))
+    ));
+  }
+  // Rebuild / WEAP-secure hold: free picket intercepts raiders at standoff
+  // (not on the WEAP pad — TRACE v396 free-on-pad attracted fire into WEAP).
+  if (eastBPostWestNeedsRebuild(attackers, hostiles, friendlies, snapshot.tick)
+    || !eastBWeapSecureForSamPush(hostiles, friendlies, snapshot.tick)) {
     const weap = friendlies.find((object) => (
       object.type === 4 && object.typeName === "WEAP" && object.strength > 0
     ));
     const weapPicket = weap
-      ? { cellX: weap.cellX + 1, cellY: weap.cellY + 1 }
-      : { cellX: 35, cellY: 54 };
+      ? { cellX: weap.cellX - 2, cellY: weap.cellY - 2 }
+      : { cellX: 32, cellY: 52 };
+    const weapCell = weap
+      ? { cellX: weap.cellX, cellY: weap.cellY }
+      : { cellX: 36, cellY: 55 };
+    const padThreat = eastBNearestWeapThreat(hostiles, weapCell, 14);
+    // Free post-west tanks: intercept raiders NW of the pad, not on top of WEAP.
+    const freePicket = attackers.filter((tank) => (
+      tank.typeName === "MTNK"
+      && state.eastBPostWestProducedTankKeys.has(objectKey(tank))
+      && (state.baseGuardKeys.has(objectKey(tank))
+        || !state.strikeKeys.has(objectKey(tank)))
+      && tank.strength > 0
+    ));
+    for (const tank of freePicket) {
+      if (state.strikeKeys.has(objectKey(tank))
+        && eastBWeapSecureForSamPush(hostiles, friendlies, snapshot.tick)) {
+        continue; // already released for SAM
+      }
+      const tankKey = objectKey(tank);
+      if (!state.baseGuardKeys.has(tankKey)) {
+        state.baseGuardKeys.add(tankKey);
+        state.strikeKeys.delete(tankKey);
+      }
+      if (padThreat && missionEightDistance(tank, padThreat) <= 6) {
+        queueMissionEightRole(commands, `east-b-post-west-pad-clear-${tankKey}`,
+          [tank], padThreat, 0, 1);
+      } else if (padThreat) {
+        // Intercept between raider and WEAP, not under the factory.
+        const intercept = {
+          cellX: Math.round((padThreat.cellX + weapCell.cellX) / 2),
+          cellY: Math.round((padThreat.cellY + weapCell.cellY) / 2),
+        };
+        queueMissionEightRole(commands, `east-b-post-west-pad-intercept-${tankKey}`,
+          [tank], intercept, MODIFIER_ALT, 3);
+      } else if (missionEightDistance(tank, weapPicket) > 2) {
+        queueMissionEightRole(commands, `east-b-post-west-weap-hold-${tankKey}`,
+          [tank], weapPicket, MODIFIER_ALT, 10);
+      }
+    }
+    // Non-post-west scrap: support hold if on spine, else WEAP.
     for (const tank of attackers) {
       if (tank.typeName !== "MTNK" || tank.strength <= 0) continue;
       const key = objectKey(tank);
@@ -8946,14 +9084,10 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
       if (state.villageGuardKeys.has(key)) continue;
       if (state.strikeKeys.has(key)) {
         state.strikeKeys.delete(key);
-        // Near base → WEAP picket; still on western spine → support hold.
-        if (tank.cellX >= 24 || tank.cellY >= 48) state.baseGuardKeys.add(key);
-        else state.baseGuardKeys.add(key); // keep on base roster for defense count
+        state.baseGuardKeys.add(key);
       }
       const onWesternSpine = tank.cellX <= 20 && tank.cellY <= 45;
-      const rally = onWesternSpine
-        ? eastBPostWestSupportHold
-        : (tank.cellX >= 24 || tank.cellY >= 48 ? weapPicket : eastBPostWestSupportHold);
+      const rally = onWesternSpine ? eastBPostWestSupportHold : weapPicket;
       if (missionEightDistance(tank, rally) > 2) {
         queueMissionEightRole(commands, `east-b-post-west-rebuild-${key}`,
           [tank], rally, MODIFIER_ALT, 15);
@@ -8961,6 +9095,7 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     }
     tanks = tanks.filter((tank) => (
       state.eastBPostWestProducedTankKeys.has(objectKey(tank))
+      && state.strikeKeys.has(objectKey(tank))
     ));
     if (tanks.length === 0) return true;
   }
@@ -9057,30 +9192,49 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
       state.routeStageStartedTick = snapshot.tick;
     }
   }
-  // Reuse the proven assault rail: {25,48} → {13,32} → {13,22} → SAM.
-  // TRACE v395l free tank at {30,51} drifted south to the village — hard-clamp
-  // y≤52 on every hop and recover with a due-north step if y≥54.
+  // Escape pad due north first, then assault rail. TRACE v396c free@33,56
+  // engaged south blockers and died at 28,57 — never engage while y≥50.
   for (const tank of tanks) {
     const tankKey = objectKey(tank);
     const dist = missionEightDistance(tank, target);
+    // On the factory/village band: only force-move north. Do not attack.
+    if (tank.cellY >= 50) {
+      const escape = {
+        cellX: Math.min(Math.max(tank.cellX - 1, 28), 34),
+        cellY: 48,
+      };
+      queueMissionEightRole(commands, `east-b-post-west-escape-${tankKey}`,
+        [tank], escape, MODIFIER_ALT, 1);
+      continue;
+    }
+    // On the rail (y<50): engage only hostiles north/west of tank (not south).
+    const blocker = hostiles.filter((hostile) => (
+      (hostile.type === 1 || hostile.type === 2)
+      && missionEightDistance(tank, hostile) <= 4
+      && hostile.cellY <= tank.cellY + 1
+    )).toSorted((left, right) => (
+      missionEightDistance(tank, left) - missionEightDistance(tank, right)
+      || left.strength - right.strength
+    ))[0];
+    if (blocker && tank.cellY <= 46) {
+      queueMissionEightRole(commands, `east-b-post-west-blocker-${tankKey}`,
+        [tank], blocker, 0, 1);
+      continue;
+    }
     if (dist <= 5) {
       queueMissionEightRole(commands, `east-b-post-west-sam-${tankKey}`,
         [tank], target, 0, 1);
       continue;
     }
     let approach;
-    // Micro-hops north-west around the factory pad. Pathfinding to distant
-    // {25,48} from {30,51} loops south through the village (TRACE v395m).
-    if (tank.cellY >= 53) {
-      approach = { cellX: tank.cellX, cellY: tank.cellY - 2 };
-    } else if (tank.cellX >= 28) {
-      approach = { cellX: tank.cellX - 2, cellY: Math.min(tank.cellY, 50) };
-    } else if (tank.cellX >= 22) {
-      approach = { cellX: tank.cellX - 2, cellY: Math.min(tank.cellY, 48) };
-    } else if (tank.cellY >= 36) {
-      approach = { cellX: 13, cellY: Math.min(tank.cellY - 2, 34) };
+    if (tank.cellX >= 28) {
+      approach = { cellX: 25, cellY: 48 };
+    } else if (tank.cellX >= 20 || tank.cellY >= 44) {
+      approach = { cellX: 13, cellY: 40 };
+    } else if (tank.cellY >= 34) {
+      approach = { cellX: 13, cellY: 32 };
     } else if (tank.cellY >= 24) {
-      approach = { cellX: 13, cellY: Math.min(tank.cellY - 2, 22) };
+      approach = { cellX: 13, cellY: 20 };
     } else if (tank.cellY > target.cellY + 5) {
       approach = {
         cellX: target.cellX,
@@ -9088,6 +9242,9 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
       };
     } else {
       approach = target;
+    }
+    if (approach.cellY > tank.cellY) {
+      approach = { cellX: approach.cellX, cellY: Math.max(tank.cellY - 2, approach.cellY) };
     }
     queueMissionEightRole(commands, `east-b-post-west-approach-${tankKey}`,
       [tank], approach, MODIFIER_ALT, 1);
