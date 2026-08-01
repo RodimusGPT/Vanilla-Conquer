@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — western SAM dead (held); free@400 standoff-chips western GUN to **180** then dies (GUN repairs); remaining 4 SAMs **400**; no A-10 |
 | Branch | `browser-port` |
-| Commit | *(pending v398 push)* |
+| Commit | `acfb744` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
@@ -148,16 +148,17 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | WEAP@400 through free transit | Held until free mid-map (~39k); pinned non-postWest defender |
 | Secure release | WEAP≥80% → free leaves immediately |
 | Village E3 after free | After mtnk busy / free≥1 (never before MTNK buy) |
-| North rim / GUN theatre | Best: **y=9@395** (l28); GUN line **11,20@255** (l32) |
+| North rim / GUN theatre | Best north **y=9@395** (l28); GUN standoff chips to **180** (l43–l46) |
+| GUN TRACE field | Compact TRACE `westGun` strength |
 
 ### Still broken
 
 | Symptom | Detail |
 |---|---|
 | Remaining 4 SAMs | All **400** — free never chips NW SAM (12,5) |
-| Sole free vs GUN | free@395 reaches GUN theatre; trade loses (~255→0); GUN survives |
-| NE path to NW SAM | Pathfind from y≈9–12 x≈20+ cannot cut west to (12,5) — dead end (l25–l29) |
-| Partner free | NUKE sell refund ≪800; funds stuck ~4–174; producedTanks stays 4 |
+| Sole free vs GUN | free chips GUN to **180** then dies; GUN repairs to 400 |
+| No 2nd MTNK for GUN 2v1 | post-pad atk extras are infantry (vg≠MTNK); scrap loan never n>1 |
+| Partner free | NUKE sell refund ≪800; funds stuck ~4–174 |
 | WEAP / civs | WEAP dies ~39–40k after free leaves; minNeut **6–7** |
 | A-10 / clear | Needs all five SAMs dead |
 
@@ -173,6 +174,9 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Direct SAM attack from y=12–15 | Pathfind routes south into GUN (l27) |
 | North-rim west cut at y=9 | Pathfind detours east to x=39 (l28/l29) |
 | Partner free via sole NUKE sell | Refund insufficient; funds never hit 800 (l21–l33) |
+| Point-blank GUN attack-hunt | free paths into turret, worse trade (l32) |
+| Scrap MTNK 2v1 loan | only 1 live MTNK after pad; vg keys are infantry (l38–l42) |
+| E3 rocket assist alone | atk rose mid-fight; gunMin still 180 (l45) |
 
 ### Latest TRACE shape (v76)
 
@@ -383,9 +387,9 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 ### Next (ordered)
 
-1. **Kill GUN {11,18} with free@395** — sole free reaches theatre but loses trade; need micro (standoff fire cells), partner free from real income, or village scrap loan to GUN.
+1. **Finish GUN from gunMin~180** — free dies short while GUN repairs; need 2nd MTNK produced before free leaves, or free arrives with more HP / higher sustained DPS.
 2. **After GUN down: spine north x≈12–13 → NW SAM (12,5)** — NE rim approach is closed (pathfind).
-3. **Partner free / second tank** — sole NUKE sell cannot fund 800; need harvest hold, second plant earlier, or sell+rebuild timing that actually hits MTNK cost while WEAP lives.
+3. **Partner free / second tank** — sole NUKE sell cannot fund 800; preserve a pre-west survivor MTNK through free escape, or bank harvest while free mid-map.
 4. **allSamsDead → A-10 → map clear** (still blocked on remaining SAMs@400).
 5. **minNeut ≥ 9** without regressing free@400 escape.
 
