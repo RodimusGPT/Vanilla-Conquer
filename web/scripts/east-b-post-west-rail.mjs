@@ -150,9 +150,36 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
     }
   }
 
-  // TRACE l68/l77: after GUN dead free@88 dies before NW; south-rally closed.
-  // Hard-rail to NW approach y=9 cadence 1 — long force-move so weak free
-  // spends fewer ticks thrashing mid-spine under fire.
+  // TRACE l68/l85: free@108 dies ~300t before NW. l98–l100: force-move freezes
+  // free in combat; pure SAM attack-move from x≤11 paths into Nod base
+  // (10,21→11,20 death). l101: spine force-move to {13,y-2} (caller may stop
+  // first); attack-move SAM only once on spine x≥12 and y≤16 (near fire line).
+  if (!gunLive && tank.cellX <= 24 && tank.cellY <= 40) {
+    if (dist <= 4) {
+      return {
+        cellX: target.cellX, cellY: target.cellY,
+        engage: true, cadence: 1, reason: "sam-range",
+      };
+    }
+    // Near NW fire line on spine: attack-move SAM.
+    if (tank.cellX >= 12 && tank.cellX <= 15 && tank.cellY <= 16) {
+      return {
+        cellX: target.cellX, cellY: target.cellY,
+        engage: true, cadence: 1, reason: "sam-attack-move",
+      };
+    }
+    // Align east of GUN pad then micro-step north on x=13 (not x=11 death lane).
+    const spineX = 13;
+    const stepY = Math.max(tank.cellY - 2, 9);
+    return {
+      cellX: spineX,
+      cellY: stepY,
+      engage: false,
+      cadence: 1,
+      reason: tank.cellX < 12 ? "spine-align" : "spine-north",
+      stopFirst: true,
+    };
+  }
   if (!gunLive && (tank.cellY <= 36 || tank.cellX <= 22)) {
     if (dist <= 4) {
       return {
@@ -162,11 +189,12 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
     }
     if (tank.cellY > 10) {
       return {
-        cellX: 12,
+        cellX: 13,
         cellY: 9,
         engage: false,
         cadence: 1,
         reason: "spine-north",
+        stopFirst: true,
       };
     }
     return {
@@ -213,10 +241,10 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
     reason = "gun-to-fire-cell";
     cadence = 8;
   } else if (tank.cellY > 10) {
-    // GUN dead: western spine north to NW SAM.
-    approach = { cellX: 12, cellY: Math.max(tank.cellY - 4, 8) };
+    // GUN dead: western spine north to NW SAM (x=13 — east of GUN pad).
+    approach = { cellX: 13, cellY: Math.max(tank.cellY - 3, 9) };
     reason = "spine-north";
-    cadence = 8;
+    cadence = 1;
   } else {
     approach = { cellX: target.cellX, cellY: target.cellY };
     reason = dist <= 5 ? "sam-close" : "to-sam-standoff";

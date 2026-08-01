@@ -106,14 +106,15 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.reason, "gun-standoff-fire");
 }
 
-// GUN dead: spine north.
+// GUN dead @ y=20: spine-north force-move (attack-move only y≤16).
 {
   const r = eastBPostWestRailApproach(
     { cellX: 13, cellY: 20, strength: 300 }, nwSam,
     { cellX: 11, cellY: 18, strength: 0 },
   );
   assert.equal(r.reason, "spine-north");
-  assert.ok(r.cellY < 20);
+  assert.equal(r.engage, false);
+  assert.equal(r.stopFirst, true);
 }
 
 // SAM range.
@@ -153,22 +154,52 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
 }
 
 
-// Post-GUN: free mid-spine goes spine-north (l68/l71).
+// Post-GUN: free mid-spine force-moves north with stopFirst (l101).
 {
   const r = eastBPostWestRailApproach(
     { cellX: 13, cellY: 30, strength: 119 }, nwSam, null,
     { soleFree: true },
   );
   assert.equal(r.reason, "spine-north");
-  assert.equal(r.cellX, 12);
-  assert.equal(r.cellY, 9);
+  assert.equal(r.engage, false);
+  assert.equal(r.stopFirst, true);
+  assert.equal(r.cellX, 13);
+  assert.ok(r.cellY < 30);
 }
 {
   const r = eastBPostWestRailApproach(
     { cellX: 17, cellY: 22, strength: 185 }, nwSam, null,
   );
   assert.equal(r.reason, "spine-north");
+  assert.equal(r.stopFirst, true);
+}
+
+// TRACE l101: free@11,22 spine-aligns east (not SAM attack-move into Nod base).
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 11, cellY: 22, strength: 108 }, nwSam, null,
+  );
+  assert.equal(r.reason, "spine-align");
+  assert.equal(r.cellX, 13);
+  assert.equal(r.engage, false);
+  assert.equal(r.stopFirst, true);
+}
+// On spine mid-theatre: micro-step north.
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 13, cellY: 22, strength: 108 }, nwSam, null,
+  );
+  assert.equal(r.reason, "spine-north");
+  assert.equal(r.engage, false);
   assert.ok(r.cellY < 22);
+}
+// Near fire line: attack-move NW SAM.
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 13, cellY: 12, strength: 100 }, nwSam, null,
+  );
+  assert.equal(r.reason, "sam-attack-move");
+  assert.equal(r.engage, true);
 }
 
 console.log("test-east-b-post-west-rail: ok");

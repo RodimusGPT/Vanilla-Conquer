@@ -3401,6 +3401,9 @@ const missionEightState = {
   eastBPostWestNukeSellTick: undefined,
   // Last-NUKE sell only after western GUN dead (keep power through 2v1).
   eastBPostWestPostGunNukeSellTick: undefined,
+  // TRACE l102: latch first western GUN kill so free ignores GUN respawn and
+  // keeps spine→NW SAM (l101 free re-pulled to GUN@370 @39900, NW stayed 400).
+  eastBPostWestGunClearedTick: undefined,
   eastBPreviousTanks: new Map(),
   eastBTankCohortReadyTick: undefined,
   // Free/base MTNKs pre-positioned at western support hold; released at GUN stage.
@@ -9075,10 +9078,12 @@ function eastBPostWestPromoteCombatTanks(attackers, hostiles = [], friendly = []
   // TRACE l70: after GUN kill free@185@11,23 was demoted to WEAP picket and
   // never spine-pushed NW SAM. Once western GUN is dead, free already west/
   // north of mid stays on strike for remaining SAMs.
-  const westernGunLiveForPromote = hostiles.some((hostile) => (
-    hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
-    && hostile.strength > 0
-  ));
+  // l102: ignore GUN respawn once first kill latched.
+  const westernGunLiveForPromote = state.eastBPostWestGunClearedTick === undefined
+    && hostiles.some((hostile) => (
+      hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
+      && hostile.strength > 0
+    ));
   const freeOnSpinePush = (tank) => (
     !westernGunLiveForPromote
     && tank.cellX <= 24 && tank.cellY <= 36 && tank.strength >= 40
@@ -9487,21 +9492,33 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
   // TRACE l68: after GUN dead free@119 @13,30 failed healthy (need ≥140) and
   // was south-rallied off the spine — never chipped NW SAM. Post-GUN: any free
   // on western half with strength ≥40 stays committed north.
-  const westernGunLive = hostiles.some((hostile) => (
+  // l102: latch first GUN kill early so commit/rail ignore respawn.
+  const westernGunLiveNow = hostiles.some((hostile) => (
     hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
     && hostile.strength > 0
   ));
+  if (!westernGunLiveNow
+    && tanks.some((tank) => (
+      state.eastBPostWestProducedTankKeys.has(objectKey(tank))
+      && tank.cellY <= 28 && tank.cellX <= 22 && tank.strength >= 40
+    ))) {
+    state.eastBPostWestGunClearedTick ??= snapshot.tick;
+  }
+  const westernGunLive = state.eastBPostWestGunClearedTick === undefined
+    && westernGunLiveNow;
+  // TRACE l99: free@87@13,31 after GUN was still south-rallied / thrash at
+  // support hold {13,32}. Post-GUN any free on western half str≥40 is healthy.
   const healthy = tanks.filter((tank) => (
     tank.strength >= Math.ceil(tank.maxStrength * 0.35)
     || (tank.cellY <= 24 && tank.strength >= 40)
     || (westernGunLive && tank.cellY <= 28 && tank.strength >= 40)
-    || (!westernGunLive && tank.cellX <= 22 && tank.cellY <= 40 && tank.strength >= 40)
+    || (!westernGunLive && tank.cellX <= 24 && tank.cellY <= 40 && tank.strength >= 40)
   ));
   if (healthy.length < 1 && state.allSamsDeadTick === undefined) {
     for (const tank of tanks) {
       // Never south-rally tanks already west/north of mid after GUN dead.
       if (tank.cellY <= 28 && tank.strength >= 40) continue;
-      if (!westernGunLive && tank.cellX <= 22 && tank.cellY <= 40 && tank.strength >= 40) {
+      if (!westernGunLive && tank.cellX <= 24 && tank.cellY <= 40 && tank.strength >= 40) {
         continue;
       }
       queueMissionEightRole(commands, `east-b-post-west-rally-${objectKey(tank)}`,
@@ -9509,7 +9526,7 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     }
     if (!tanks.some((tank) => (
       (tank.cellY <= 28 && tank.strength >= 40)
-      || (!westernGunLive && tank.cellX <= 22 && tank.cellY <= 40 && tank.strength >= 40)
+      || (!westernGunLive && tank.cellX <= 24 && tank.cellY <= 40 && tank.strength >= 40)
     ))) {
       return true;
     }
@@ -9559,10 +9576,13 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
   }
   // TRACE l32: free@395 attack-hunted GUN and pathfinded point-blank (11,20)
   // then lost trade. Standoff fire cells + optional scrap loan for 2v1.
-  const westernGun = hostiles.find((hostile) => (
-    hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
-    && hostile.strength > 0
-  ));
+  // l102: once first GUN kill latched, ignore respawn (push NW SAM instead).
+  const westernGun = state.eastBPostWestGunClearedTick !== undefined
+    ? undefined
+    : hostiles.find((hostile) => (
+      hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
+      && hostile.strength > 0
+    ));
   // GUN 2v1: pull any MTNK not already in tanks (and not pinned WEAP defender).
   // TRACE l38–l41: excluding postWest keys left escorts empty while atk=3 vg=2
   // (village tanks were also postWest-produced).
@@ -9647,6 +9667,7 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
       && !isScrap;
     // TRACE l86–l89: wounded peel/standoff cut GUN DPS (gunMin 180–220, no
     // kill). Keep freeT=3 full-engage GUN micro (l85 free@108 after kill).
+    // TRACE l103: early spine peel at GUN≤100 cut DPS → GUN repaired, no kill.
     const rail = eastBPostWestRailApproach(tank, target, westernGun, {
       soleFree, stuck, isScrap, freeLeader, waitPartner,
     });
@@ -9659,6 +9680,12 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
         : `east-b-post-west-sam-${tankKey}`;
       queueMissionEightRole(commands, role, [tank], engageTarget, 0, rail.cadence);
       continue;
+    }
+    // TRACE l101: stop combat stance once before post-GUN spine force-move —
+    // free freezes under auto-acquire (l98) or attack-moves into Nod base (l100).
+    // Cadence 45: stop only on enter / rare re-stick, not every tick thrash.
+    if (rail.stopFirst) {
+      queueMissionEightStop(commands, `east-b-post-west-stop-${tankKey}`, [tank], 45);
     }
     queueMissionEightRole(commands, `east-b-post-west-rail-${tankKey}`,
       [tank], { cellX: rail.cellX, cellY: rail.cellY }, MODIFIER_ALT, rail.cadence);
