@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — western SAM dead (held); **western GUN dead @~38700** free@**128@14,22** (l104); GUN-respawn ignore latched; free dies before NW fire line; remaining SAMs **400**; no A-10 |
 | Branch | `browser-port` |
-| Commit | *(pending l104 push)* |
+| Commit | `3a118d4` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
@@ -444,7 +444,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 | Commit | Note |
 |---|---|
-| *(l104)* | post-GUN GUN-cleared latch + spine stop/micro-step; free@128@14,22; NW 400 |
+| `3a118d4` | post-GUN GUN-cleared latch + spine stop/micro-step; free@128@14,22; NW 400 |
 | `977072f` | docs: close civ-screen/FIX levers (l95–l97 anchor gunMin 190; FIX never built) |
 | `fdaf9b0` | docs: close attack-in-place (l91–l94 free@15 worse than free@108) |
 | `3f99523` | docs: handoff hash for v400c survivor/FIX avoid |
