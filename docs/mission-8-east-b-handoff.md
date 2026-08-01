@@ -428,12 +428,19 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
     - **Still broken:** free tank often strike=0 (not joining NW push); civ deaths 8; remaining SAMs 400
     - Closed: village-first post-west (WEAP dies by 36k); keep-last village during kill (SAM@46)
 
+| Scrap/E3 pre-clear NE GUN while free on west GUN | l118: free path = l110; NE GUN still kills free @y=12 |
+| Weak free east-peel at GUN≤80 | l119: west GUN under-DPS / repairs; free residual 66 — **closed** |
+| Weak free to NE GUN@16,9 at GUN≤100 | l121: west GUN repairs to 360+; free wipe — **closed** |
+| Broad GUN standoff ≤250 | l120: free already at dist 4; residual still 128 — no gain |
+| Far-north past GUN@16,9 (dodge x=22 then y=8) | l130: free@128@21,16 then lose@39058 same wall; minY 16 worse than l110 |
+
 ### Next (ordered)
 
-1. **Survive last ~4–7 cells / cut-west into NW SAM fire** — free now reaches y=12@108 (l110); dies ~28t later. Force cut-west stuck at x=19; attack-move from mid-east is death zone.
-2. **Preserve free HP through GUN 2v1 (≥~150–200)** — early-spine-peel closed (l103). free@128 at kill is enough to reach y=14.
-3. **Post-GUN rebuild cash ≥800** — only NUKE left → ~240; second free@400 would finish NW.
+1. **Clear NE GUN@16,9 before free y≈14 without cutting west-GUN 2v1** — scrap/E3 pre-clear (l116/l118) too late; weak free to NE GUN (l121) repairs west GUN. Need earlier scrap or more residual.
+2. **Free residual ≥200 through west GUN** — finish standoff (l117) held residual 128; broader standoff (l120) no gain; peel variants under-kill west GUN.
+3. **Post-GUN rebuild cash ≥800** — only NUKE → ~240; full-HP free#4 could tank NE GUN + NW SAM.
 4. **NW SAM chip → allSamsDead → A-10**.
+5. **Civ / minNeut** — lose@~39058 unknown (7 neut deaths) same wall as free dies; may be coupled.
 5. **Civ screen without thinning free GUN DPS** — MTNK anchors closed (l95–l97).
 6. **minNeut ≥ 9** without regressing GUN kill / free@128.
 
