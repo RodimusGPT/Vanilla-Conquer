@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead (held); **WEAP survives post-west** (v392); remaining 4 SAMs live; lose **civ-near-threshold** / civ-nine |
+| Status | **RED** — western SAM dead (held); **civ deaths cut to 6** (v393); remaining 4 SAMs live; lose **all-destr-goodguy** |
 | Branch | `browser-port` |
-| Commit | `124fec1` |
+| Commit | `63d2ef8` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v392h — western SAM **0** @~32730; **WEAP live** through lose (was dead by 35k); NUKE/PROC/PYLE live; funds hit **865**; routeStage **9**; lose civ-nine @~37.5k; remaining SAMs still 400 |
+| Last TRACE suite | v393d — western SAM **0** @~32730; **neutralDeaths 6** (minNeut **8**, was 6/9); first post-kill death **34560**; routeStage **9**; free tank @36.6k; funds **1231**; WEAP dies ~38k; lose all-destr @~43.5k |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -339,12 +339,19 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
     - TRACE v392h: WEAP/PROC/NUKE/PYLE live at lose; funds **865**; MTNK still on map
     - **Still broken:** village civ cascade (9 deaths); rebuild cohort thin; remaining SAMs 400
 
+16. **v393 civ intercept + post-west tank routing**
+    - Village-first rehome after west SAM death (healthy tanks preferred)
+    - New produced tanks → village / WEAP picket / strike based on needs
+    - Wider post-west civil corridor + always pile-on village armor
+    - Do **not** keep last village tank during SAM kill (stuck SAM@46)
+    - TRACE v393d: **6 civ deaths** (minNeut 8), first post-kill **34560**, SAM kill held
+    - **Still broken:** WEAP dies ~38k; rebuild cohort thin; remaining SAMs 400; lose all-destr
+
 ### Next (ordered)
 
-1. **2 healthy village MTNKs through 40k** — cut civ-nine cascade (first post-kill death ~33.6–34k).
-2. **Produce 5th+ MTNK reliably** after west SAM (funds hit 865 but cohort still thin) — harvest + bank.
-3. **Kill remaining SAMs** (12,5 / 54,5 / 43,14 / 52,14) → `allSamsDead` → A-10 ready.
-4. **A-10 + map clear** to win.
+1. **Keep WEAP + produce 5th–6th MTNK by ~36k** — funds hit 1231 too late; need tanks while WEAP lives.
+2. **Hold minNeut ≥ 9** (≤5 post-kill civ deaths) with 2 healthy village MTNKs through 40k.
+3. **Kill remaining SAMs** → A-10 → map clear.
 
 ---
 
