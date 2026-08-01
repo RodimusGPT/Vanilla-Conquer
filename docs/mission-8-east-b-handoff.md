@@ -447,6 +447,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Dual free post-GUN north peel (all free→strike) | l161–l164: residual **128+87** but lose ~**39024** unknown (earlier than l146) — **closed** |
 | Early NE GUN approach y≤23 freeNorth≥1 | l163: free#1 dies; free solo under-kills; earlier lose — **closed** |
 | Turret finish chip raise ≤150 / chip 30 | l163: freeT=0 path break — **closed**; keep ≤100 chip 20 only |
+| Post-free-death last-NUKE sell for free#4 | l166: refund peak **240** <800; free#4 never; lose ~41005 — **closed** |
 
 ### Held engine package (l165)
 

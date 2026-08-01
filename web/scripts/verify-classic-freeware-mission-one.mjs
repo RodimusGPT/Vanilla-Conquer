@@ -4801,9 +4801,10 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
       && hostile.strength > 0
     ));
-    // TRACE l141: do NOT sell last NUKE post-GUN. Selling ends game ~39058 with
-    // free still alive@19,12; keeping NUKE extends to ~41k (free can peel further).
-    // Cash 240 never funded free#4 (need 800). Keep power plant online.
+    // TRACE l141: do NOT sell last NUKE post-GUN while free peels (ends ~39058).
+    // TRACE l166: post-free-death NUKE sell refund ~240 <800 — free#4 never
+    // builds; keep last NUKE. Cash wall held.
+    void westernGunStillUp;
   }
   const healthyReservedEastBTanks = mission.variant === "east-b" ? friendly.filter((object) => (
     object.typeName === "MTNK"
