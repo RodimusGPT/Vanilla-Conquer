@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — residual **≥249** (l168 key-turret chip); free peels **@242**; NE GUN chipped **~244–340** not killed; NW **400**; lose ~39–41k |
 | Branch | `browser-port` |
-| Commit | `(pending l173)` |
+| Commit | `f893db8` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` + `tiberiandawn/building.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
