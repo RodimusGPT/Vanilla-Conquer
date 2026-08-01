@@ -3525,6 +3525,7 @@ const missionEightState = {
   eastAMopTankKeys: new Set(),
   eastAMopKiteTick: undefined,
   eastAAfldClearedTick: undefined,
+  eastAProcClearedTick: undefined,
   eastAHarvFleeTick: undefined,
   eastAHarvFleeStopTick: undefined,
   eastAMopReserveKeys: new Set(),
@@ -5184,46 +5185,46 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
           (hostile.typeName === "HAND" && hostile.cellX === 27 && hostile.cellY === 17)
           || (hostile.typeName === "AFLD" && hostile.cellX === 29 && hostile.cellY === 14)
           || (hostile.typeName === "PROC" && hostile.cellX === 25 && hostile.cellY === 17)
+          || (hostile.typeName === "NUKE" && hostile.cellX === 23 && hostile.cellY === 14)
+          || (hostile.type === 4 && hostile.typeName === "NUKE"
+            && missionEightDistance(hostile, { cellX: 10, cellY: 9 }) <= 6)
+          || (hostile.type === 4 && hostile.typeName === "SILO"
+            && missionEightDistance(hostile, { cellX: 10, cellY: 9 }) <= 6)
           || ((hostile.typeName === "LTNK" || hostile.typeName === "BGGY")
-            && missionEightDistance(hostile, { cellX: 27, cellY: 17 }) <= 6)
+            && missionEightDistance(hostile, { cellX: 27, cellY: 17 }) <= 8)
         )).toSorted((left, right) => {
+          const afldLive = hostiles.some((h) => (
+            h.typeName === "AFLD" && h.cellX === 29 && h.cellY === 14
+          ));
+          const procLive = hostiles.some((h) => (
+            h.typeName === "PROC" && h.cellX === 25 && h.cellY === 17
+          ));
           const rank = (unit) => {
-            // HAND first (the only target whose kill we have reproduced), then
-            // pad armor once HAND is gone, then the rest of the production chain.
-            // Soft HAND always outranks pad armor so a finishing A-10 lands on
-            // the building rather than a nearby LTNK while rifles are dying.
-            // After HAND is gone, AFLD is the only mop target that matters.
+            // HAND first, then AFLD, then PROC, then production NUKE / north
+            // power, then pad armor. After PROC, third A-10 hits NUKE.
             if (unit.typeName === "HAND") {
               return unit.strength <= 280 ? -1 : 0;
             }
             if (unit.typeName === "AFLD") {
-              // Only after HAND is gone — prioritizing AFLD while HAND lived
-              // stole the A-10 at 66000 (v456) and lost the kill.
               return state.westCleanupStage >= 9 ? -2 : 2;
             }
             if (unit.typeName === "PROC") {
-              // v541: after AFLD, A-10 PROC first (direct Take_Damage chips
-              // structures). Mop peels pad armor on the ground.
-              if (state.westCleanupStage >= 9
-                && !hostiles.some((h) => (
-                  h.typeName === "AFLD" && h.cellX === 29 && h.cellY === 14
-                ))) {
-                return -1;
-              }
+              if (state.westCleanupStage >= 9 && !afldLive) return -1;
               return 4;
             }
+            if (unit.typeName === "NUKE") {
+              if (state.westCleanupStage >= 9 && !afldLive && !procLive) return -1;
+              return 5;
+            }
+            if (unit.typeName === "SILO") {
+              if (state.westCleanupStage >= 9 && !afldLive && !procLive) return 1;
+              return 6;
+            }
             if (unit.typeName === "LTNK" || unit.typeName === "BGGY") {
-              // Pad armor second for A-10 (scen-8 unit Take_Damage); mop still
-              // focuses soft LTNK on the ground during the second dive.
-              if (state.westCleanupStage >= 9
-                && !hostiles.some((h) => (
-                  h.typeName === "AFLD" && h.cellX === 29 && h.cellY === 14
-                ))) {
-                return 0;
-              }
+              if (state.westCleanupStage >= 9 && !afldLive) return 0;
               return 3;
             }
-            return 5;
+            return 7;
           };
           return rank(left) - rank(right) || left.strength - right.strength || left.id - right.id;
         })[0]
@@ -7576,10 +7577,10 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           const airSoon = state.airstrike.pending !== undefined
             || airReady
             || (nextAirEta > 0 && nextAirEta <= 1_200);
-          // v539: kite until post-HAND A-10, then dive AFLD. After AFLD falls
-          // with a thin remnant (≤3), re-kite for the *second* A-10 (pad LTNK /
-          // PROC) instead of suiciding on the refinery (v538 cleanupAlive 1 @
-          // ~74.6k). Delay first dive past discharge so napalm has more time.
+          // v543: kite/dive cycles for each post-HAND A-10. Thin remnant (≤3)
+          // re-kites SE between strikes instead of dying on NUKE after PROC
+          // (v542 stage 11, cleanupAlive 0 @~82k). Dive window = 150–900t after
+          // the *latest* post-AFLD A-10 order.
           const handDoneEntry = [...state.westCleanupProgress].reverse().find((entry) => (
             entry.typeName === "HAND" && entry.stage === 8
           ));
@@ -7587,6 +7588,12 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           if (!afld && state.westCleanupStage >= 9) {
             state.eastAAfldClearedTick ??= snapshot.tick;
           }
+          if (!afld && !proc && state.westCleanupStage >= 10) {
+            state.eastAProcClearedTick ??= snapshot.tick;
+          }
+          const nuke = hostiles.find((hostile) => (
+            hostile.typeName === "NUKE" && hostile.cellX === 23 && hostile.cellY === 14
+          ));
           const postHandAfldOrder = handDeadTick !== undefined
             ? state.airstrike.orders.find((order) => (
               order.target === "AFLD" && order.cellX === 29 && order.cellY === 14
@@ -7609,71 +7616,58 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
           const afldChipped = Boolean(afld && diveOrder?.target === "AFLD"
             && diveOrderStrength !== undefined
             && afld.strength <= diveOrderStrength - 30);
-          // Thin remnant after AFLD: hold for second recharge. v539 used
-          // nextAirEta≤1800 and walked into pad ~1.2k ticks early (2→0).
-          // Only leave hold when SW is ready, pending, or the post-AFLD order
-          // has discharged / aged past napalm.
-          const thinAfterAfld = !afld
+          const thinRemnant = !afld
             && mopWave.length > 0
             && mopWave.length <= missionEightEastAMopSecondAirHoldMax;
-          const postAfldAirOrder = state.eastAAfldClearedTick !== undefined
-            ? state.airstrike.orders.find((order) => (
-              order.tick >= state.eastAAfldClearedTick
-            ))
+          // Post-HAND mop A-10s (HAND strike at 66000 is before handDeadTick).
+          // Include the AFLD order at 73230 even though AFLD dies mid-pass —
+          // filtering on afldClearedTick (v545) dropped that order and aborted
+          // the first dive early (dead @75.6k with PROC still up).
+          const mopAirOrders = handDeadTick !== undefined
+            ? state.airstrike.orders.filter((order) => order.tick >= handDeadTick)
+            : [];
+          const latestMopAir = mopAirOrders.length > 0
+            ? mopAirOrders[mopAirOrders.length - 1]
             : undefined;
-          const postAfldAirDischarged = Boolean(postAfldAirOrder
-            && state.airstrike.discharges.some((discharge) => (
-              discharge.orderTick === postAfldAirOrder.tick
-            )));
-          const postAfldAirElapsed = postAfldAirOrder !== undefined
-            ? snapshot.tick - postAfldAirOrder.tick
+          const latestMopAirElapsed = latestMopAir !== undefined
+            ? snapshot.tick - latestMopAir.tick
             : -1;
-          const secondAirDue = thinAfterAfld
-            && (airReady
-              || state.airstrike.pending !== undefined
-              || postAfldAirDischarged
-              || (postAfldAirOrder !== undefined && postAfldAirElapsed >= 150));
-          const waitSecondAir = thinAfterAfld && !secondAirDue;
-          // First dive: wait for chip or ~180t after order (discharge alone at
-          // 90t still saw 676→676 with mop walking into pad early).
-          const firstDiveReady = afldChipped
+          // Dive window 150–900t after latest post-HAND mop A-10.
+          // After PROC dies, only dive on orders placed *after* PROC death
+          // (third cycle) so the remnant re-kites instead of suiciding on NUKE.
+          let mopDiveWindow = latestMopAir !== undefined
+            && latestMopAirElapsed >= 150
+            && latestMopAirElapsed <= 900;
+          if (mopDiveWindow && !proc && state.eastAProcClearedTick !== undefined) {
+            mopDiveWindow = latestMopAir.tick >= state.eastAProcClearedTick;
+          }
+          // First AFLD dive only while AFLD lives (v544: firstDiveReady stayed
+          // true forever after discharge and bled the wave on the pad).
+          const firstDiveReady = Boolean(afld) && (
+            afldChipped
             || (diveOrder !== undefined && diveElapsed >= 180)
             || (diveDischarged && diveElapsed >= 150)
-            || (!afld && diveDischarged);
-          // Second dive: wait until post-AFLD A-10 has aged past napalm so
-          // direct Take_Damage has landed (v540 dived at discharge and died).
-          const secondDiveReady = Boolean(state.eastAAfldClearedTick)
-            && !afld
-            && postAfldAirOrder !== undefined
-            && (postAfldAirDischarged || postAfldAirElapsed >= 150)
-            && postAfldAirElapsed >= 150;
-          const shouldDive = !waitSecondAir && (
-            (afld && firstDiveReady)
-            || (!afld && !thinAfterAfld && firstDiveReady)
-            || secondDiveReady
           );
+          // After AFLD: dive only inside mop A-10 windows.
+          const shouldDive = firstDiveReady || (!afld && mopDiveWindow);
           const shouldKite = eastAEarlyCapture(state)
             && state.westCleanupStage >= 9
             && mopWave.length > 0
             && !shouldDive;
           if (shouldKite) {
             state.eastAMopKiteTick ??= snapshot.tick;
-            // Deep SE while waiting. First-air: creep to dive-stage when due.
-            // Second-air thin hold: stay deep SE (not approach) until the SW
-            // is actually ready — approach cell attrited the remnant in v539.
-            const kiteCell = thinAfterAfld
+            // Deep SE between A-10s; creep to dive-stage only when air is due
+            // and we still have a healthy (non-thin) wave for the first AFLD push.
+            const kiteCell = (thinRemnant || !airSoon)
               ? missionEightEastAHarvSafeHold
-              : (airSoon
-                ? missionEightEastAMopDiveStage
-                : missionEightEastAHarvSafeHold);
+              : missionEightEastAMopDiveStage;
             for (let index = 0; index < mopWave.length; index += 10) {
               queueMissionEightRole(commands, `east-a-mop-kite-${index / 10}`,
                 mopWave.slice(index, index + 10), kiteCell, MODIFIER_ALT, 30);
             }
           } else {
-            // Dive: AFLD first. Once gone, thin remnant ALL-IN softest pad
-            // armor then PROC (v540 split/structure focus died on LTNKs).
-            // Far units path via south approach.
+            // Dive priority: AFLD > soft pad > PROC > NUKE > current target.
+            // Thin remnant all-in one target (no screen peels).
             const padThreats = hostiles.filter((hostile) => (
               (hostile.typeName === "LTNK" || hostile.typeName === "BGGY")
               && missionEightDistance(hostile, { cellX: 27, cellY: 16 }) <= 10
@@ -7685,11 +7679,18 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             ));
             const padThreat = padThreats[0];
             const thinDive = mopWave.length <= missionEightEastAMopSecondAirHoldMax;
-            let mopTarget = afld ?? proc ?? target;
+            let mopTarget = afld ?? proc ?? nuke ?? target;
             if (!afld) {
-              // Thin second dive: always clear pad armor before PROC.
-              if (thinDive && padThreat) {
-                mopTarget = padThreat;
+              if (thinDive && padThreat && (proc || padThreat.strength <= 200)) {
+                // While PROC lives, peel soft pad first; after PROC prefer
+                // NUKE over healthy LTNK so the third cycle chips power.
+                if (proc || padThreat.typeName === "BGGY" || padThreat.strength <= 160) {
+                  mopTarget = padThreat;
+                } else if (nuke) {
+                  mopTarget = nuke;
+                } else if (padThreat) {
+                  mopTarget = padThreat;
+                }
               } else if (padThreat && (
                 padThreat.strength <= 180
                 || padThreat.typeName === "BGGY"
@@ -7698,15 +7699,13 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
                 mopTarget = padThreat;
               } else if (proc) {
                 mopTarget = proc;
+              } else if (nuke) {
+                mopTarget = nuke;
               }
             }
             const orderedMop = mopWave.toSorted((left, right) => (
               right.strength - left.strength || left.id - right.id
             ));
-            // Far units rally south of pad first (shorter, safer path).
-            const approachCell = thinDive
-              ? missionEightEastAMopAfldApproach
-              : missionEightEastAMopAfldApproach;
             const far = orderedMop.filter((attacker) => (
               missionEightDistance(attacker, mopTarget) > 8
             ));
@@ -7716,11 +7715,10 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
             if (far.length > 0) {
               for (let index = 0; index < far.length; index += 10) {
                 queueMissionEightRole(commands, `east-a-mop-approach-${index / 10}`,
-                  far.slice(index, index + 10), approachCell, MODIFIER_ALT, 24);
+                  far.slice(index, index + 10), missionEightEastAMopAfldApproach,
+                  MODIFIER_ALT, 24);
               }
             }
-            // Thin dive: entire near group on one target (no screen peel).
-            // Healthy wave: one screen on secondary pad threat if multi.
             let diveForce = near;
             if (!thinDive && padThreats.length >= 2 && diveForce.length >= 4
               && mopTarget !== padThreats[1]

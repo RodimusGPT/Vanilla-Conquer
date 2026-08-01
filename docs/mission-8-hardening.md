@@ -292,7 +292,18 @@ or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 
 **Retained foothold (v542):** HAND min **6**, **AFLD + PROC destroyed**, second A-10 @80460 on PROC, NUKE min **~299**, end ~**82k**. Still red: remnant dies on NUKE/pad leftovers; north base remains.
 
-**Next:** keep ≥2 through NUKE mop; third A-10 / clear north SILOs.
+### v543–v546 mop A-10 cycle windows + production NUKE kill
+
+| Change | Result |
+|---|---|
+| Dive only in 150–900t window after each post-HAND A-10 | Stops eternal post-discharge dive bleed |
+| After PROC dies, re-kite until next A-10 (third cycle) | Preserves remnant off NUKE pad |
+| A-10 rank NUKE/SILO after AFLD+PROC; force chip STRUCT_POWER | Production NUKE dies with PROC dive |
+| firstDiveReady only while AFLD lives | Fixes 5→2 bleed before second A-10 |
+
+**Retained foothold (v546):** HAND min **6**, **AFLD + PROC + production NUKE destroyed**, buildingsKilled **11**, cleanupAlive **2**, 3 attackers through ~82k, end ~**82980**. Still red: dies on north base / BGGY leftovers; no third A-10 yet.
+
+**Next:** third A-10 @~87.7k; keep ≥2 into north SILO/NUKE clear.
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 
