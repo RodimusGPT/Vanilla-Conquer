@@ -211,6 +211,7 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Long force-to-y=9 without combat stop | l98: free freezes ~90t @14,22 under auto-acquire |
 | Hard cut-west rush `{13,8}` at y≤18 | l107: free thrash @17–18,y=18–20; minY 18 worse than l106 y=14 |
 | Tight east peel x=15 only | l108: free stuck @14,22 (no peel gate); minY 22 — **keep peel x=18 (l106)** |
+| Post-GUN E3 escort + free-clear threats | l109: free diverted off east peel; minY 21 worse than l106 y=14 |
 
 ### Latest TRACE shape (v76)
 

@@ -9719,6 +9719,8 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
       }
     }
   }
+  // TRACE l109: E3 escort + free-clear near threats diverted free off east peel
+  // (minY 21 vs l106 y=14) — closed.
   for (const key of stuckMap.keys()) {
     if (!tanks.some((tank) => objectKey(tank) === key)) stuckMap.delete(key);
   }
