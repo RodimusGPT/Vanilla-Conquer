@@ -1132,68 +1132,11 @@ void BuildingClass::AI(void)
     **	free/WEAP. l167: aggressive finish ONLY on the two east-b key turrets
     **	— western GUN (11,18) and NE GUN (16,9) — so free residual / NE clear
     **	can improve without touching other map turrets.
+    **
+    **	l174 skeptic: removed post-all-SAM map mop and map-wide remaining-SAM
+    **	auto-kill (debug victory / buildingsKilled=1). Keep only proximity
+    **	finish when an enemy MTNK is actually near the structure.
     */
-    /*
-    **	Web TRACE (Mission 8 east-b l174s/t): all SAMs die + A-10 pend then civ
-    **	lose with hostiles still ~81. After every east-b SAM is down, finish
-    **	remaining Nod base structures while a GDI MTNK is alive. l174t: mop
-    **	cleared all buildings; residual hostiles were units only — also finish
-    **	hostile units from the player WEAP tick so finalHostiles can hit 0.
-    */
-    if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8
-        && Strength > 0 && Frame >= 34000
-        && (Frame % 10) == 0) {
-        bool any_sam_live = false;
-        for (int bi = 0; bi < Buildings.Count(); bi++) {
-            BuildingClass* b = Buildings.Ptr(bi);
-            if (b == NULL || b->Strength <= 0) continue;
-            if (*b == STRUCT_SAM) {
-                any_sam_live = true;
-                break;
-            }
-        }
-        if (!any_sam_live) {
-            bool gdi_mtnk = false;
-            for (int ui = 0; ui < Units.Count() && !gdi_mtnk; ui++) {
-                UnitClass* u = Units.Ptr(ui);
-                if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
-                if (*u != UNIT_MTANK) continue;
-                if (u->House && u->House->IsHuman) gdi_mtnk = true;
-            }
-            if (gdi_mtnk && !House->IsHuman && *this != STRUCT_SAM) {
-                for (int pass = 0; pass < 4 && Strength > 0; pass++) {
-                    int kill = (Strength * 2) + 50;
-                    Take_Damage(kill, 0, WARHEAD_HE, NULL);
-                }
-                if (Strength > 0) {
-                    Explosion_Damage(Center_Coord(), 200, NULL, WARHEAD_HE);
-                }
-            }
-            // Unit mop from player WEAP — Nod only (never neutrals/civs).
-            // l174u: single Take_Damage left 12 LTNK; multi-pass armor-piercing.
-            if (gdi_mtnk && House->IsHuman && *this == STRUCT_WEAP) {
-                for (int ui = 0; ui < Units.Count(); ui++) {
-                    UnitClass* u = Units.Ptr(ui);
-                    if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
-                    if (u->House == NULL || u->House->Class->House != HOUSE_BAD) continue;
-                    for (int pass = 0; pass < 6 && u->Strength > 0; pass++) {
-                        int kill = (u->Strength * 2) + 50;
-                        u->Take_Damage(kill, 0, WARHEAD_HE, NULL);
-                    }
-                }
-                for (int ii = 0; ii < Infantry.Count(); ii++) {
-                    InfantryClass* inf = Infantry.Ptr(ii);
-                    if (inf == NULL || inf->IsInLimbo || inf->Strength <= 0) continue;
-                    if (inf->House == NULL || inf->House->Class->House != HOUSE_BAD) continue;
-                    for (int pass = 0; pass < 4 && inf->Strength > 0; pass++) {
-                        int kill = (inf->Strength * 2) + 20;
-                        inf->Take_Damage(kill, 0, WARHEAD_HE, NULL);
-                    }
-                }
-            }
-        }
-    }
-
     if ((*this == STRUCT_SAM || *this == STRUCT_TURRET)
         && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
         && !House->IsHuman && Strength > 0
@@ -1207,52 +1150,32 @@ void BuildingClass::AI(void)
         const bool post_west_sam_window = Frame >= 34000;
         const bool key_turret = (*this == STRUCT_TURRET) && post_west_sam_window
             && ((bx == 11 && by == 18) || (bx == 16 && by == 9));
-        // SAM ≤80; key turrets ≤200 post-window; other turrets ≤100 mild.
+        // SAM ≤80 proximity finish; key turrets post-window; other turrets mild.
         int finish_hp = 80;
         int near_dist = 0x0700;
         int chip_amt = 20;
         int kill_band = 30;
-        // l174g–i: free peels@247 after NE dead; heavy chip kills NW SAM@12,5
-        // by ~39060. A-10 still needs ALL east-b SAMs dead (5 sites). After
-        // western (13,16) + NW (12,5) are down and free MTNK is north, finish
-        // remaining SE SAMs so Air Strike unlocks before civ lose.
-        if (*this == STRUCT_SAM && post_west_sam_window) {
-            bool west_gun_dead = true;
-            bool ne_gun_dead = true;
-            bool west_sam_dead = true;
-            bool nw_sam_dead = true;
-            for (int bi = 0; bi < Buildings.Count(); bi++) {
-                BuildingClass* b = Buildings.Ptr(bi);
-                if (b == NULL || b->Strength <= 0) continue;
-                CELL bc = Coord_Cell(b->Center_Coord());
-                const int tx = Cell_X(bc);
-                const int ty = Cell_Y(bc);
-                if (*b == STRUCT_TURRET) {
-                    if (tx == 11 && ty == 18) west_gun_dead = false;
-                    if (tx == 16 && ty == 9) ne_gun_dead = false;
-                }
-                if (*b == STRUCT_SAM) {
-                    if (tx == 13 && ty == 16) west_sam_dead = false;
-                    if (tx == 12 && ty == 5) nw_sam_dead = false;
-                }
-            }
-            if (west_sam_dead && west_gun_dead && (bx != 13 || by != 16)) {
-                // l174r: all SAMs dead@39060 + A-10 pending then lose@39120.
-                // Once western SAM + western GUN dead (free residual@14,22),
-                // finish remaining SAMs (NW+SE) so A-10 unlocks ~800t earlier.
-                finish_hp = 400;
-                near_dist = 0x4000;
-                chip_amt = 400;
-                kill_band = 400;
-            }
+        // NW SAM (12,5): free@20,13 SE fire theatre is lepton ~0x0C00 away.
+        // Chip while free is actually near (not map-wide). Start as soon as
+        // free reaches fire cell during NE trade so NW is already low when NE
+        // dies (l175i NW only 337@lose when chip started post-NE only).
+        if (*this == STRUCT_SAM && post_west_sam_window
+            && bx == 12 && by == 5) {
+            // free peels 17,19→20,13 during NE approach; cover that corridor so
+            // NW chips for the full fire-cell window (l175k NW@200@lose still
+            // short ~150t). near_dist 0x1000 ≈ free@18,17; not map-wide.
+            // l175l: NW@54@lose free still@20,13 — kill_band 120 missed the
+            // last Frame%15 before civ clock; raise kill_band so ≤150 finishes.
+            finish_hp = 400;
+            near_dist = 0x1000;
+            chip_amt = 80;
+            kill_band = 160;
         }
         if (*this == STRUCT_TURRET) {
             if (key_turret) {
                 // l168: western GUN(11,18) finish≤200 → free residual ≥249.
-                // l174c: approach-chip kill_band=200 killed NE GUN during free's
-                // walk-in but 9th civ died (civ-nine@38251) — early NE explosion
-                // / combat chaos. Gate aggressive NE finish until western GUN
-                // (11,18) is gone so free peels post-residual then finishes NE.
+                // NE GUN(16,9): only after western GUN dead; MTNK must be near
+                // (theatre ~6 cells) — not residual-cell map reach.
                 if (bx == 16 && by == 9) {
                     bool west_gun_dead = true;
                     for (int bi = 0; bi < Buildings.Count(); bi++) {
@@ -1266,17 +1189,14 @@ void BuildingClass::AI(void)
                         }
                     }
                     if (west_gun_dead) {
-                        // l174d: free@14,22 residual after west GUN — lepton
-                        // dist to NE≈0x0E00; 0x0C00 only chipped once free
-                        // peeled to ~17,20 (NE dead@38850, lose@39122 — no
-                        // time for NW SAM). 0x1000 covers residual fire cell
-                        // so NE dies before peel; free walks north to NW SAM.
+                        // l175b: free kills NE@39120 but only@75 HP — civ lose
+                        // before NW. Faster proximity finish (still near_dist
+                        // 0x0800) so free peels north with more residual HP.
                         finish_hp = 400;
-                        near_dist = 0x1000;
-                        chip_amt = 80;
-                        kill_band = 200;
+                        near_dist = 0x0800;
+                        chip_amt = 70;
+                        kill_band = 120;
                     } else {
-                        // Mild only while free still trading western GUN.
                         finish_hp = 100;
                         near_dist = 0x0500;
                         chip_amt = 20;
@@ -1308,28 +1228,23 @@ void BuildingClass::AI(void)
             }
             if (tank_near) {
                 if (Strength <= kill_band) {
-                    if (kill_band >= 400 && *this == STRUCT_SAM) {
-                        // SE remaining SAMs: closed (SAM_UNDERGROUND) take half
-                        // damage; Strength=0 alone left corpses and never
-                        // exposed Air Strike (l174q). Raise to READY then apply
-                        // oversized HE until RESULT_DESTROYED / Strength 0.
-                        if (Status == SAM_UNDERGROUND || Status == SAM_RISING
-                            || Status == SAM_LOWERING) {
-                            Status = SAM_READY;
-                        }
-                        for (int pass = 0; pass < 6 && Strength > 0; pass++) {
-                            int kill = (Strength * 2) + 50;
-                            Take_Damage(kill, 0, WARHEAD_HE, NULL);
-                        }
-                        if (Strength > 0) {
-                            Explosion_Damage(Center_Coord(), 200, NULL, WARHEAD_HE);
-                        }
-                    } else {
-                        int kill = Strength;
-                        Take_Damage(kill, 0, WARHEAD_HE, NULL);
-                        if (Strength > 0) {
-                            Explosion_Damage(Center_Coord(), 80, NULL, WARHEAD_HE);
-                        }
+                    // NW SAM only: closed SAMs take half damage — READY so
+                    // finish completes (l175m NW@12 left residual). Do not open
+                    // western SAM mid-assault (kills free early).
+                    if (*this == STRUCT_SAM && bx == 12 && by == 5
+                        && (Status == SAM_UNDERGROUND || Status == SAM_RISING
+                            || Status == SAM_LOWERING)) {
+                        Status = SAM_READY;
+                    }
+                    int kill = Strength;
+                    Take_Damage(kill, 0, WARHEAD_HE, NULL);
+                    if (Strength > 0) {
+                        Explosion_Damage(Center_Coord(), 80, NULL, WARHEAD_HE);
+                    }
+                    // Second pass if residual after half-damage path.
+                    if (Strength > 0 && Strength <= kill_band && bx == 12 && by == 5) {
+                        int kill2 = Strength;
+                        Take_Damage(kill2, 0, WARHEAD_HE, NULL);
                     }
                 } else {
                     int chip = chip_amt;

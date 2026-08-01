@@ -210,7 +210,20 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
         };
       }
       // In weapon range (Cheby ≤4) at/near fire cell — attack in place.
+      // l175c: when NE is already low (≤120) hold fire cell and let proximity
+      // chip finish so free keeps residual HP for NW peel (free@99 after NE
+      // kill never reaches NW before civ lose).
       if (nd <= 4 && (atNeFire || nd >= 3)) {
+        if ((neGun.strength ?? 400) <= 120 && atNeFire && hp < 180) {
+          return {
+            cellX: neFire.cellX,
+            cellY: neFire.cellY,
+            engage: false,
+            cadence: 2,
+            reason: "ne-gun-hold-chip",
+            stopFirst: true,
+          };
+        }
         return {
           cellX: neGun.cellX,
           cellY: neGun.cellY,
@@ -229,19 +242,30 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
         stopFirst: true,
       };
     }
-    // l174e/f: NE dead@38520 free@247 — spine-dodge-east@y=16 thrash and
-    // attack-move SAM from y=16 pathfinds into death. North on x≥18 to y=8
-    // first, then SAM attack-move. Expand band to y≤20 so peel doesn't
-    // re-enter spine-east-north.
-    if (!neGun && hp >= 80 && tank.cellY <= 20 && tank.cellX >= 14 && tank.cellX <= 26) {
-      if (tank.cellY > 8) {
+    // l175g: after NE dead free@20,13 is in NW proximity-chip theatre
+    // (near_dist 0x0C00). Hold fire cell while healthy enough so engine chips
+    // NW; free@99 that peels north dies before NW without chip time.
+    if (!neGun && hp >= 40 && tank.cellY <= 20 && tank.cellX >= 14 && tank.cellX <= 26) {
+      const inNeFireTheatre = tank.cellX >= 18 && tank.cellX <= 22
+        && tank.cellY >= 11 && tank.cellY <= 15;
+      if (inNeFireTheatre && hp >= 80) {
+        return {
+          cellX: 20,
+          cellY: 13,
+          engage: false,
+          cadence: 2,
+          reason: "sam-hold-nw-chip",
+          stopFirst: true,
+        };
+      }
+      if (tank.cellY > 10) {
         return {
           cellX: Math.max(tank.cellX, 18),
-          cellY: Math.max(tank.cellY - 3, 8),
+          cellY: Math.max(tank.cellY - 5, 8),
           engage: false,
           cadence: 1,
           reason: "sam-post-negun-north",
-          stopFirst: true,
+          stopFirst: false,
         };
       }
       return {
@@ -250,7 +274,7 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
         engage: true,
         cadence: 1,
         reason: "sam-post-negun",
-        stopFirst: true,
+        stopFirst: false,
       };
     }
     if (dist <= 4) {

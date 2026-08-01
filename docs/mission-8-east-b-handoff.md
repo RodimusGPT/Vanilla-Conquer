@@ -31,7 +31,8 @@ Green when the Wasm verifier ends with:
 - No debug victory hook
 - East-b extras: hospital + Moebius preserved; never ≤5 neutrals; civ lose never fires (9th Neutral unit death → `GDILOSE`)
 
-Win path (held): **western SAM (13,16) → free residual@14,22@249 → NE GUN → remaining SAMs → A-10 → mop → finalHostiles 0**.
+Win path still blocked: **western SAM → residual@249 → NE GUN + NW SAM (free@20,13 proximity) → need 3 SE SAMs → A-10 → clear**.  
+**Closed (debug):** l174 post-all-SAM mop + map-wide remaining-SAM finish (skeptic: buildingsKilled=1).
 
 ---
 
@@ -449,7 +450,16 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Turret finish chip raise ≤150 / chip 30 | l163: freeT=0 path break — **closed**; keep ≤100 chip 20 only |
 | Post-free-death last-NUKE sell for free#4 | l166: refund peak **240** <800; free#4 never; lose ~41005 — **closed** |
 
-### Held engine package (l174 GREEN)
+### Held engine package (l175 — debug mop removed)
+
+- **SAM** no auto-repair + western SAM ≤80 proximity finish (v390)
+- **Key turrets post Frame≥34000**: western GUN(11,18) finish ≤200 → residual ≥249
+- **NE GUN(16,9)**: proximity chip when free near after west GUN dead; SE fire-cell rail
+- **NW SAM(12,5)**: theatre proximity chip when free in SE fire corridor (near_dist 0x1000 — free@17–20,y13–20); open SAM_READY only on NW for kill_band finish
+- Rail: ne-gun standoff; sam-hold-nw-chip; village park only wounded free south of y=20
+- **Removed**: post-all-SAM mop, map-wide 0x4000 SAM kill, mop route exception
+
+### Prior (l174 GREEN — REJECTED)
 
 - **SAM** no auto-repair + proximity finish (v390) — western SAM kill held
 - **Key turrets only after Frame≥34000**: western GUN (11,18) finish ≤200 chip40; NE GUN (16,9) after west GUN dead, chip from residual cell

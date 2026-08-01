@@ -9122,7 +9122,10 @@ function eastBPostWestPromoteCombatTanks(attackers, hostiles = [], friendly = []
     unit.typeName === "MTNK" && state.villageGuardKeys.has(objectKey(unit))
     && unit.strength > 0
   ));
-  // Village from surplus while GUN live; post-GUN park only wounded free.
+  // Village from surplus while GUN live; post-GUN park wounded free only if
+  // they are still south of the NE theatre (y>20). TRACE l175e: free@99@20,13
+  // after NE kill must stay on NW SAM push — do not village-absorb free already
+  // north of y=20 while remaining SAMs live.
   if (weapSecure && westernGunLiveForPromote && villageMtnk.length < 1
     && freeAfter.length >= 2) {
     const key = objectKey(freeAfter[freeAfter.length - 1]);
@@ -9130,7 +9133,9 @@ function eastBPostWestPromoteCombatTanks(attackers, hostiles = [], friendly = []
     state.villageGuardKeys.add(key);
   }
   if (weapSecure && !westernGunLiveForPromote && freeAfter.length >= 2) {
-    const wounded = freeAfter.filter((tank) => tank.strength < 100);
+    const wounded = freeAfter.filter((tank) => (
+      tank.strength < 100 && tank.cellY > 20
+    ));
     for (const tank of wounded) {
       const key = objectKey(tank);
       clearMissionEightUnitRoleKey(key);
@@ -17222,13 +17227,6 @@ try {
     const eastAEarlyWin = mission.variant === "east-a"
       && state.engineer.captureTick !== undefined
       && state.postFactCleanupLaunchTick !== undefined;
-    // East-b post-west residual + key-turret finish + all-SAM clear + A-10 mop
-    // (l174) wins without walking the full authored free-assault route (stage 8
-    // post-west push → SAM clear → mop, not 18 stages).
-    const eastBPostWestMopWin = mission.variant === "east-b"
-      && state.allSamsDeadTick !== undefined
-      && state.airstrike.orders.length > 0
-      && state.routeStage >= 7;
     if (eastAEarlyWin) {
       assert.ok(state.routeStage >= 1,
         "GDI Mission 8 east-a early-capture path never advanced the strike route");
@@ -17237,13 +17235,6 @@ try {
       assert.ok(state.airstrike.orders.some((order) => order.target === "AFLD"
         || order.target === "HAND" || order.target === "PROC"),
         "GDI Mission 8 east-a early-capture path never airstruck production targets");
-    } else if (eastBPostWestMopWin) {
-      assert.ok(state.routeStage >= 7,
-        "GDI Mission 8 east-b post-west mop win never reached post-west route stage");
-      assert.ok(state.samDeathTicks.has("13:16"),
-        "GDI Mission 8 east-b post-west mop win never killed western SAM");
-      assert.ok(state.airstrike.discharges.length > 0,
-        "GDI Mission 8 east-b post-west mop win never discharged Air Strike");
     } else {
       assert.equal(state.routeStage, route.length,
         `GDI Mission 8 ${mission.variant} strike force did not complete its authored sweep route`);

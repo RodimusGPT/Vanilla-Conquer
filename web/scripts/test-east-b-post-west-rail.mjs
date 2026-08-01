@@ -196,21 +196,20 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.reason, "sam-attack-move");
   assert.equal(r.engage, true);
 }
-// Mid east y=13 (NE clear): north toward SAM approach (l174f).
+// Mid east y=13 (NE clear, healthy): hold NW chip theatre (l175h).
 {
   const r = eastBPostWestRailApproach(
     { cellX: 19, cellY: 13, strength: 128 }, nwSam, null,
   );
-  assert.equal(r.reason, "sam-post-negun-north");
+  assert.equal(r.reason, "sam-hold-nw-chip");
   assert.equal(r.engage, false);
-  assert.ok(r.cellY <= 10, r.cellY);
 }
-// Far-east y=13: same post-NE north.
+// Far-east y=13 healthy: hold NW chip theatre.
 {
   const r = eastBPostWestRailApproach(
     { cellX: 22, cellY: 13, strength: 128 }, nwSam, null,
   );
-  assert.equal(r.reason, "sam-post-negun-north");
+  assert.equal(r.reason, "sam-hold-nw-chip");
 }
 // Far-east y=8: SAM attack-move.
 {
@@ -240,29 +239,52 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.engage, true);
 }
 
-// free@21,11: after NE clear, north to y=8 then SAM (l174f).
+// free@21,11 healthy: hold NW chip theatre (l175h).
 {
   const r = eastBPostWestRailApproach(
     { cellX: 21, cellY: 11, strength: 128 }, nwSam, null,
   );
-  assert.equal(r.reason, "sam-post-negun-north");
+  assert.equal(r.reason, "sam-hold-nw-chip");
   assert.equal(r.engage, false);
-  assert.ok(r.cellY <= 8);
 }
-// y=7: SAM attack-move.
+// free@21,11 low HP: peel north (hp<80 leaves hold).
 {
   const r = eastBPostWestRailApproach(
-    { cellX: 21, cellY: 7, strength: 100 }, nwSam, null,
+    { cellX: 21, cellY: 11, strength: 70 }, nwSam, null,
+  );
+  assert.equal(r.reason, "sam-post-negun-north");
+  assert.equal(r.engage, false);
+}
+// y=9: SAM attack-move.
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 21, cellY: 9, strength: 100 }, nwSam, null,
   );
   assert.equal(r.reason, "sam-post-negun");
   assert.equal(r.engage, true);
 }
-// l174f: free@19,12@247 NE dead → north not thrash.
+// l174f/h: free@19,12@247 NE dead → hold NW chip theatre.
 {
   const r = eastBPostWestRailApproach(
     { cellX: 19, cellY: 12, strength: 247 }, nwSam, null,
   );
-  assert.equal(r.reason, "sam-post-negun-north");
+  assert.equal(r.reason, "sam-hold-nw-chip");
+  assert.equal(r.engage, false);
+}
+// free@21,10: SAM engage.
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 21, cellY: 10, strength: 99 }, nwSam, null,
+  );
+  assert.equal(r.reason, "sam-post-negun");
+  assert.equal(r.engage, true);
+}
+// l175g: free@20,13@99 after NE — hold NW chip theatre (hp≥80).
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 20, cellY: 13, strength: 99 }, nwSam, null,
+  );
+  assert.equal(r.reason, "sam-hold-nw-chip");
   assert.equal(r.engage, false);
 }
 
@@ -326,6 +348,16 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   );
   assert.equal(r.reason, "ne-gun-standoff-fire");
   assert.equal(r.engage, true);
+}
+// l175c: free wounded at fire cell while NE low — hold chip, do not trade.
+{
+  const neGun = { cellX: 16, cellY: 9, strength: 100 };
+  const r = eastBPostWestRailApproach(
+    { cellX: 20, cellY: 13, strength: 150 }, nwSam, null,
+    { freeNorthCount: 1, neGun },
+  );
+  assert.equal(r.reason, "ne-gun-hold-chip");
+  assert.equal(r.engage, false);
 }
 // very low-HP free still peels north (under-kill risk).
 {
