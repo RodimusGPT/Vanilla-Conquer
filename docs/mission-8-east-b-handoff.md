@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — **western SAM (13,16) DEAD @32730** (v390); remaining SAMs live; lose **civ-near-threshold** (~8 deaths) |
+| Status | **RED** — western SAM dead (held); **post-west rebuild started** (v391); remaining 4 SAMs live; lose **civ-near-threshold** |
 | Branch | `browser-port` |
-| Commit | `4af5bc9` |
+| Commit | `5e635ed` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v390 no-SAM-repair + last-HP rail + proximity finish chip — western SAM **0** @32730; routeStage **8**; lose civ @~38k |
+| Last TRACE suite | v391k post-west village refill + rebuild hold + route advance — western SAM **0** @~32730; routeStage **9**; free MTNK survives; lose civ @~39k; **WEAP still dies** (producedTanks stuck at 4) |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -314,13 +314,28 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 6. **Closed v386** — SAM≤100-only defer + nadir burst (#6+#29+#4 @ SAM≤100) + post-western-SAM push: samMin **98** held; #4 dist-6 fire @ `{11,22}` @ nadir but #6/#29 still die @32700; post-kill push untested (SAM never dies). Engine ~1 cell/30t ceiling likely.
 6b. **Closed v388** — finisher pick inversion / west-line spine-close defer: pick inversion regressed to samMin **104**; surgical defer held **98** but #4 still `@10,21`@32730 — **closed**.
 6c. **Closed v389** — GUN `{11,18}` respawn re-engage when kill line empty: samMin **98** held; lone #27 spine-rails but dies before GUN kill; SAM repairs to 400 — **closed**.
-7. **v390 BREAKTHROUGH** — skip AI auto-repair on SAM (scen 8) + last-HP rail to y=20 fire line + proximity HE chip when SAM≤80 and MTNK within ~6 cells → **western SAM dead @32730** (samMin **1–15** then 0). **Next:** clear remaining SAMs (12,5 / 54,5 / 43,14 / 52,14) for A-10 unlock; stop civ losses (lose @~38k with 8 neutral deaths).
+7. **v390 BREAKTHROUGH** — skip AI auto-repair on SAM (scen 8) + last-HP rail to y=20 fire line + proximity HE chip when SAM≤80 and MTNK within ~6 cells → **western SAM dead @32730** (samMin **1–15** then 0).
 8. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
 9. **Held v366** — village loan when `samKillWindow && strike≤1 && SAM≤180` (harmless; inactive @ nadir).
 10. **Held v369** — `eastBSamKillSpineFireLine` `{13,20}` + chip-band rail @221–280 for x=13 y≥23.
 11. **Held v372** — west-flank finisher @ dist≥7; west-hold on x=12 (no east recall to `{13,24}`).
 12. **Held v374** — partner `{14,22}` dist-6 fires via west-edge kill-line (not approach move); partner step sam≤220.
 13. **Held v376–v380** — west-finish rush @ dist 6–8 sam≤130 → `{10,21}`; dist-8 finish without chipBandLead gate.
+14. **v391 post-west bundle** — after western SAM death latch only:
+    - village refill (no loan while village thin); southern free tanks → hospital
+    - rebuild hold: do not solo-push NW SAM with scrap; park support hold / civil intercept
+    - force routeStage past western SAM even when strike empty
+    - post-west MTNK banking + emergency NUKE sell when cash &lt; 800 and rebuild incomplete
+    - TRACE v391k: routeStage **9**, free MTNK survives @`{13,34}`, lose still **civ-near-threshold**
+    - **Closed:** early-window base-loan HP 0.35 (desynced free tanks → samMin 400)
+    - **Closed:** pre-death home-pull / always-keep base MTNK (thins kill or all-destr)
+
+### Next (ordered)
+
+1. **Save WEAP after western SAM death** — producedTanks stuck at 4 because factory dies; without WEAP no rebuild cohort for remaining SAMs.
+2. **Cut post-SAM civ deaths** — first post-kill death ~33.7k (v390 was ~34.5k); need 2 healthy village MTNKs through 40k.
+3. **Kill remaining SAMs** (12,5 / 54,5 / 43,14 / 52,14) → `allSamsDead` → A-10 ready.
+4. **A-10 + map clear** to win (east-a demolition pattern once A-10 unlocks).
 
 ---
 
