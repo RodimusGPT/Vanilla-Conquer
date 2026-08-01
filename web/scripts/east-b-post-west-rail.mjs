@@ -192,7 +192,9 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
         engage: true, cadence: 1, reason: "sam-attack-move",
       };
     }
-    // East peel off GUN/Nod west fire before north.
+    // l141: keep NUKE extends lose past 39058 (free still alive@19,12 then).
+    // l142: with extra time, dodge east of GUN@16,9 then north to y=8, cut west.
+    // l110 path dies under GUN@16,9; l130 with NUKE sell ends at 39058 mid-dodge.
     if (tank.cellX < 17 && tank.cellY >= 16) {
       return {
         cellX: 18,
@@ -203,22 +205,47 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
         stopFirst: true,
       };
     }
-    // East lane north all the way to y≈10 (l110: free@128 to y=13, @108@y=12).
-    // l111 cut-at-13 stuck x=19; l112 early diag-west bled free (minY 20) — closed.
-    if (tank.cellX >= 16 && tank.cellY > 10) {
+    if (tank.cellX < 20 && tank.cellY > 16) {
       return {
         cellX: Math.max(tank.cellX, 17),
-        cellY: Math.max(tank.cellY - 3, 10),
+        cellY: Math.max(tank.cellY - 3, 16),
         engage: false,
         cadence: 1,
         reason: "spine-east-north",
         stopFirst: true,
       };
     }
-    // y≤10 on east: cut west to NW fire cell.
+    // TRACE l142 best: free@21,11@128 (keep NUKE extends lose). l143/l144
+    // cut-at-y7 / x≥22 thrash or bleed. Hold x=22 lane north then cut west.
+    if (tank.cellX < 21 && tank.cellY <= 16) {
+      return {
+        cellX: 22,
+        cellY: Math.min(tank.cellY, 16),
+        engage: false,
+        cadence: 1,
+        reason: "spine-dodge-east",
+        stopFirst: true,
+      };
+    }
+    if (tank.cellX >= 20 && tank.cellY > 8) {
+      return {
+        cellX: Math.max(tank.cellX, 21),
+        cellY: Math.max(tank.cellY - 3, 8),
+        engage: false,
+        cadence: 1,
+        reason: "spine-far-north",
+        stopFirst: true,
+      };
+    }
+    if (dist <= 6) {
+      return {
+        cellX: target.cellX, cellY: target.cellY,
+        engage: true, cadence: 1, reason: "sam-attack-move",
+      };
+    }
     return {
       cellX: 13,
-      cellY: 8,
+      cellY: 6,
       engage: false,
       cadence: 1,
       reason: "spine-cut-west",

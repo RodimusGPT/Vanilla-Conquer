@@ -3404,6 +3404,8 @@ const missionEightState = {
   // TRACE l102: latch first western GUN kill so free ignores GUN respawn and
   // keeps spine→NW SAM (l101 free re-pulled to GUN@370 @39900, NW stayed 400).
   eastBPostWestGunClearedTick: undefined,
+  // TRACE l140: stop combat only once per free on spine (stop every 45t thrash).
+  eastBPostWestSpineStopKeys: new Set(),
   eastBPreviousTanks: new Map(),
   eastBTankCohortReadyTick: undefined,
   // Free/base MTNKs pre-positioned at western support hold; released at GUN stage.
@@ -4799,28 +4801,9 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
       && hostile.strength > 0
     ));
-    if (state.eastBPostWestPostGunNukeSellTick === undefined
-      && !westernGunStillUp
-      && freePostWestLive >= 1
-      && liveFundsNow < 800
-      && builtAssets.has("WEAP")) {
-      const nuke = buildings.find((object) => (
-        object.typeName === "NUKE" && object.strength >= 50
-        && !state.soldStructureIds.has(object.id)
-      ));
-      if (nuke) {
-        sellMissionSevenStructure(commands, nuke);
-        state.soldStructureIds.add(nuke.id);
-        state.eastBPostWestPostGunNukeSellTick = snapshot.tick;
-        state.saleOrders.push({
-          tick: snapshot.tick,
-          typeName: nuke.typeName,
-          cellX: nuke.cellX,
-          cellY: nuke.cellY,
-          reason: "east-b post-GUN last-NUKE sell for NW SAM rebuild tank",
-        });
-      }
-    }
+    // TRACE l141: do NOT sell last NUKE post-GUN. Selling ends game ~39058 with
+    // free still alive@19,12; keeping NUKE extends to ~41k (free can peel further).
+    // Cash 240 never funded free#4 (need 800). Keep power plant online.
   }
   const healthyReservedEastBTanks = mission.variant === "east-b" ? friendly.filter((object) => (
     object.typeName === "MTNK"
@@ -9681,11 +9664,11 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
       queueMissionEightRole(commands, role, [tank], engageTarget, 0, rail.cadence);
       continue;
     }
-    // TRACE l101: stop combat stance once before post-GUN spine force-move —
-    // free freezes under auto-acquire (l98) or attack-moves into Nod base (l100).
-    // Cadence 45: stop only on enter / rare re-stick, not every tick thrash.
-    if (rail.stopFirst) {
-      queueMissionEightStop(commands, `east-b-post-west-stop-${tankKey}`, [tank], 45);
+    // TRACE l101/l140: stop combat once before post-GUN spine force-move.
+    // Re-stop every 45t was thrashing free path (570t for ~10 cells).
+    if (rail.stopFirst && !state.eastBPostWestSpineStopKeys.has(tankKey)) {
+      queueMissionEightStop(commands, `east-b-post-west-stop-${tankKey}`, [tank], 1);
+      state.eastBPostWestSpineStopKeys.add(tankKey);
     }
     queueMissionEightRole(commands, `east-b-post-west-rail-${tankKey}`,
       [tank], { cellX: rail.cellX, cellY: rail.cellY }, MODIFIER_ALT, rail.cadence);

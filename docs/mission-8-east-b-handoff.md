@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead (held); GUN **0@38700**; free east-lane to **y=12@108** (l110); dies before NW SAM chip; remaining SAMs **400**; no A-10 |
+| Status | **RED** — western SAM dead; GUN **0@38700**; free far-east to **y=11@128** (l142); keep NUKE extends lose ~41k; NW SAMs **400**; civ-near-threshold |
 | Branch | `browser-port` |
 | Commit | `ca4af7b` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l110 north-first east-lane — free **108@19,12** (was l106 109@19,14); 128 HP through y=13; NW still **400** |
+| Last TRACE suite | l142 keep-NUKE + far-east peel — free **128@21,11** (was l110 108@19,12); lose **40891** civ-near; NW **400** |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -155,18 +155,18 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Post-GUN spine | Micro-step x=13 + stop-first force-move; SAM attack-move only y≤16; no south-rally free x≤24 y≤40 str≥40 |
 | Post-GUN promote | Never demote free on spine to WEAP picket; re-promote stuck pickets |
 | Post-GUN GUN latch | `eastBPostWestGunClearedTick` — ignore GUN respawn after first kill (free stays on NW spine) |
-| Post-GUN east peel | After GUN dead: peel x=18 then north |
-| Post-GUN north-first | Stay on east lane to y≈10 before cut-west; free **108@19,12** (l110) |
+| Post-GUN east peel | peel x=18 → y=16 → dodge x=22 → far-north; free **128@21,11** (l142) |
+| Post-GUN keep NUKE | Do not sell last NUKE after GUN (extends lose past free approach) |
 | GUN finish standoff | When GUN≤100 and free dist≤3, pin SE fire cell (l117); kill held free@128 |
-| Post-GUN NUKE sell | Last NUKE only after GUN dead → funds ~240 (still &lt;800 rebuild) |
-| Post-GUN free residual | Best **128@17,20** at GUN death; north-first east-lane to **108@19,12** (l110) |
+| Post-GUN NUKE | **Keep** last NUKE (l141/l142) — selling ends game ~39058 with free still alive; cash 240 never bought free#4 |
+| Post-GUN free residual | Best **128** at GUN death; far-east peel to **128@21,11** (l142) |
 
 ### Still broken
 
 | Symptom | Detail |
 |---|---|
-| Remaining 4 SAMs | All **400** — free reaches y=12@108 but dies ~28t later before NW chip |
-| Post-GUN survivors | east peel + north-first → **108@19,12** (l110); cut-west stuck; die ~39058 |
+| Remaining 4 SAMs | All **400** — free reaches y=11@128 then bleeds cutting west under GUN@16,9 |
+| Post-GUN survivors | far-east **128@21,11** (l142); cut-west dies; lose ~40891 civ-near |
 | Village / civs | minNeut **7**; civ cascade risk while free push |
 | A-10 / clear | Needs all five SAMs dead |
 
@@ -436,11 +436,12 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 ### Next (ordered)
 
-1. **Clear NE GUN@16,9 before free y≈14 without cutting west-GUN 2v1** — scrap/E3 pre-clear (l116/l118) too late; weak free to NE GUN (l121) repairs west GUN. Need earlier scrap or more residual.
-2. **Free residual ≥200 through west GUN** — finish standoff (l117) held residual 128; broader standoff (l120) no gain; peel variants under-kill west GUN.
-3. **Post-GUN rebuild cash ≥800** — only NUKE → ~240; full-HP free#4 could tank NE GUN + NW SAM.
-4. **NW SAM chip → allSamsDead → A-10**.
-5. **Civ / minNeut** — lose@~39058 unknown (7 neut deaths) same wall as free dies; may be coupled.
+1. **Cut west to NW SAM north of GUN@16,9 (y≤7) without bleeding** — free reaches **21,11@128** then dies cutting west through GUN range (l142–l144 thrash).
+2. **Clear NE GUN@16,9 before cut-west** without diverting free 2v1 (scrap/E3 too late; weak free peel under-kills west GUN).
+3. **Free residual ≥200** through west GUN (still ~128).
+4. **Civ screen** — lose@40891 civ-near-threshold (8 deaths) after free dies.
+5. **Post-GUN cash ≥800** without selling last NUKE (kept for power/lose timing).
+6. **NW SAM chip → A-10**.
 5. **Civ screen without thinning free GUN DPS** — MTNK anchors closed (l95–l97).
 6. **minNeut ≥ 9** without regressing GUN kill / free@128.
 

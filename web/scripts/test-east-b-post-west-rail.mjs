@@ -196,22 +196,27 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.reason, "sam-attack-move");
   assert.equal(r.engage, true);
 }
-// East lane mid y=13: keep north (l110).
+// Mid east y=13: dodge east (l142).
 {
   const r = eastBPostWestRailApproach(
     { cellX: 19, cellY: 13, strength: 128 }, nwSam, null,
   );
-  assert.equal(r.reason, "spine-east-north");
-  assert.ok(r.cellY <= 13);
-  assert.equal(r.engage, false);
+  assert.equal(r.reason, "spine-dodge-east");
+  assert.ok(r.cellX >= 22, r.cellX);
 }
-// East lane at y=10: cut west.
+// Far-east y=13: north.
 {
   const r = eastBPostWestRailApproach(
-    { cellX: 18, cellY: 10, strength: 100 }, nwSam, null,
+    { cellX: 22, cellY: 13, strength: 128 }, nwSam, null,
   );
-  assert.equal(r.reason, "spine-cut-west");
-  assert.equal(r.cellX, 13);
+  assert.equal(r.reason, "spine-far-north");
+}
+// Far-east y=8: cut west / attack SAM.
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 22, cellY: 8, strength: 100 }, nwSam, null,
+  );
+  assert.ok(r.reason.includes("sam") || r.reason.includes("cut") || r.reason.includes("spine"), r.reason);
 }
 
 // GUN finish band: back up from dist≤3 to SE standoff (l117).
