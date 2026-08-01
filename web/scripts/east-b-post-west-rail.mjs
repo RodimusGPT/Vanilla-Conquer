@@ -162,9 +162,16 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
         engage: true, cadence: 1, reason: "sam-range",
       };
     }
-    // TRACE l105: free reached y=13@109 on east lane then died before chip.
-    // l106: cut west / attack-move earlier (y≤15 or dist≤8) — don't sit at x=19.
-    if (dist <= 8 || (tank.cellY <= 14 && tank.cellX <= 20)) {
+    // TRACE l105/l106: free@109@19,14 dies ~58t after attack-move SAM from mid
+    // east — pathfind west through death zone. l110: stay on east lane to y=10
+    // then cut west; attack-move only when dist≤5 or on spine near fire line.
+    if (dist <= 5) {
+      return {
+        cellX: target.cellX, cellY: target.cellY,
+        engage: true, cadence: 1, reason: "sam-range",
+      };
+    }
+    if (tank.cellX <= 15 && tank.cellY <= 11 && dist <= 7) {
       return {
         cellX: target.cellX, cellY: target.cellY,
         engage: true, cadence: 1, reason: "sam-attack-move",
@@ -181,21 +188,22 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
         stopFirst: true,
       };
     }
-    // East lane north to y≈14 then cut west.
-    if (tank.cellY > 14) {
+    // East lane north all the way to y≈10 (l110: free@128 to y=13, @108@y=12).
+    // l111 cut-at-13 stuck x=19; l112 early diag-west bled free (minY 20) — closed.
+    if (tank.cellX >= 16 && tank.cellY > 10) {
       return {
         cellX: Math.max(tank.cellX, 17),
-        cellY: Math.max(tank.cellY - 2, 14),
+        cellY: Math.max(tank.cellY - 3, 10),
         engage: false,
         cadence: 1,
         reason: "spine-east-north",
         stopFirst: true,
       };
     }
-    // At y≤14: cut west toward SAM.
+    // y≤10 on east: cut west to NW fire cell.
     return {
       cellX: 13,
-      cellY: 9,
+      cellY: 8,
       engage: false,
       cadence: 1,
       reason: "spine-cut-west",

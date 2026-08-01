@@ -188,7 +188,7 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.reason, "spine-east-peel");
   assert.equal(r.cellX, 18);
 }
-// Near fire line / east lane y≤14: attack-move NW SAM (l106).
+// Near fire line on spine: attack-move NW SAM (l110).
 {
   const r = eastBPostWestRailApproach(
     { cellX: 13, cellY: 11, strength: 100 }, nwSam, null,
@@ -196,12 +196,22 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.reason, "sam-attack-move");
   assert.equal(r.engage, true);
 }
+// East lane mid y=13: keep north (l110).
 {
   const r = eastBPostWestRailApproach(
-    { cellX: 19, cellY: 13, strength: 109 }, nwSam, null,
+    { cellX: 19, cellY: 13, strength: 128 }, nwSam, null,
   );
-  assert.equal(r.reason, "sam-attack-move");
-  assert.equal(r.engage, true);
+  assert.equal(r.reason, "spine-east-north");
+  assert.ok(r.cellY <= 13);
+  assert.equal(r.engage, false);
+}
+// East lane at y=10: cut west.
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 18, cellY: 10, strength: 100 }, nwSam, null,
+  );
+  assert.equal(r.reason, "spine-cut-west");
+  assert.equal(r.cellX, 13);
 }
 
 console.log("test-east-b-post-west-rail: ok");
