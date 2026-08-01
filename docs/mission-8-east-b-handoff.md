@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — western SAM dead; GUN kill residual **128**; free far-east **108@21,10** (l165); keep NUKE; NW **400**; lose **41257** civ-near; l157–l165 engine/rail package |
 | Branch | `browser-port` |
-| Commit | `(pending l165)` |
+| Commit | `179a41e` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` + `tiberiandawn/building.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
@@ -442,17 +442,28 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | freeT cap@2 until GUN cleared (bank 890 for free#3) | l154: funds **890** held but GUN **never dies** (freeT 2→0 @37800); WEAP dies; minN6 — **closed** (same class l72/l78) |
 | Keep villageGuard off GUN scrap when freeT≥2 | l155: freeT peak 2 / GUN never dies / lose ~36720 — **REGRESS closed** |
 | Park free#3 (southern freeT≥3) on village while GUN live | l156: same free@108@21,10 / minN7 as l146 — **no-op closed** (vg still 8→0) |
+| Full STRUCT_TURRET auto-repair skip (all HP) | l157: freeT=0 WEAP dead early — **REGRESS closed** |
+| freeT cap@2 + GUN finish chip | l160: funds 890; freeT 2→0; GUN never dies — **closed** |
+| Dual free post-GUN north peel (all free→strike) | l161–l164: residual **128+87** but lose ~**39024** unknown (earlier than l146) — **closed** |
+| Early NE GUN approach y≤23 freeNorth≥1 | l163: free#1 dies; free solo under-kills; earlier lose — **closed** |
+| Turret finish chip raise ≤150 / chip 30 | l163: freeT=0 path break — **closed**; keep ≤100 chip 20 only |
+
+### Held engine package (l165)
+
+- **SAM** no auto-repair + proximity finish (v390) — western SAM kill held
+- **GUN/turret** proximity finish when strength ≤100 + hostile MTNK near (l159/l165) — partner often survives GUN to be parked village
+- Rebuild wasm after `building.cpp` changes: `cmake --build build/web-td` then copy to `web/dist/engine/`
 
 ### Next (ordered)
 
-**Post-west tactical levers largely exhausted (l148–l156).** Remaining are structural walls:
+**Still structural walls for campaign green:**
 
-1. **Cash wall** — freeT=3 spends FACT bank to ~90; freeT=2 banks 890 but no GUN kill; no last-NUKE; no leftover sellables; keep-PROC starves freeT.
-2. **NE GUN@16,9 wall** — free residual ~128 Cheby 5 at y=10–11; solo free cannot kill NE GUN; pathfind cannot open north corridor (l148–l151).
-3. **Civ wall** — vg 8→0 mid free push; hospital anchors closed (l95–l97); keep-village / free#3-park no gain (l155–l156).
-4. **NW SAM chip → A-10** blocked by (1)+(2).
+1. **NE GUN@16,9** — free residual ~128 dies in range; dual free north peel causes earlier lose (~39k)
+2. **Cash** — freeT=3 → funds ~90; free#4 never; freeT=2 no GUN kill
+3. **Civ** — lose@41257 civ-near; wounded free on village (l165) does not prevent 8th death
+4. **NW SAM → A-10 → clear** blocked by NE GUN + residual
 
-If new evidence appears (engine path API, capture cash, free residual ≥200 path), reopen the matching wall.
+Rebuild engine after any `building.cpp` edit.
 
 ---
 
