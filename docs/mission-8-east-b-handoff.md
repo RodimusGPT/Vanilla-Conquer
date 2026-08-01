@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead (held); **western GUN dead @~38700** free@**128@14,22** (l104); GUN-respawn ignore latched; free dies before NW fire line; remaining SAMs **400**; no A-10 |
+| Status | **RED** — western SAM dead (held); GUN **0@38700**; free east-peel to **y=14@109** (l106, was y=22); dies before NW SAM chip; remaining SAMs **400**; no A-10 |
 | Branch | `browser-port` |
 | Commit | `3a118d4` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l104 spine/GUN-latch — free@**128@14,22** (was 108@11,22); lose **39973**; NW still **400**; early peel + pure SAM attack-move closed |
+| Last TRACE suite | l106 east-peel — free **109@19,14** post-GUN (was 108@11,22); NW still **400**; GUN-latch held |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -155,15 +155,16 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Post-GUN spine | Micro-step x=13 + stop-first force-move; SAM attack-move only y≤16; no south-rally free x≤24 y≤40 str≥40 |
 | Post-GUN promote | Never demote free on spine to WEAP picket; re-promote stuck pickets |
 | Post-GUN GUN latch | `eastBPostWestGunClearedTick` — ignore GUN respawn after first kill (free stays on NW spine) |
+| Post-GUN east peel | After GUN dead: peel x=18 then north; free **109@19,14** (l105/l106) |
 | Post-GUN NUKE sell | Last NUKE only after GUN dead → funds ~240 (still &lt;800 rebuild) |
-| Post-GUN free residual | Best **128@14,22** after GUN kill (l104; was 108@11,22) |
+| Post-GUN free residual | Best **128@17,20** at GUN death; north to **109@19,14** via east peel (l106) |
 
 ### Still broken
 
 | Symptom | Detail |
 |---|---|
-| Remaining 4 SAMs | All **400** — free never chips NW SAM (12,5); dies under fire walking spine (~1 cell/30–50t) |
-| Post-GUN survivors | free@**128@14,22** after GUN (l104); thrash/crawl y=28→22; die before y=9 fire line |
+| Remaining 4 SAMs | All **400** — free reaches y=14@109 but dies before NW chip |
+| Post-GUN survivors | east peel x=18 north → **109@19,14** (l106); cut-west/attack-move too late; die ~39058 |
 | Village / civs | minNeut **7**; civ cascade risk while free push |
 | A-10 / clear | Needs all five SAMs dead |
 
@@ -418,10 +419,10 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 ### Next (ordered)
 
-1. **Preserve free HP through GUN 2v1 (≥~200)** so spine walk reaches NW fire line — peel/standoff/inplace/early-spine-peel closed. free@128 still dies under fire before y=9.
-2. **Clear / avoid spine threats** so free does not bleed ~30 HP/100t while crawling north (path rate ~1 cell/30–50t).
-3. **Post-GUN rebuild cash ≥800** — only NUKE left at GUN death → ~240; PROC/PYLE already gone; need partner free@400 from pad.
-4. **NW SAM chip → allSamsDead → A-10** (still blocked on remaining SAMs@400).
+1. **Survive last ~8 cells / cut-west into NW SAM fire** — free now reaches y=14@109 via east peel (l106); dies ~58t later without chip. Need faster cut-west or more residual HP.
+2. **Preserve free HP through GUN 2v1 (≥~150–200)** — early-spine-peel closed (l103). free@128 at kill is enough to reach y=14.
+3. **Post-GUN rebuild cash ≥800** — only NUKE left → ~240; second free@400 would finish NW.
+4. **NW SAM chip → allSamsDead → A-10**.
 5. **Civ screen without thinning free GUN DPS** — MTNK anchors closed (l95–l97).
 6. **minNeut ≥ 9** without regressing GUN kill / free@128.
 

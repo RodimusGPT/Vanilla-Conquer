@@ -152,31 +152,53 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
 
   // TRACE l68/l85: free@108 dies ~300t before NW. l98–l100: force-move freezes
   // free in combat; pure SAM attack-move from x≤11 paths into Nod base
-  // (10,21→11,20 death). l101: spine force-move to {13,y-2} (caller may stop
-  // first); attack-move SAM only once on spine x≥12 and y≤16 (near fire line).
-  if (!gunLive && tank.cellX <= 24 && tank.cellY <= 40) {
+  // (10,21→11,20 death). l101: spine force-move + stopFirst. l104 free@128
+  // @14,22 still bleeds under Nod west fire. l105: peel east to x=18 first
+  // (escape west-base LOS) then north on x=18 to y=12, then cut west to SAM.
+  if (!gunLive && tank.cellX <= 28 && tank.cellY <= 40) {
     if (dist <= 4) {
       return {
         cellX: target.cellX, cellY: target.cellY,
         engage: true, cadence: 1, reason: "sam-range",
       };
     }
-    // Near NW fire line on spine: attack-move SAM.
-    if (tank.cellX >= 12 && tank.cellX <= 15 && tank.cellY <= 16) {
+    // TRACE l105: free reached y=13@109 on east lane then died before chip.
+    // l106: cut west / attack-move earlier (y≤15 or dist≤8) — don't sit at x=19.
+    if (dist <= 8 || (tank.cellY <= 14 && tank.cellX <= 20)) {
       return {
         cellX: target.cellX, cellY: target.cellY,
         engage: true, cadence: 1, reason: "sam-attack-move",
       };
     }
-    // Align east of GUN pad then micro-step north on x=13 (not x=11 death lane).
-    const spineX = 13;
-    const stepY = Math.max(tank.cellY - 2, 9);
+    // East peel off GUN/Nod west fire before north.
+    if (tank.cellX < 17 && tank.cellY >= 16) {
+      return {
+        cellX: 18,
+        cellY: Math.min(tank.cellY, 20),
+        engage: false,
+        cadence: 1,
+        reason: "spine-east-peel",
+        stopFirst: true,
+      };
+    }
+    // East lane north to y≈14 then cut west.
+    if (tank.cellY > 14) {
+      return {
+        cellX: Math.max(tank.cellX, 17),
+        cellY: Math.max(tank.cellY - 2, 14),
+        engage: false,
+        cadence: 1,
+        reason: "spine-east-north",
+        stopFirst: true,
+      };
+    }
+    // At y≤14: cut west toward SAM.
     return {
-      cellX: spineX,
-      cellY: stepY,
+      cellX: 13,
+      cellY: 9,
       engage: false,
       cadence: 1,
-      reason: tank.cellX < 12 ? "spine-align" : "spine-north",
+      reason: "spine-cut-west",
       stopFirst: true,
     };
   }
