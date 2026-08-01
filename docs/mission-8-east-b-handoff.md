@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — western SAM dead (held); free→strike + pad escape (v396h); remaining 4 SAMs still 400; free dies ~30,49 before NW |
 | Branch | `browser-port` |
-| Commit | *(update after push)* |
+| Commit | `7f17103` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
