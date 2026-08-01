@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead (held); **post-west rebuild started** (v391); remaining 4 SAMs live; lose **civ-near-threshold** |
+| Status | **RED** — western SAM dead (held); **WEAP survives post-west** (v392); remaining 4 SAMs live; lose **civ-near-threshold** / civ-nine |
 | Branch | `browser-port` |
-| Commit | `eb9299b` |
+| Commit | `673f40e` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v391k post-west village refill + rebuild hold + route advance — western SAM **0** @~32730; routeStage **9**; free MTNK survives; lose civ @~39k; **WEAP still dies** (producedTanks stuck at 4) |
+| Last TRACE suite | v392h — western SAM **0** @~32730; **WEAP live** through lose (was dead by 35k); NUKE/PROC/PYLE live; funds hit **865**; routeStage **9**; lose civ-nine @~37.5k; remaining SAMs still 400 |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -330,12 +330,21 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
     - **Closed:** early-window base-loan HP 0.35 (desynced free tanks → samMin 400)
     - **Closed:** pre-death home-pull / always-keep base MTNK (thins kill or all-destr)
 
+15. **v392 WEAP survival + post-west economy**
+    - Keep 1 base MTNK when free produced ≥3 at assault launch
+    - Never reassign last base MTNK to village (v392 stole WEAP picket → WEAP dead by 35.4k)
+    - Post-assault repair WEAP/PROC first; hold light WEAP repair while banking rebuild MTNK
+    - Skip NUKE rebuy after emergency sell while banking tanks (sell→rebuy loop burned cash)
+    - Do **not** sell sole NUKE (blackouts WEAP production)
+    - TRACE v392h: WEAP/PROC/NUKE/PYLE live at lose; funds **865**; MTNK still on map
+    - **Still broken:** village civ cascade (9 deaths); rebuild cohort thin; remaining SAMs 400
+
 ### Next (ordered)
 
-1. **Save WEAP after western SAM death** — producedTanks stuck at 4 because factory dies; without WEAP no rebuild cohort for remaining SAMs.
-2. **Cut post-SAM civ deaths** — first post-kill death ~33.7k (v390 was ~34.5k); need 2 healthy village MTNKs through 40k.
+1. **2 healthy village MTNKs through 40k** — cut civ-nine cascade (first post-kill death ~33.6–34k).
+2. **Produce 5th+ MTNK reliably** after west SAM (funds hit 865 but cohort still thin) — harvest + bank.
 3. **Kill remaining SAMs** (12,5 / 54,5 / 43,14 / 52,14) → `allSamsDead` → A-10 ready.
-4. **A-10 + map clear** to win (east-a demolition pattern once A-10 unlocks).
+4. **A-10 + map clear** to win.
 
 ---
 
