@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — western SAM dead; GUN **0@38700**; free far-east to **y=11@128** (l142); keep NUKE extends lose ~41k; NW SAMs **400**; civ-near-threshold |
 | Branch | `browser-port` |
-| Commit | `ca4af7b` |
+| Commit | `e6e31fe` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
