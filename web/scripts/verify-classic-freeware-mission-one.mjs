@@ -5017,42 +5017,34 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         || freeEastBPostWestTanks < 2)
       && (villageTanksForSale < missionEightEastBVillageTankCountLate
         || freeEastBPostWestTanks < 2);
-    // TRACE l21/l32: partner free never funded (funds stuck ~174). Once any
-    // post-west free exists, sell sole NUKE at funds≥50; also allow repeat sells
-    // of residual NUKE/GTWR/SILO until funds≥800 or nothing left (one-shot latch
-    // was too weak — sole NUKE refund alone <800).
+    // TRACE l47: sole-NUKE sell for partner blacked out WEAP / free never
+    // emerged. TRACE l32: late sole-NUKE refund ≪800. Keep ≥1 NUKE always;
+    // only sell spare NUKE/GTWR/SILO for rebuild cash (harvest funds partner).
     const freePostWestLive = freeEastBPostWestTanks >= 1;
     const freeNeedsPartner = freePostWestLive && freeEastBPostWestTanks < 2;
     if (postWestNeedsCash
       && liveFunds < 800
-      && liveFunds >= (freeNeedsPartner ? 50 : 200)) {
+      && liveFunds >= 200) {
+      const nukeCount = friendly.filter((object) => (
+        object.type === 4 && object.typeName === "NUKE" && object.strength > 0
+        && !state.soldStructureIds.has(object.id)
+      )).length;
       const sellables = friendly.filter((object) => (
         object.type === 4
         && (object.typeName === "NUKE" || object.typeName === "GTWR"
           || object.typeName === "SILO")
         && object.strength > 0
         && !state.soldStructureIds.has(object.id)
-        // Keep at least one NUKE unless partner free still needed (blackout risk
-        // accepted to fund 2nd tank — TRACE l32 sole free cannot clear GUN).
-        && !(object.typeName === "NUKE" && freeNeedsPartner === false
-          && friendly.filter((b) => (
-            b.type === 4 && b.typeName === "NUKE" && b.strength > 0
-            && !state.soldStructureIds.has(b.id)
-          )).length <= 1)
+        // Never sell the last NUKE (l47 blackout).
+        && !(object.typeName === "NUKE" && nukeCount <= 1)
       )).toSorted((left, right) => (
         (left.typeName === "SILO" ? 0 : left.typeName === "GTWR" ? 1 : 2)
           - (right.typeName === "SILO" ? 0 : right.typeName === "GTWR" ? 1 : 2)
         || left.strength - right.strength
         || left.id - right.id
       ));
-      const canSell = sellables.length > 0
-        && (freeNeedsPartner
-          || sellables.some((s) => s.typeName !== "NUKE")
-          || sellables.length >= 2);
-      if (canSell) {
-        const sell = freeNeedsPartner
-          ? (sellables.find((s) => s.typeName === "NUKE") ?? sellables[0])
-          : sellables[0];
+      if (sellables.length > 0) {
+        const sell = sellables[0];
         sellMissionSevenStructure(commands, sell);
         state.soldStructureIds.add(sell.id);
         state.eastBVillageEmergencySellTick ??= snapshot.tick;

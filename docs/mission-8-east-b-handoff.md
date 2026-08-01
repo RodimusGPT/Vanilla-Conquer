@@ -178,6 +178,7 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Scrap MTNK 2v1 loan | only 1 live MTNK after pad; vg keys are infantry (l38–l42) |
 | E3 rocket assist alone | atk rose mid-fight; gunMin still 180 (l45) |
 | Early sole-NUKE sell for partner (pre-free, funds≥50) | Cash thrash; free never emerges (l47); WEAP blackout |
+| Keep last NUKE + harvest for partner free | funds stuck ~4, WEAP dead before 800 (l49); same gunMin 180 |
 
 ### Latest TRACE shape (v76)
 
