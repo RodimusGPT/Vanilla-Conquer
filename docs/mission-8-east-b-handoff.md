@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **GREEN** — gate EXIT 0; `finalHostiles=0` `finalFriendly=13`; all SAMs dead@38310; A-10 discharge; minNeut 7; HOSP+Moebius ok |
 | Branch | `browser-port` |
-| Commit | `(pending l174 green push)` |
+| Commit | `f3695a8` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` + `tiberiandawn/building.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
