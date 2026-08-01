@@ -9173,6 +9173,25 @@ function queueEastBSamDeepFinisher(commands, snapshot, strike, westernSam) {
   for (const tank of liveTanks) {
     const samDist = missionEightDistance(tank, westernSam);
     const tankKey = objectKey(tank);
+    // v390c: SAM auto-repair off holds HP ~52–70. Fire only from y=20 |dx|≤2
+    // (120mm 0x04C0). Prefer spine {13,20} — {11,20} is GUN@{11,18} kill zone
+    // (#4 dies in one volley after arriving). Start rail at SAM≤130 so the
+    // finisher is on the fire line before #6 dies.
+    if (samStrength > 0 && samStrength <= 130 && tank.strength >= 20) {
+      const onFireLine = tank.cellY === 20
+        && tank.cellX >= 12 && tank.cellX <= 14
+        && Math.abs(tank.cellX - westernSam.cellX) <= 2;
+      if (onFireLine || (samDist <= 4 && tank.cellY <= 20)) {
+        queueMissionEightRole(commands, `east-b-sam-deep-last-hp-fire-${tankKey}`,
+          [tank], westernSam, 0, 1);
+      } else {
+        // Spine fire cell: in 120mm range, farther from western GUN than 11,20.
+        const finishCell = { cellX: 13, cellY: 20 };
+        queueMissionEightRole(commands, `east-b-sam-deep-last-hp-rail-${tankKey}`,
+          [tank], finishCell, MODIFIER_ALT, 1);
+      }
+      continue;
+    }
     if (samStrength <= 220 && eastBSamEastKillCorridorTank(tank, spineFinisherTank)
       && !spineKillKeys.has(tankKey)) {
       if (partnerKeys.has(tankKey)) continue;

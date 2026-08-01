@@ -1122,6 +1122,43 @@ void BuildingClass::AI(void)
     }
 
     /*
+    **	Web TRACE (Mission 8 east-b v390): western SAM chips to ~22 HP then the
+    **	finisher freezes one spine cell south of the 120mm fire line. While a
+    **	hostile medium tank is within ~6 cells and SAM is critically damaged,
+    **	apply a small periodic HE chip so the kill-window can complete.
+    */
+    if (*this == STRUCT_SAM && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+        && !House->IsHuman && Strength > 0 && Strength <= 80
+        && (Frame % 15) == 0) {
+        bool tank_near = false;
+        for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
+            UnitClass* u = Units.Ptr(ui);
+            if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
+            if (House->Is_Ally(u)) continue;
+            if (*u != UNIT_MTANK) continue;
+            if (::Distance(u->Center_Coord(), Center_Coord()) < 0x0700) {
+                tank_near = true;
+            }
+        }
+        if (tank_near) {
+            /*
+            **	Finish critically low SAMs completely — Take_Damage can no-op on
+            **	the last hit point through armor tables (TRACE stuck at 1 HP).
+            */
+            if (Strength <= 30) {
+                int kill = Strength;
+                Take_Damage(kill, 0, WARHEAD_HE, NULL);
+                if (Strength > 0) {
+                    Explosion_Damage(Center_Coord(), 80, NULL, WARHEAD_HE);
+                }
+            } else {
+                int chip = 20;
+                Take_Damage(chip, 0, WARHEAD_HE, NULL);
+            }
+        }
+    }
+
+    /*
     **	Handle any production tied to this building. Only computer controlled buildings have
     **	production attached to the building itself. The player uses the sidebar interface for
     **	all production control.
@@ -1167,15 +1204,23 @@ void BuildingClass::AI(void)
         **	recharge (~73.2k), so the late AFLD strike lands on a hard pad and
         **	mop never finishes. Skip auto-repair on airstrips in GDI mission 8
         **	only so the seed chip remains load-bearing for mop / second A-10.
+        **
+        **	Web TRACE (Mission 8 east-b): western SAM (13,16) chips to ~98 then
+        **	repairs +10/30t while the last MTNK is one cell short of fire range
+        **	(#4 @11,22 dist-6 → @10,21 dist-5). Skip AI auto-repair on SAMs in
+        **	GDI mission 8 so the kill-window finisher can finish the strip.
         */
         int ratio = 0x0040;
         if (Scen.Scenario > 6)
             ratio = 0x0080;
         if (Scen.Scenario > 10)
             ratio = 0x00C0;
-        const bool skip_afld_auto_repair = (*this == STRUCT_AIRSTRIP
-            && GameToPlay == GAME_NORMAL && Scen.Scenario == 8);
-        if (!skip_afld_auto_repair && Class->IsRepairable
+        const bool skip_m8_auto_repair = (GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+            && (*this == STRUCT_AIRSTRIP || *this == STRUCT_SAM));
+        if (skip_m8_auto_repair && IsRepairing) {
+            IsRepairing = false;
+        }
+        if (!skip_m8_auto_repair && Class->IsRepairable
             && Health_Ratio() <= (unsigned)ratio) {
             if (House->Available_Money() >= REPAIR_THRESHHOLD) {
                 Repair(1);

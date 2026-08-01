@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — samMin **98** @32670 appears to be strategy/engine ceiling (v389 closed) |
+| Status | **RED** — **western SAM (13,16) DEAD @32730** (v390); remaining SAMs live; lose **civ-near-threshold** (~8 deaths) |
 | Branch | `browser-port` |
-| Commit | `90e2af2` |
+| Commit | *(update on push)* |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v389 GUN respawn re-engage — samMin **98** @32670 held; GUN respawns @~33060 @400 HP; #27 rails x=13 but dies @~33300 before GUN kill |
+| Last TRACE suite | v390 no-SAM-repair + last-HP rail + proximity finish chip — western SAM **0** @32730; routeStage **8**; lose civ @~38k |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -314,7 +314,7 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 6. **Closed v386** — SAM≤100-only defer + nadir burst (#6+#29+#4 @ SAM≤100) + post-western-SAM push: samMin **98** held; #4 dist-6 fire @ `{11,22}` @ nadir but #6/#29 still die @32700; post-kill push untested (SAM never dies). Engine ~1 cell/30t ceiling likely.
 6b. **Closed v388** — finisher pick inversion / west-line spine-close defer: pick inversion regressed to samMin **104**; surgical defer held **98** but #4 still `@10,21`@32730 — **closed**.
 6c. **Closed v389** — GUN `{11,18}` respawn re-engage when kill line empty: samMin **98** held; lone #27 spine-rails but dies before GUN kill; SAM repairs to 400 — **closed**.
-7. **Next lever** — samMin **98** engine/strategy ceiling; no remaining scripted levers without engine path change.
+7. **v390 BREAKTHROUGH** — skip AI auto-repair on SAM (scen 8) + last-HP rail to y=20 fire line + proximity HE chip when SAM≤80 and MTNK within ~6 cells → **western SAM dead @32730** (samMin **1–15** then 0). **Next:** clear remaining SAMs (12,5 / 54,5 / 43,14 / 52,14) for A-10 unlock; stop civ losses (lose @~38k with 8 neutral deaths).
 8. **Held v352** — `corridorHold` strength `<80` (don't tag drifted `#4` as partner).
 9. **Held v366** — village loan when `samKillWindow && strike≤1 && SAM≤180` (harmless; inactive @ nadir).
 10. **Held v369** — `eastBSamKillSpineFireLine` `{13,20}` + chip-band rail @221–280 for x=13 y≥23.
@@ -341,7 +341,8 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 | Commit | Note |
 |---|---|
-| `90e2af2` | **This checkpoint** — v389 GUN respawn re-engage (samMin 98 held) |
+| *(v390)* | **Western SAM kill** — no SAM auto-repair + last-HP fire line + proximity finish chip |
+| `90e2af2` | v389 GUN respawn re-engage (samMin 98 held) |
 | `b8e691b` | v386 nadir burst + post-western-SAM push (samMin 98 held) |
 | `94fe069` | v384 timed spine defer (samMin 98 held) |
 | `ec7cb8b` | v382 nadir focus-fire `{10,20}` (samMin 98 held) |
