@@ -213,6 +213,11 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Hard cut-west rush `{13,8}` at y≤18 | l107: free thrash @17–18,y=18–20; minY 18 worse than l106 y=14 |
 | Tight east peel x=15 only | l108: free stuck @14,22 (no peel gate); minY 22 — **keep peel x=18 (l106)** |
 | Post-GUN E3 escort + free-clear threats | l109: free diverted off east peel; minY 21 worse than l106 y=14 |
+| Cut-west at y=13 / long force west | l111: free never left x=19; stuck then die |
+| Diagonal west+north micro-step early | l112: free bled 128→90; minY 20 — closed |
+| Far-east peel x=22 | l113: free bleeds peels east; minY 21 worse than l110 y=12 |
+| Attack NE GUN@16,9 mid peel | l114: free@19,13 engages then dies 128→88; no NW gain vs l110 |
+| North-to-y=16 then dodge east x=22 | l115: free@128@21,16 but minY 16 (no further north); die ~39058 — closed |
 
 ### Latest TRACE shape (v76)
 
