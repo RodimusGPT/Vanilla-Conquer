@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v400c / goal l86–l90 — survivor/FIX/wounded levers closed; GUN **0 @38700** free@**108** same as l85; NW SAMs **400**; minNeut **7** |
+| Last TRACE suite | v400c / goal l86–l94 — attack-in-place closed (free@15 worse than free@108); GUN **0 @38700** free@**108** NW **400** minNeut **7** |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -195,6 +195,7 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Wounded outer standoff (hp&lt;220 dist≤5) | gunMin 180 no kill (l89) |
 | WEAP defender release after free mid-north | No non-postWest MTNK survivors; TRACE = l85 (l86/l90) |
 | FIX mid-map free repair | No FIX on east-b base; free bleeds mid-north far from pad (l86 analysis) |
+| Attack-in-place (pin fire cell + slow attack cadence) | GUN kill held (l92/l93) but free residual **15** @14,22 worse than l85 **108** @11,22; NW still 400 |
 | Ultra-strict dist-4-only GUN engage | free@17,20 dist 6 never fires; gunMin ~210 (l74) |
 | freeReady y≤40 (with freeT=3) | weaker than y≤36 rendezvous for 2v1 kill path (l72) |
 
