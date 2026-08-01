@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — **western SAM (13,16) DEAD @32730** (v390); remaining SAMs live; lose **civ-near-threshold** (~8 deaths) |
 | Branch | `browser-port` |
-| Commit | *(update on push)* |
+| Commit | `4af5bc9` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
