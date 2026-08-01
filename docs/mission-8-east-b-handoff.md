@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v400b / goal l78–l85 — GUN **0 @38700** held; freeT=2 / no-attack-hold closed; free@~108 dies before NW; SAMs **400** |
+| Last TRACE suite | v400c / goal l86–l90 — survivor/FIX/wounded levers closed; GUN **0 @38700** free@**108** same as l85; NW SAMs **400**; minNeut **7** |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -191,6 +191,10 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Sell last NUKE while GUN ≤100 | Mid-2v1 power blackout; gunMin 200 no kill (l80) |
 | freeT=2 bank 800 for post-GUN free#3 | free#2 never finishes GUN from SE idle (l78–l79) |
 | No GUN attack-order until ≤80 (fire-cell hold only) | free@359 HP but gunMin 160 no kill — auto-acquire insufficient (l84) |
+| Wounded peel-east (multi free) | gunMin 220 no kill — cut GUN DPS (l88) |
+| Wounded outer standoff (hp&lt;220 dist≤5) | gunMin 180 no kill (l89) |
+| WEAP defender release after free mid-north | No non-postWest MTNK survivors; TRACE = l85 (l86/l90) |
+| FIX mid-map free repair | No FIX on east-b base; free bleeds mid-north far from pad (l86 analysis) |
 | Ultra-strict dist-4-only GUN engage | free@17,20 dist 6 never fires; gunMin ~210 (l74) |
 | freeReady y≤40 (with freeT=3) | weaker than y≤36 rendezvous for 2v1 kill path (l72) |
 

@@ -6957,8 +6957,14 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
         if (!still) state.eastBPostWestWeapDefenderKey = undefined;
       }
       // Pin WEAP defender until free is out of the pad (y≤48) or free missing.
+      // TRACE l85: defender stayed pinned forever after freePastPad — never
+      // joined GUN 2v1. Release when free is mid-north (y≤36) with freeT≥1 so
+      // non-postWest survivor can scrap-escort (survivor retention lever).
       const freePastPad = freePostWestLive.some((u) => (
         state.strikeKeys.has(objectKey(u)) && u.cellY <= 48 && u.strength >= 80
+      ));
+      const freeMidNorth = freePostWestLive.some((u) => (
+        u.cellY <= 36 && u.strength >= 80
       ));
       const needPinnedDefender = freePostWestCount < 1 || !freePastPad;
       if (needPinnedDefender && !state.eastBPostWestWeapDefenderKey) {
@@ -6981,12 +6987,21 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
           state.eastBPostWestWeapDefenderKey = key;
         }
       }
-      // Always keep pinned defender on base roster.
+      // Keep defender on base only while still needed; else release to strike
+      // for GUN scrap / survivor 2v1 (l85 free@108 sole survivor).
       if (state.eastBPostWestWeapDefenderKey) {
         const dKey = state.eastBPostWestWeapDefenderKey;
-        state.villageGuardKeys.delete(dKey);
-        state.strikeKeys.delete(dKey);
-        state.baseGuardKeys.add(dKey);
+        if (needPinnedDefender) {
+          state.villageGuardKeys.delete(dKey);
+          state.strikeKeys.delete(dKey);
+          state.baseGuardKeys.add(dKey);
+        } else if (freeMidNorth) {
+          state.baseGuardKeys.delete(dKey);
+          state.villageGuardKeys.delete(dKey);
+          state.strikeKeys.add(dKey);
+          // Prefer as GUN scrap escort key if none set.
+          state.eastBPostWestGunScrapKey ??= dKey;
+        }
       }
       // GUN scrap escort: loan when free is mid-north (y≤36) so scrap does not
       // solo-suicide into GUN while free is still on the east detour (l36 atk
@@ -9630,6 +9645,8 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
       && freeEmergeAge < 4_500
       && westernGun.strength > 220
       && !isScrap;
+    // TRACE l86–l89: wounded peel/standoff cut GUN DPS (gunMin 180–220, no
+    // kill). Keep freeT=3 full-engage GUN micro (l85 free@108 after kill).
     const rail = eastBPostWestRailApproach(tank, target, westernGun, {
       soleFree, stuck, isScrap, freeLeader, waitPartner,
     });
