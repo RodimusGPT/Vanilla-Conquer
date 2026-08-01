@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead; GUN **0@38700**; free far-east to **y=11@128** (l142); keep NUKE extends lose ~41k; NW SAMs **400**; civ-near-threshold |
+| Status | **RED** — western SAM dead; GUN **0@38700**; free far-east **y=10–11@108–128** (l146); keep NUKE; NW **400**; lose ~41k civ-near |
 | Branch | `browser-port` |
 | Commit | `e6e31fe` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l142 keep-NUKE + far-east peel — free **128@21,11** (was l110 108@19,12); lose **40891** civ-near; NW **400** |
+| Last TRACE suite | l146 north-to-y7 then SAM AM — free **108@21,10** (FINE); NW **400**; lose **41257** civ-near |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -155,7 +155,7 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Post-GUN spine | Micro-step x=13 + stop-first force-move; SAM attack-move only y≤16; no south-rally free x≤24 y≤40 str≥40 |
 | Post-GUN promote | Never demote free on spine to WEAP picket; re-promote stuck pickets |
 | Post-GUN GUN latch | `eastBPostWestGunClearedTick` — ignore GUN respawn after first kill (free stays on NW spine) |
-| Post-GUN east peel | peel x=18 → y=16 → dodge x=22 → far-north; free **128@21,11** (l142) |
+| Post-GUN east peel | peel x=18 → y=16 → dodge x=20+ → far-north to y=7 → SAM AM (l146); free **108@21,10** |
 | Post-GUN keep NUKE | Do not sell last NUKE after GUN (extends lose past free approach) |
 | GUN finish standoff | When GUN≤100 and free dist≤3, pin SE fire cell (l117); kill held free@128 |
 | Post-GUN NUKE | **Keep** last NUKE (l141/l142) — selling ends game ~39058 with free still alive; cash 240 never bought free#4 |

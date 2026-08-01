@@ -215,9 +215,10 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
         stopFirst: true,
       };
     }
-    // TRACE l142 best: free@21,11@128 (keep NUKE extends lose). l143/l144
-    // cut-at-y7 / x≥22 thrash or bleed. Hold x=22 lane north then cut west.
-    if (tank.cellX < 21 && tank.cellY <= 16) {
+    // TRACE l142: free@21,11@128. l145 require x=22 before north stuck thrash.
+    // l146: dodge only while x<20; once x≥20 north hard to y=7 then SAM AM.
+    // No force cut-west through GUN@16,9 (that bled free to death).
+    if (tank.cellX < 20 && tank.cellY <= 16) {
       return {
         cellX: 22,
         cellY: Math.min(tank.cellY, 16),
@@ -227,28 +228,25 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
         stopFirst: true,
       };
     }
-    if (tank.cellX >= 20 && tank.cellY > 8) {
+    // North on x≥20 until y≤7 (north of GUN@16,9). l146 best minY 10@108.
+    // l147 reStop escape thrash pulled free west — closed.
+    if (tank.cellX >= 20 && tank.cellY > 7) {
       return {
         cellX: Math.max(tank.cellX, 21),
-        cellY: Math.max(tank.cellY - 3, 8),
+        cellY: Math.max(tank.cellY - 3, 7),
         engage: false,
         cadence: 1,
         reason: "spine-far-north",
         stopFirst: true,
       };
     }
-    if (dist <= 6) {
-      return {
-        cellX: target.cellX, cellY: target.cellY,
-        engage: true, cadence: 1, reason: "sam-attack-move",
-      };
-    }
+    // y≤7: attack-move NW SAM only (pathfind north of GUN).
     return {
-      cellX: 13,
-      cellY: 6,
-      engage: false,
+      cellX: target.cellX,
+      cellY: target.cellY,
+      engage: true,
       cadence: 1,
-      reason: "spine-cut-west",
+      reason: dist <= 6 ? "sam-attack-move" : "sam-attack-move-far",
       stopFirst: true,
     };
   }

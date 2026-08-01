@@ -239,4 +239,22 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.engage, true);
 }
 
+// free@21,11: north to y=7 (l146), not cut-west under GUN@16,9.
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 21, cellY: 11, strength: 128 }, nwSam, null,
+  );
+  assert.equal(r.reason, "spine-far-north");
+  assert.ok(r.cellY <= 8);
+  assert.equal(r.engage, false);
+}
+// y=7: SAM attack-move.
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 21, cellY: 7, strength: 100 }, nwSam, null,
+  );
+  assert.ok(r.reason.startsWith("sam-"), r.reason);
+  assert.equal(r.engage, true);
+}
+
 console.log("test-east-b-post-west-rail: ok");

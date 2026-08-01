@@ -9665,7 +9665,6 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
       continue;
     }
     // TRACE l101/l140: stop combat once before post-GUN spine force-move.
-    // Re-stop every 45t was thrashing free path (570t for ~10 cells).
     if (rail.stopFirst && !state.eastBPostWestSpineStopKeys.has(tankKey)) {
       queueMissionEightStop(commands, `east-b-post-west-stop-${tankKey}`, [tank], 1);
       state.eastBPostWestSpineStopKeys.add(tankKey);
