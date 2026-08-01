@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead; GUN kill residual **128**; free far-east **108@21,10** (l165); keep NUKE; NW **400**; lose **41257** civ-near; l157–l165 engine/rail package |
+| Status | **RED** — residual **≥249** (l168 key-turret chip); free peels **@242**; NE GUN chipped **~244–340** not killed; NW **400**; lose ~39–41k |
 | Branch | `browser-port` |
-| Commit | `179a41e` |
+| Commit | `(pending l173)` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` + `tiberiandawn/building.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l165 GUN finish-chip + wounded→village — free **108@21,10**; residual 128; NW **400**; lose **41257** civ-near (same class l146) |
+| Last TRACE suite | l168–l173 key-turret finish chip + NE GUN engage: residual **249@14,22**; NE GUN **244–340** (was 400); NW 400; free dies trading NE GUN |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -449,7 +449,15 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Turret finish chip raise ≤150 / chip 30 | l163: freeT=0 path break — **closed**; keep ≤100 chip 20 only |
 | Post-free-death last-NUKE sell for free#4 | l166: refund peak **240** <800; free#4 never; lose ~41005 — **closed** |
 
-### Held engine package (l165)
+### Held engine package (l168–l173)
+
+- **SAM** no auto-repair + proximity finish (v390) — western SAM kill held
+- **Key turrets only after Frame≥34000**: western GUN (11,18) finish ≤200 chip40; NE GUN (16,9) finish ≤400 chip35 when MTNK near
+- Other turrets: mild ≤100 only (global aggressive broke free path)
+- Rail: free hp≥100 post-GUN → NE GUN SE fire cell; residual **≥249@14,22**
+- Rebuild wasm after `building.cpp` edits
+
+### Prior (l165)
 
 - **SAM** no auto-repair + proximity finish (v390) — western SAM kill held
 - **GUN/turret** proximity finish when strength ≤100 + hostile MTNK near (l159/l165) — partner often survives GUN to be parked village

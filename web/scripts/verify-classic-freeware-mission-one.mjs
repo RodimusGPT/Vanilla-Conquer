@@ -5072,9 +5072,8 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
   if (mission.variant === "east-b" && builtAssets.has("WEAP")) {
     // Always prefer MTNK once WEAP is up — the western SAM needs a continuous
     // armor stream, not Jeeps.
-    // TRACE l78–l79: freeT cap@2 + dist-6 engage left free#2 stuck @17,20 and
-    // gunMin 170–250 (no kill). freeT=3 2v1 kills GUN (l77); bank post-GUN via
-    // NUKE sell only.
+    // TRACE l78–l79/l154/l160/l167: freeT cap@2 fails GUN (free die mid-map or
+    // idle@17,20). freeT=3 2v1 required (l77/l165). Cash wall held.
     if (eastBMtnkEntry && !eastBMtnkEntry.constructing && !eastBMtnkEntry.completed
       && !eastBMtnkEntry.onHold && !eastBMtnkEntry.busy
       && funds >= eastBMtnkEntry.cost) {

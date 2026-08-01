@@ -172,14 +172,14 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
   // @14,22 still bleeds under Nod west fire. l105: peel east to x=18 first
   // (escape west-base LOS) then north on x=18 to y=12, then cut west to SAM.
   if (!gunLive && tank.cellX <= 28 && tank.cellY <= 40) {
-    // TRACE l161: re-promote all free post-GUN → residual 128+87 both peel.
-    // l162 early NE GUN / partner-wait under ARTY → earlier lose ~39k — closed.
-    // l164: only engage NE GUN when freeNorth≥2 and already in SE fire band
-    // (y≤15, dist 3–5) so free#1 is not pulled north into ARTY alone.
+    // TRACE l168–l172: residual ≥249; free@242 chips NE GUN to ~244 then dies.
+    // free#1@100–128 dies mid east-peel. l173: after GUN dead, route free with
+    // hp≥100 straight to NE GUN SE fire cell (skip long east peel) so both free
+    // trade NE GUN while healthy; engine NE GUN full-HP chip when MTNK near.
     void waitPartnerPostGun;
     const neGun = opts.neGun && opts.neGun.strength > 0 ? opts.neGun : null;
     const freeNorth = opts.freeNorthCount ?? 0;
-    if (neGun && freeNorth >= 2 && hp >= 50 && tank.cellX >= 17 && tank.cellY <= 15) {
+    if (neGun && hp >= 100 && tank.cellY <= 26 && tank.cellX <= 24) {
       const nd = eastBChebyshev(tank, neGun);
       if (nd <= 2) {
         return {
@@ -200,6 +200,15 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
           reason: "ne-gun-standoff-fire",
         };
       }
+      // Direct approach to SE fire cell — skip peel x=18 detour.
+      return {
+        cellX: 20,
+        cellY: 13,
+        engage: false,
+        cadence: 1,
+        reason: "ne-gun-to-fire-cell",
+        stopFirst: true,
+      };
     }
     if (dist <= 4) {
       return {

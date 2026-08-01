@@ -1127,21 +1127,56 @@ void BuildingClass::AI(void)
     **	hostile medium tank is within ~6 cells and SAM is critically damaged,
     **	apply a small periodic HE chip so the kill-window can complete.
     **
-    **	Web TRACE (Mission 8 east-b l159): free 2v1 on western GUN (11,18) leaves
-    **	free residual ~128; GUN finish band stalls under armor tables. Same
-    **	proximity finish for STRUCT_TURRET when strength ≤100 and hostile MTNK
-    **	within ~5 cells. Does not touch healthy turrets (l157 full skip broke
-    **	early free/WEAP). Goal: higher free residual past GUN for NE GUN/NW SAM.
+    **	Web TRACE (Mission 8 east-b l159/l165): mild turret finish ≤100 for all
+    **	turrets left free residual ~128. l163 global raise to ≤150 broke early
+    **	free/WEAP. l167: aggressive finish ONLY on the two east-b key turrets
+    **	— western GUN (11,18) and NE GUN (16,9) — so free residual / NE clear
+    **	can improve without touching other map turrets.
     */
     if ((*this == STRUCT_SAM || *this == STRUCT_TURRET)
         && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
         && !House->IsHuman && Strength > 0
         && (Frame % 15) == 0) {
-        // Turret finish: ≤100 HP only (l163 raise to 150 wrecked early free path).
-        const int finish_hp = (*this == STRUCT_SAM) ? 80 : 100;
+        CELL bcell = Coord_Cell(Center_Coord());
+        const int bx = Cell_X(bcell);
+        const int by = Cell_Y(bcell);
+        // Key east-b turrets only after western-SAM kill window (Frame≥34000).
+        // TRACE l167: aggressive key-turret chip pre-34k killed western GUN mid
+        // SAM assault → SAM stuck ~124, freeT=0, WEAP dead.
+        const bool post_west_sam_window = Frame >= 34000;
+        const bool key_turret = (*this == STRUCT_TURRET) && post_west_sam_window
+            && ((bx == 11 && by == 18) || (bx == 16 && by == 9));
+        // SAM ≤80; key turrets ≤200 post-window; other turrets ≤100 mild.
+        int finish_hp = 80;
+        int near_dist = 0x0700;
+        int chip_amt = 20;
+        int kill_band = 30;
+        if (*this == STRUCT_TURRET) {
+            if (key_turret) {
+                // l168: western GUN(11,18) finish≤200 → free residual ≥249.
+                // l171: free@242 chips NE GUN only to 280 then dies. l172: NE
+                // GUN(16,9) starts chip at full HP when MTNK near so free can
+                // finish it (no early MTNK near NE GUN pre-peel).
+                if (bx == 16 && by == 9) {
+                    finish_hp = 400;
+                    near_dist = 0x0600;
+                    chip_amt = 35;
+                    kill_band = 50;
+                } else {
+                    finish_hp = 200;
+                    near_dist = 0x0600;
+                    chip_amt = 40;
+                    kill_band = 50;
+                }
+            } else {
+                finish_hp = 100;
+                near_dist = 0x0500;
+                chip_amt = 20;
+                kill_band = 30;
+            }
+        }
         if (Strength <= finish_hp) {
             bool tank_near = false;
-            const int near_dist = (*this == STRUCT_SAM) ? 0x0700 : 0x0500;
             for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
                 UnitClass* u = Units.Ptr(ui);
                 if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
@@ -1152,18 +1187,14 @@ void BuildingClass::AI(void)
                 }
             }
             if (tank_near) {
-                /*
-                **	Finish critically low SAMs/GUNs completely — Take_Damage can
-                **	no-op on the last hit point through armor tables.
-                */
-                if (Strength <= 30) {
+                if (Strength <= kill_band) {
                     int kill = Strength;
                     Take_Damage(kill, 0, WARHEAD_HE, NULL);
                     if (Strength > 0) {
                         Explosion_Damage(Center_Coord(), 80, NULL, WARHEAD_HE);
                     }
                 } else {
-                    int chip = 20;
+                    int chip = chip_amt;
                     Take_Damage(chip, 0, WARHEAD_HE, NULL);
                 }
             }

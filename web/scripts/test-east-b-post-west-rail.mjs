@@ -257,7 +257,7 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.engage, true);
 }
 
-// l164: 2 free in SE fire band engage NE GUN.
+// l164/l169: 2 free in SE fire band engage NE GUN.
 {
   const neGun = { cellX: 16, cellY: 9, strength: 400 };
   const r = eastBPostWestRailApproach(
@@ -267,15 +267,36 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.reason, "ne-gun-standoff-fire");
   assert.equal(r.engage, true);
 }
-// y=18 still peels east (do not dive NE GUN early under ARTY).
+// l173: free hp≥100 after GUN routes to NE GUN fire/standoff.
 {
   const neGun = { cellX: 16, cellY: 9, strength: 400 };
   const r = eastBPostWestRailApproach(
-    { cellX: 18, cellY: 18, strength: 128 }, nwSam, null,
+    { cellX: 14, cellY: 22, strength: 249 }, nwSam, null,
     { freeNorthCount: 2, neGun },
   );
-  assert.ok(r.reason === "spine-east-north" || r.reason === "spine-dodge-east"
-    || r.reason === "spine-east-peel", r.reason);
+  assert.equal(r.reason, "ne-gun-to-fire-cell");
+  assert.equal(r.engage, false);
+}
+{
+  const neGun = { cellX: 16, cellY: 9, strength: 400 };
+  const r = eastBPostWestRailApproach(
+    { cellX: 20, cellY: 13, strength: 200 }, nwSam, null,
+    { freeNorthCount: 1, neGun },
+  );
+  assert.equal(r.reason, "ne-gun-standoff-fire");
+  assert.equal(r.engage, true);
+}
+// very low-HP free still peels north (under-kill risk).
+{
+  const neGun = { cellX: 16, cellY: 9, strength: 400 };
+  const r = eastBPostWestRailApproach(
+    { cellX: 21, cellY: 12, strength: 80 }, nwSam, null,
+    { freeNorthCount: 1, neGun },
+  );
+  assert.ok(
+    r.reason === "spine-far-north" || r.reason === "spine-dodge-east",
+    r.reason,
+  );
 }
 
 console.log("test-east-b-post-west-rail: ok");
