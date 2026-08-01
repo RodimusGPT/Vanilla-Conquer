@@ -209,6 +209,8 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Early spine peel healthiest free at GUN≤100 | l103: cut 2v1 DPS → GUN repairs 90→110; no kill; free@7 |
 | Re-engage western GUN respawn with free residual | l101: free re-pulled to GUN@370 @39900; never NW — **latched ignore (l102/l104)** |
 | Long force-to-y=9 without combat stop | l98: free freezes ~90t @14,22 under auto-acquire |
+| Hard cut-west rush `{13,8}` at y≤18 | l107: free thrash @17–18,y=18–20; minY 18 worse than l106 y=14 |
+| Tight east peel x=15 only | l108: free stuck @14,22 (no peel gate); minY 22 — **keep peel x=18 (l106)** |
 
 ### Latest TRACE shape (v76)
 
