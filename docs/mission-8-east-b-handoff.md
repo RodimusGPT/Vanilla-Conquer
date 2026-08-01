@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead (held); **civ deaths cut to 6** (v393); remaining 4 SAMs live; lose **all-destr-goodguy** |
+| Status | **RED** — western SAM dead (held); **WEAP@400 through lose** (v394); remaining 4 SAMs live; lose **civ-near-threshold** |
 | Branch | `browser-port` |
-| Commit | `83ec53b` |
+| Commit | `984e16f` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v393d — western SAM **0** @~32730; **neutralDeaths 6** (minNeut **8**, was 6/9); first post-kill death **34560**; routeStage **9**; free tank @36.6k; funds **1231**; WEAP dies ~38k; lose all-destr @~43.5k |
+| Last TRACE suite | v394f — western SAM **0**; **WEAP/PROC/NUKE/PYLE live** at lose; free tank @36.6k; routeStage **9**; civ deaths **8** (minNeut 6); remaining SAMs 400; no A-10 |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -347,11 +347,20 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
     - TRACE v393d: **6 civ deaths** (minNeut 8), first post-kill **34560**, SAM kill held
     - **Still broken:** WEAP dies ~38k; rebuild cohort thin; remaining SAMs 400; lose all-destr
 
+17. **v394 WEAP-through-lose + rebuild cohort=1**
+    - Continuous post-west home defense (not only while rebuild-ready unset)
+    - WEAP picket first for new tanks / free armor; never steal last base MTNK to village
+    - Repair WEAP when &lt;75% even while banking MTNK cash
+    - rebuildReady with **1** free healthy tank; approach force-move onto remaining SAMs
+    - TRACE v394f: **WEAP@400** at lose with full eco; free tank @36.6k; SAM kill held
+    - **Still broken:** free tank often strike=0 (not joining NW push); civ deaths 8; remaining SAMs 400
+    - Closed: village-first post-west (WEAP dies by 36k); keep-last village during kill (SAM@46)
+
 ### Next (ordered)
 
-1. **Keep WEAP + produce 5th–6th MTNK by ~36k** — funds hit 1231 too late; need tanks while WEAP lives.
-2. **Hold minNeut ≥ 9** (≤5 post-kill civ deaths) with 2 healthy village MTNKs through 40k.
-3. **Kill remaining SAMs** → A-10 → map clear.
+1. **Stream free tanks into strike** once WEAP picket + ≥1 village tank exist — push NW SAM (12,5).
+2. **minNeut ≥ 9** — hold 2 village MTNKs through 40k without emptying WEAP.
+3. **allSamsDead → A-10 → map clear.**
 
 ---
 
