@@ -47,13 +47,14 @@ export function eastBGunBestFireCell(tank, cells = EAST_B_GUN_FIRE_CELLS) {
  * @param {object} tank - {cellX, cellY, strength?}
  * @param {object} target - remaining SAM (usually NW 12,5)
  * @param {object|null} westernGun - {cellX, cellY, strength} or null/dead
- * @param {{soleFree?: boolean, stuck?: boolean, isScrap?: boolean, freeLeader?: object|null}} opts
+ * @param {{soleFree?: boolean, stuck?: boolean, isScrap?: boolean, freeLeader?: object|null, waitPartner?: boolean}} opts
  */
 export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
   const soleFree = opts.soleFree !== false;
   const stuck = Boolean(opts.stuck);
   const isScrap = Boolean(opts.isScrap);
   const freeLeader = opts.freeLeader ?? null;
+  const waitPartner = Boolean(opts.waitPartner);
   const hp = tank.strength ?? 400;
   const dist = eastBChebyshev(tank, target);
   if (dist <= 4 && !isScrap) {
@@ -69,6 +70,19 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
   const atFireCell = fireCell
     ? eastBChebyshev(tank, fireCell) <= 1
     : false;
+
+  // TRACE l65/l67: sole free chips GUN to 180 alone; with freeT=3 free#1 still
+  // dies at GUN while partners lag. Hold mid-east (y≈32–36) until caller sees
+  // ≥2 free MTNKs ready mid-map. Do not enter GUN theatre while waiting.
+  if (waitPartner && gunLive && !isScrap && tank.cellY > 28) {
+    return {
+      cellX: 40,
+      cellY: Math.min(Math.max(tank.cellY, 32), 36),
+      engage: false,
+      cadence: 18,
+      reason: "partner-wait-hold",
+    };
+  }
 
   // Scrap escort: hold mid-map until free is in GUN theatre (y≤28), then join
   // fire cell (do not east-detour alone). TRACE l36–l37: early scrap suicided.

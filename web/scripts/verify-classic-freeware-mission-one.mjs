@@ -3392,6 +3392,13 @@ const missionEightState = {
   eastBPostWestRailStuck: new Map(),
   // Scrap MTNK loaned to free for GUN 2v1 (cleared when GUN dies or scrap dies).
   eastBPostWestGunScrapKey: undefined,
+  // One-shot structure sells after free mid-pad to fund partner free (l50–l65).
+  // TRACE l65: PROC+PYLE+last-NUKE peak 774 < 800; last NUKE risks power blackout.
+  // Next: PROC+PYLE+FACT (keep NUKE for power); FACT early-return no longer blocks MTNK.
+  eastBPostWestProcSellTick: undefined,
+  eastBPostWestPyleSellTick: undefined,
+  eastBPostWestFactSellTick: undefined,
+  eastBPostWestNukeSellTick: undefined,
   eastBPreviousTanks: new Map(),
   eastBTankCohortReadyTick: undefined,
   // Free/base MTNKs pre-positioned at western support hold; released at GUN stage.
@@ -4373,8 +4380,16 @@ function queueMissionEightRepairs(snapshot, friendly, commands) {
     && eastBWesternSamDead()
     && state.eastBPostWestRebuildReadyTick === undefined
     && freeRebuildTanks < eastBPostWestRebuildTankCount;
-  const importantEastB = (weapNeedsRepair || bankForRebuildTank)
-    ? new Set(["WEAP", "PROC"])
+  // TRACE l63: after PROC+PYLE sell funds 585→294 on NUKE repairs; never hit
+  // 800 for partner MTNK. When sole free mid-map and funds <800, only repair WEAP.
+  const bankForPartnerFree = eastBCriticalRepair && eastBWesternSamDead()
+    && state.allSamsDeadTick === undefined
+    && funds < 800
+    && friendly.filter((object) => (
+      object.typeName === "MTNK" && object.strength >= 300 && object.cellY <= 56
+    )).length === 1;
+  const importantEastB = (weapNeedsRepair || bankForRebuildTank || bankForPartnerFree)
+    ? new Set(["WEAP", ...(bankForPartnerFree ? [] : ["PROC"])])
     : new Set(["WEAP", "PROC", "NUKE", "PYLE", "FACT"]);
   // TRACE v395n: WEAP stuck @304 (76%) while banking skipped repair, then died
   // unguarded. Always heal WEAP post-west when below 95%; faster cadence.
@@ -4694,6 +4709,86 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
   let funds = snapshot.sidebar.credits + snapshot.sidebar.tiberium;
   const buildings = friendly.filter((object) => object.type === 4);
   const builtAssets = new Set(buildings.map((object) => object.typeName));
+  // Lever l50–l67: fund partner free post-west.
+  // TRACE l65: PROC+PYLE+last-NUKE peak 774 <800. TRACE l66: FACT dies to
+  // raiders ~36.6k before free emerges — post-free FACT sell never fires.
+  // Sell FACT as soon as west SAM is dead while FACT still has HP (keep NUKE
+  // for power). After free emerges, sell PROC→PYLE if still short of 800.
+  if (mission.variant === "east-b"
+    && eastBWesternSamDead(hostiles)
+    && state.allSamsDeadTick === undefined) {
+    const liveFundsNow = snapshot.sidebar.credits + snapshot.sidebar.tiberium;
+    const freePostWestLive = friendly.filter((object) => (
+      object.typeName === "MTNK"
+      && state.eastBPostWestProducedTankKeys.has(objectKey(object))
+      && object.strength > 0
+      && !state.villageGuardKeys.has(objectKey(object))
+    )).length;
+    const freeBand = friendly.filter((object) => (
+      object.typeName === "MTNK" && object.strength >= 300 && object.cellY <= 56
+    ));
+    // Early FACT sell: capture Construction Yard value before raiders wipe it
+    // (l66 FACT 800→255→0 across 33k–37k while free still building).
+    if (state.eastBPostWestFactSellTick === undefined
+      && freePostWestLive < 2
+      && liveFundsNow < 1_600
+      && builtAssets.has("WEAP")) {
+      const fact = buildings.find((object) => (
+        object.typeName === "FACT" && object.strength >= 100
+        && !state.soldStructureIds.has(object.id)
+      ));
+      if (fact) {
+        sellMissionSevenStructure(commands, fact);
+        state.soldStructureIds.add(fact.id);
+        state.eastBPostWestFactSellTick = snapshot.tick;
+        state.saleOrders.push({
+          tick: snapshot.tick,
+          typeName: fact.typeName,
+          cellX: fact.cellX,
+          cellY: fact.cellY,
+          reason: "east-b post-west early FACT sell for free+partner tanks",
+        });
+      }
+    }
+    // After free is out, sell PROC/PYLE if still short of partner 800.
+    if (freeBand.length === 1 && liveFundsNow < 800) {
+      if (state.eastBPostWestProcSellTick === undefined) {
+        const proc = buildings.find((object) => (
+          object.typeName === "PROC" && object.strength >= 100
+          && !state.soldStructureIds.has(object.id)
+        ));
+        if (proc) {
+          sellMissionSevenStructure(commands, proc);
+          state.soldStructureIds.add(proc.id);
+          state.eastBPostWestProcSellTick = snapshot.tick;
+          state.saleOrders.push({
+            tick: snapshot.tick,
+            typeName: proc.typeName,
+            cellX: proc.cellX,
+            cellY: proc.cellY,
+            reason: "east-b post-west PROC sell for partner free tank",
+          });
+        }
+      } else if (state.eastBPostWestPyleSellTick === undefined) {
+        const pyle = buildings.find((object) => (
+          object.typeName === "PYLE" && object.strength >= 100
+          && !state.soldStructureIds.has(object.id)
+        ));
+        if (pyle) {
+          sellMissionSevenStructure(commands, pyle);
+          state.soldStructureIds.add(pyle.id);
+          state.eastBPostWestPyleSellTick = snapshot.tick;
+          state.saleOrders.push({
+            tick: snapshot.tick,
+            typeName: pyle.typeName,
+            cellX: pyle.cellX,
+            cellY: pyle.cellY,
+            reason: "east-b post-west PYLE sell for partner free tank",
+          });
+        }
+      }
+    }
+  }
   const healthyReservedEastBTanks = mission.variant === "east-b" ? friendly.filter((object) => (
     object.typeName === "MTNK"
     && state.eastBProducedTankKeys.has(objectKey(object))
@@ -4714,29 +4809,40 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       state.deployOrderTick = snapshot.tick;
       state.deploySite ??= { cellX: mcv.cellX, cellY: mcv.cellY };
       deploymentOrders += 1;
+      return;
     }
-    return;
+    // TRACE l66: partner FACT sell — do not early-return when WEAP still live
+    // post-west; MTNK production only needs WEAP (+power from NUKE).
+    if (!(eastBWesternSamDead() && builtAssets.has("WEAP"))) {
+      return;
+    }
   }
 
   if (mission.variant === "east-b") {
     const sequence = ["NUKE", "PYLE", "PROC", "WEAP"];
     const missingAsset = sequence.find((assetName) => !builtAssets.has(assetName));
-    // Post-west: do not rebuy NUKE after emergency sell while banking the rebuild
-    // MTNK — TRACE v392e sold NUKE then rebuilt it (500c) and never hit 800 for
-    // a tank. FACT covers power; WEAP+PROC are enough to produce.
+    // Post-west: do not rebuy NUKE/PYLE/PROC while banking partner/rebuild MTNK
+    // — TRACE v392e sold NUKE then rebuilt it (500c) and never hit 800 for
+    // a tank. FACT covers power when present; WEAP+NUKE are enough to produce.
     const freeProducedForNukeSkip = friendly.filter((object) => (
       object.typeName === "MTNK"
       && state.eastBProducedTankKeys.has(objectKey(object))
       && !state.villageGuardKeys.has(objectKey(object))
       && object.strength > 0
     )).length;
-    const skipNukeRebuildForTank = missingAsset === "NUKE"
-      && eastBWesternSamDead()
+    const postWestBankingTank = eastBWesternSamDead()
       && builtAssets.has("WEAP")
-      && builtAssets.has("FACT")
       && state.eastBPostWestRebuildReadyTick === undefined
       && freeProducedForNukeSkip < eastBPostWestRebuildTankCount;
-    if (missingAsset && !skipNukeRebuildForTank) {
+    const skipNukeRebuildForTank = missingAsset === "NUKE"
+      && postWestBankingTank
+      && (builtAssets.has("FACT") || builtAssets.has("NUKE") || freeProducedForNukeSkip >= 1);
+    // Also skip rebuying sold PYLE/PROC while partner free still outstanding.
+    const skipSoldSupportRebuild = postWestBankingTank
+      && freeProducedForNukeSkip >= 1
+      && freeProducedForNukeSkip < 2
+      && (missingAsset === "PYLE" || missingAsset === "PROC");
+    if (missingAsset && !skipNukeRebuildForTank && !skipSoldSupportRebuild) {
       const entry = snapshot.sidebar.entries.find((candidate) => (
         candidate.assetName === missingAsset && candidate.objectType === 15
       ));
@@ -9432,8 +9538,28 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
         x: tank.cellX, y: tank.cellY, bestDist: distNow, since: snapshot.tick,
       });
     }
+    // TRACE l67: early FACT sell funded freeT=3 and funds 2816, but free#1
+    // reached GUN alone (gunMin 180) while #2/#5 lagged mid-map. Hold lead free
+    // at mid-east until ≥2 free MTNKs are at y≤36 (rendezvous), then 2v1 GUN.
+    const freePostWestMtnks = friendlies.filter((object) => (
+      object.typeName === "MTNK"
+      && state.eastBPostWestProducedTankKeys.has(objectKey(object))
+      && object.strength > 0
+      && !state.villageGuardKeys.has(objectKey(object))
+    ));
+    const freePostWestCount = freePostWestMtnks.length;
+    const freeReadyMid = freePostWestMtnks.filter((object) => object.cellY <= 36).length;
+    const freeEmergeAge = state.eastBPostWestFreeEmergeTick === undefined
+      ? 0
+      : snapshot.tick - state.eastBPostWestFreeEmergeTick;
+    const waitPartner = Boolean(westernGun)
+      && freePostWestCount >= 1
+      && freeReadyMid < 2
+      && freeEmergeAge < 4_500
+      && westernGun.strength > 220
+      && !isScrap;
     const rail = eastBPostWestRailApproach(tank, target, westernGun, {
-      soleFree, stuck, isScrap, freeLeader,
+      soleFree, stuck, isScrap, freeLeader, waitPartner,
     });
     if (rail.engage) {
       stuckMap.delete(tankKey);

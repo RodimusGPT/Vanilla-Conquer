@@ -68,6 +68,34 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   const r = eastBPostWestRailApproach({ cellX: 11, cellY: 20, strength: 50 }, nwSam, gun);
   assert.equal(r.reason, "gun-flee-east");
 }
+
+// Partner-wait: free mid-map holds east of GUN theatre until rendezvous (l65/l67).
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 40, cellY: 34, strength: 400 }, nwSam, gun,
+    { soleFree: true, waitPartner: true },
+  );
+  assert.equal(r.reason, "partner-wait-hold");
+  assert.equal(r.engage, false);
+  assert.ok(r.cellY >= 32 && r.cellY <= 36);
+}
+// Partner-wait also holds lead free when a 2nd free exists but is still south.
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 40, cellY: 33, strength: 400 }, nwSam, gun,
+    { soleFree: false, waitPartner: true },
+  );
+  assert.equal(r.reason, "partner-wait-hold");
+}
+// Partner-wait does not trap free already in GUN theatre (y≤28).
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 16, cellY: 21, strength: 395 }, nwSam, gun,
+    { soleFree: true, waitPartner: true },
+  );
+  assert.equal(r.engage, true);
+  assert.equal(r.reason, "gun-standoff-fire");
+}
 // Low HP but GUN near-dead: keep firing (l43 free@55 gun@180).
 {
   const r = eastBPostWestRailApproach(
