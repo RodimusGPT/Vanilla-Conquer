@@ -1,59 +1,84 @@
 /**
- * Unit tests for east-b post-west rail approach (shipped pure helper).
+ * Unit tests for east-b post-west rail / GUN standoff (shipped pure helper).
  * Run: node scripts/test-east-b-post-west-rail.mjs
  */
 import assert from "node:assert/strict";
-import { eastBPostWestRailApproach } from "./east-b-post-west-rail.mjs";
+import {
+  eastBPostWestRailApproach,
+  eastBGunBestFireCell,
+  eastBChebyshev,
+  EAST_B_GUN_FIRE_CELLS,
+} from "./east-b-post-west-rail.mjs";
 
 const nwSam = { cellX: 12, cellY: 5 };
 const gun = { cellX: 11, cellY: 18, strength: 400 };
 
+// Fire cells are at Chebyshev 3–5 from GUN (in/near MTNK range).
+for (const cell of EAST_B_GUN_FIRE_CELLS) {
+  const d = eastBChebyshev(cell, gun);
+  assert.ok(d >= 3 && d <= 5, `fire cell ${cell.cellX},${cell.cellY} dist=${d}`);
+}
+
+// Pad exit.
 {
   const r = eastBPostWestRailApproach({ cellX: 35, cellY: 55, strength: 400 }, nwSam, gun);
   assert.equal(r.reason, "north-off-pad");
 }
+
+// East detour mid-band.
 {
   const r = eastBPostWestRailApproach({ cellX: 29, cellY: 35, strength: 400 }, nwSam, gun);
   assert.equal(r.reason, "east-detour");
   assert.ok(r.cellX >= 38);
 }
+
+// Theatre: go to fire cell, do NOT engage GUN from far (no pathfind into turret).
 {
-  const r = eastBPostWestRailApproach({ cellX: 40, cellY: 28, strength: 400 }, nwSam, gun);
-  assert.equal(r.reason, "cut-west-high");
-  assert.equal(r.cellX, 24);
+  const r = eastBPostWestRailApproach({ cellX: 22, cellY: 18, strength: 395 }, nwSam, gun);
+  assert.equal(r.engage, false);
+  assert.equal(r.reason, "gun-to-fire-cell");
+  const d = eastBChebyshev(r, gun);
+  assert.ok(d >= 3 && d <= 5, "target fire cell in standoff band");
 }
-{
-  const r = eastBPostWestRailApproach({ cellX: 22, cellY: 24, strength: 400 }, nwSam, gun);
-  assert.equal(r.reason, "to-gun-theatre");
-  assert.ok(r.cellY <= 20);
-}
-{
-  const r = eastBPostWestRailApproach({ cellX: 19, cellY: 18, strength: 395 }, nwSam, gun);
-  // gunDist=|19-11|+|18-18|=8 ≤10 theatre hunt
-  assert.equal(r.engage, true);
-  assert.ok(r.reason === "gun-hunt" || r.reason === "gun-adjacent");
-}
+
+// At 16,21 (Cheby 5): standoff fire engage — start DPS while healthy (l42).
 {
   const r = eastBPostWestRailApproach({ cellX: 16, cellY: 21, strength: 395 }, nwSam, gun);
   assert.equal(r.engage, true);
-  assert.equal(r.reason, "gun-hunt");
+  assert.equal(r.reason, "gun-standoff-fire");
 }
+
+// At fire cell with gunDist 4: standoff fire engage.
 {
-  const r = eastBPostWestRailApproach({ cellX: 12, cellY: 20, strength: 395 }, nwSam, gun);
+  const r = eastBPostWestRailApproach({ cellX: 15, cellY: 20, strength: 395 }, nwSam, gun);
   assert.equal(r.engage, true);
-  assert.equal(r.reason, "gun-adjacent");
+  assert.equal(r.reason, "gun-standoff-fire");
 }
+
+// Point-blank on GUN (11,20): back to standoff, do not sit trading.
 {
-  // Still fights GUN at 100 HP (abort only below 80).
-  const r = eastBPostWestRailApproach({ cellX: 11, cellY: 20, strength: 100 }, nwSam, gun);
-  assert.equal(r.engage, true);
-  assert.equal(r.reason, "gun-adjacent");
+  const r = eastBPostWestRailApproach({ cellX: 11, cellY: 20, strength: 255 }, nwSam, gun);
+  assert.equal(r.engage, false);
+  assert.equal(r.reason, "gun-back-to-standoff");
+  assert.ok(eastBChebyshev(r, gun) >= 3);
 }
+
+// Critically wounded vs healthy GUN: flee east.
 {
   const r = eastBPostWestRailApproach({ cellX: 11, cellY: 20, strength: 50 }, nwSam, gun);
-  assert.equal(r.engage, false);
   assert.equal(r.reason, "gun-flee-east");
 }
+// Low HP but GUN near-dead: keep firing (l43 free@55 gun@180).
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 13, cellY: 23, strength: 55 }, nwSam,
+    { cellX: 11, cellY: 18, strength: 180 },
+  );
+  assert.equal(r.engage, true);
+  assert.equal(r.reason, "gun-standoff-fire");
+}
+
+// GUN dead: spine north.
 {
   const r = eastBPostWestRailApproach(
     { cellX: 13, cellY: 20, strength: 300 }, nwSam,
@@ -62,9 +87,41 @@ const gun = { cellX: 11, cellY: 18, strength: 400 };
   assert.equal(r.reason, "spine-north");
   assert.ok(r.cellY < 20);
 }
+
+// SAM range.
 {
   const r = eastBPostWestRailApproach({ cellX: 12, cellY: 8, strength: 300 }, nwSam, null);
   assert.equal(r.engage, true);
+  assert.equal(r.reason, "sam-range");
+}
+
+// bestFireCell picks nearby cell.
+{
+  const c = eastBGunBestFireCell({ cellX: 20, cellY: 20 });
+  assert.ok(EAST_B_GUN_FIRE_CELLS.some((f) => f.cellX === c.cellX && f.cellY === c.cellY));
+}
+
+// Scrap holds mid-map while free still south of theatre.
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 34, cellY: 50, strength: 200 }, nwSam, gun,
+    { isScrap: true, freeLeader: { cellX: 42, cellY: 33, strength: 395 } },
+  );
+  assert.equal(r.reason, "scrap-hold-for-free");
+  assert.ok(r.cellY >= 33);
+}
+
+// Scrap joins fire cell once free in theatre.
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 34, cellY: 40, strength: 200 }, nwSam, gun,
+    { isScrap: true, freeLeader: { cellX: 16, cellY: 22, strength: 395 } },
+  );
+  assert.ok(
+    r.reason === "gun-to-fire-cell" || r.reason === "gun-standoff-fire"
+      || r.reason === "gun-back-to-standoff",
+    r.reason,
+  );
 }
 
 console.log("test-east-b-post-west-rail: ok");

@@ -476,6 +476,13 @@ function missionEightTraceCompactRecord(snapshot, attackers, hostiles) {
       ));
       return w ? w.strength : 0;
     })(),
+    // Post-west GUN{11,18} strength — TRACE GUN-kill lever (l34 free@standoff).
+    westGun: (() => {
+      const g = hostiles.find((o) => (
+        o.typeName === "GUN" && o.cellX === 11 && o.cellY === 18
+      ));
+      return g ? g.strength : 0;
+    })(),
     neutralMinimum: missionEightState.minimumNeutralUnits,
     eastBSamSpine: {
       key: missionEightState.eastBSamSpineFinisherKey,
@@ -3383,6 +3390,8 @@ const missionEightState = {
   eastBPostWestWeapDefenderKey: undefined,
   // Post-west free rail stuck tracker: same cell too long → bump east (l23 14,22).
   eastBPostWestRailStuck: new Map(),
+  // Scrap MTNK loaned to free for GUN 2v1 (cleared when GUN dies or scrap dies).
+  eastBPostWestGunScrapKey: undefined,
   eastBPreviousTanks: new Map(),
   eastBTankCohortReadyTick: undefined,
   // Free/base MTNKs pre-positioned at western support hold; released at GUN stage.
@@ -6848,6 +6857,52 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
         state.strikeKeys.delete(dKey);
         state.baseGuardKeys.add(dKey);
       }
+      // GUN scrap escort: loan when free is mid-north (y≤36) so scrap does not
+      // solo-suicide into GUN while free is still on the east detour (l36 atk
+      // 3→1 before free reached fire cell). Hold scrap on strike for 2v1.
+      const westGunLive = hostiles.some((hostile) => (
+        hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
+        && hostile.strength > 0
+      ));
+      if (state.eastBPostWestGunScrapKey) {
+        const still = attackers.find((u) => (
+          objectKey(u) === state.eastBPostWestGunScrapKey && u.strength > 0
+        ));
+        if (!still) state.eastBPostWestGunScrapKey = undefined;
+      }
+      // Loan as soon as free is mid-pad (y≤50) — do not require strikeKeys (free
+      // may still be free-role for one tick). TRACE l38 n=1: loan never stuck.
+      const freeForScrap = freePostWestLive.some((u) => (
+        u.cellY <= 50 && u.strength >= 80
+      ));
+      if (westGunLive && freeForScrap && freePostWestCount >= 1
+        && !state.eastBPostWestGunScrapKey) {
+        const scrapCand = attackers.filter((tank) => {
+          if (tank.typeName !== "MTNK" || tank.strength < 40) return false;
+          const key = objectKey(tank);
+          if (state.eastBPostWestProducedTankKeys.has(key)) return false;
+          if (state.scoutKeys.has(key)) return false;
+          if (key === state.eastBPostWestWeapDefenderKey) return false;
+          return true;
+        }).toSorted((left, right) => (
+          left.cellY - right.cellY
+          || right.strength - left.strength
+          || left.id - right.id
+        ))[0];
+        if (scrapCand) {
+          const sKey = objectKey(scrapCand);
+          clearMissionEightUnitRoleKey(sKey);
+          state.strikeKeys.add(sKey);
+          state.eastBPostWestGunScrapKey = sKey;
+        }
+      }
+      if (state.eastBPostWestGunScrapKey) {
+        const sKey = state.eastBPostWestGunScrapKey;
+        state.villageGuardKeys.delete(sKey);
+        state.baseGuardKeys.delete(sKey);
+        state.strikeKeys.add(sKey);
+      }
+      if (!westGunLive) state.eastBPostWestGunScrapKey = undefined;
       const liveBaseTanks = attackers.filter((unit) => (
         unit.typeName === "MTNK" && state.baseGuardKeys.has(objectKey(unit))
         && unit.strength > 0
@@ -6878,6 +6933,7 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
         const key = objectKey(tank);
         if (state.scoutKeys.has(key)) return false;
         if (key === state.eastBPostWestWeapDefenderKey) return false;
+        if (key === state.eastBPostWestGunScrapKey) return false;
         if (state.baseGuardKeys.has(key) && liveBaseTanks <= 1) return false;
         if (state.villageGuardKeys.has(key)) return false;
         if (rebuildReady && state.eastBProducedTankKeys.has(key)
@@ -6904,6 +6960,7 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
         if (tank.typeName !== "MTNK" || tank.strength < 20) return false;
         const key = objectKey(tank);
         if (key === state.eastBPostWestWeapDefenderKey) return false;
+        if (key === state.eastBPostWestGunScrapKey) return false;
         if (state.villageGuardKeys.has(key) || state.scoutKeys.has(key)) return false;
         if (state.baseGuardKeys.has(key)) return false;
         if (rebuildReady && state.eastBProducedTankKeys.has(key)
@@ -6937,6 +6994,7 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
           const key = objectKey(tank);
           if (!state.strikeKeys.has(key)) continue;
           if (state.eastBProducedTankKeys.has(key)) continue;
+          if (key === state.eastBPostWestGunScrapKey) continue;
           state.strikeKeys.delete(key);
           if (state.baseGuardKeys.has(key) || state.villageGuardKeys.has(key)) {
             continue;
@@ -6946,6 +7004,18 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
         }
       }
       eastBPostWestPromoteCombatTanks(attackers, hostiles, []);
+      // Re-assert GUN scrap on strike after demote/promote (l38–l39 loan never stuck).
+      if (state.eastBPostWestGunScrapKey) {
+        const sKey = state.eastBPostWestGunScrapKey;
+        const still = attackers.find((u) => objectKey(u) === sKey && u.strength > 0);
+        if (still) {
+          state.villageGuardKeys.delete(sKey);
+          state.baseGuardKeys.delete(sKey);
+          state.strikeKeys.add(sKey);
+        } else {
+          state.eastBPostWestGunScrapKey = undefined;
+        }
+      }
     } else if (villageProtectAfterWest) {
       let needVillage = villageTankTarget - liveVillageTanks;
       if (needVillage > 0) {
@@ -9236,22 +9306,24 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
   }
   if (tanks.length === 0) return false;
   // Commit with 1+ combat tank once rebuild-ready.
-  // TRACE l25: free@19,12 HP255→115 fell under 0.35 max and was rallied to
-  // support hold {13,32} — south through GUN. Past y≤20 never retreat south;
-  // keep pushing NW SAM even wounded (die chipping > die retreating).
+  // TRACE l25/l34: free north of y=24 must never south-rally to support hold
+  // (through/away from GUN). Keep fighting GUN/SAM while strength ≥40.
+  const westernGunLive = hostiles.some((hostile) => (
+    hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
+    && hostile.strength > 0
+  ));
   const healthy = tanks.filter((tank) => (
     tank.strength >= Math.ceil(tank.maxStrength * 0.35)
-    || (tank.cellY <= 20 && tank.strength >= 40)
+    || (tank.cellY <= 24 && tank.strength >= 40)
+    || (westernGunLive && tank.cellY <= 28 && tank.strength >= 40)
   ));
   if (healthy.length < 1 && state.allSamsDeadTick === undefined) {
     for (const tank of tanks) {
-      // Already north of GUN band: keep fighting, do not south-rally.
-      if (tank.cellY <= 22 && tank.strength >= 40) continue;
+      if (tank.cellY <= 28 && tank.strength >= 40) continue;
       queueMissionEightRole(commands, `east-b-post-west-rally-${objectKey(tank)}`,
         [tank], eastBPostWestSupportHold, MODIFIER_ALT, 20);
     }
-    // If any tank was skipped for north push, fall through to rail.
-    if (!tanks.some((tank) => tank.cellY <= 22 && tank.strength >= 40)) {
+    if (!tanks.some((tank) => tank.cellY <= 28 && tank.strength >= 40)) {
       return true;
     }
   }
@@ -9298,22 +9370,60 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
       state.routeStageStartedTick = snapshot.tick;
     }
   }
-  // TRACE l2/l20/l23: free@400 died or stalled on GUN when rail ordered long
-  // NW diagonals (pathfind through 14,22). Pure helper: corridor x=18, short
-  // hops, west-first mid-map; sole free never engages GUN; stuck→east bump.
+  // TRACE l32: free@395 attack-hunted GUN and pathfinded point-blank (11,20)
+  // then lost trade. Standoff fire cells + optional scrap loan for 2v1.
   const westernGun = hostiles.find((hostile) => (
     hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
     && hostile.strength > 0
   ));
-  const soleFree = tanks.length < 2;
+  // GUN 2v1: pull any MTNK not already in tanks (and not pinned WEAP defender).
+  // TRACE l38–l41: excluding postWest keys left escorts empty while atk=3 vg=2
+  // (village tanks were also postWest-produced).
+  if (westernGun) {
+    const freePast = tanks.some((tank) => tank.cellY <= 50 && tank.strength >= 80);
+    if (freePast) {
+      const tankKeys = new Set(tanks.map((t) => objectKey(t)));
+      const escorts = attackers.filter((unit) => {
+        if (unit.typeName !== "MTNK" || unit.strength < 40) return false;
+        const key = objectKey(unit);
+        if (tankKeys.has(key)) return false;
+        if (state.scoutKeys.has(key)) return false;
+        if (key === state.eastBPostWestWeapDefenderKey) return false;
+        return true;
+      }).toSorted((left, right) => (
+        left.cellY - right.cellY
+        || right.strength - left.strength
+        || left.id - right.id
+      ));
+      const freeInTheatre = tanks.some((tank) => tank.cellY <= 28);
+      const take = escorts.slice(0, freeInTheatre ? 2 : 1);
+      for (const scrap of take) {
+        const sKey = objectKey(scrap);
+        clearMissionEightUnitRoleKey(sKey);
+        state.strikeKeys.add(sKey);
+        state.eastBPostWestGunScrapKey ??= sKey;
+        tanks = [...tanks, scrap];
+        tankKeys.add(sKey);
+      }
+    }
+  } else {
+    state.eastBPostWestGunScrapKey = undefined;
+  }
+  const freeLeader = tanks.filter((tank) => (
+    state.eastBPostWestProducedTankKeys.has(objectKey(tank)) && tank.strength > 0
+  )).toSorted((a, b) => a.cellY - b.cellY || b.strength - a.strength)[0] ?? null;
+  const soleFree = tanks.filter((tank) => (
+    state.eastBPostWestProducedTankKeys.has(objectKey(tank))
+  )).length < 2;
   const stuckMap = state.eastBPostWestRailStuck ??= new Map();
   for (const tank of tanks) {
     const tankKey = objectKey(tank);
+    const isScrap = state.eastBPostWestGunScrapKey === tankKey
+      || (!state.eastBPostWestProducedTankKeys.has(tankKey));
     const distNow = missionEightDistance(tank, target);
     const prev = stuckMap.get(tankKey);
     let stuck = false;
     if (prev) {
-      // Stuck if no progress toward SAM for 150t (same cell OR thrash in band).
       const noProgress = distNow >= prev.bestDist - 1;
       const sameBand = Math.abs(tank.cellX - prev.x) <= 2
         && Math.abs(tank.cellY - prev.y) <= 2;
@@ -9331,14 +9441,13 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
       });
     }
     const rail = eastBPostWestRailApproach(tank, target, westernGun, {
-      soleFree, stuck,
+      soleFree, stuck, isScrap, freeLeader,
     });
     if (rail.engage) {
       stuckMap.delete(tankKey);
-      const engageTarget = rail.reason === "gun-adjacent" && westernGun
-        ? westernGun
-        : target;
-      const role = rail.reason === "gun-adjacent"
+      const isGun = rail.reason.startsWith("gun-") && westernGun;
+      const engageTarget = isGun ? westernGun : target;
+      const role = isGun
         ? `east-b-post-west-gun-${tankKey}`
         : `east-b-post-west-sam-${tankKey}`;
       queueMissionEightRole(commands, role, [tank], engageTarget, 0, rail.cadence);
@@ -9346,6 +9455,35 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     }
     queueMissionEightRole(commands, `east-b-post-west-rail-${tankKey}`,
       [tank], { cellX: rail.cellX, cellY: rail.cellY }, MODIFIER_ALT, rail.cadence);
+  }
+  // E3 rocket assist on GUN when free is trading (l44 free@155 gun@180 died
+  // short; rockets add DPS before GUN repairs). Pull village/strike E3 north.
+  if (westernGun) {
+    const freeTrading = tanks.some((tank) => (
+      state.eastBPostWestProducedTankKeys.has(objectKey(tank))
+      && tank.cellY <= 26 && tank.cellX <= 22 && tank.strength >= 40
+    ));
+    if (freeTrading) {
+      const rockets = attackers.filter((unit) => (
+        unit.typeName === "E3" && unit.strength > 0
+      )).toSorted((left, right) => (
+        missionEightDistance(left, westernGun) - missionEightDistance(right, westernGun)
+        || right.strength - left.strength
+        || left.id - right.id
+      )).slice(0, 4);
+      if (rockets.length > 0) {
+        const near = rockets.filter((r) => missionEightDistance(r, westernGun) <= 6);
+        const far = rockets.filter((r) => missionEightDistance(r, westernGun) > 6);
+        if (near.length > 0) {
+          queueMissionEightRole(commands, "east-b-post-west-gun-rockets",
+            near, westernGun, 0, 5);
+        }
+        for (const r of far) {
+          queueMissionEightRole(commands, `east-b-post-west-gun-rocket-rail-${objectKey(r)}`,
+            [r], { cellX: 14, cellY: 24 }, MODIFIER_ALT, 15);
+        }
+      }
+    }
   }
   for (const key of stuckMap.keys()) {
     if (!tanks.some((tank) => objectKey(tank) === key)) stuckMap.delete(key);

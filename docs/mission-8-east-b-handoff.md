@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead (held); free@400 east-detour → GUN theatre / north rim; remaining 4 SAMs **400**; sole free loses GUN trade; no partner free / A-10 |
+| Status | **RED** — western SAM dead (held); free@400 standoff-chips western GUN to **180** then dies (GUN repairs); remaining 4 SAMs **400**; no A-10 |
 | Branch | `browser-port` |
-| Commit | `222ed53` |
+| Commit | *(pending v398 push)* |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v397 / goal l23–l33 — western SAM **0**; free@400 path east-detour `35,55→42,29→~18–24,y19` (HP395); best north **y=9@395** (l28); GUN fire line **11,20@255** (l32); remaining SAMs **400**; minNeut **6–7**; no A-10 |
+| Last TRACE suite | v398 / goal l34–l46 — western SAM **0**; free@400 east-detour → GUN standoff; **westGun min 180** @40500 (free@155); free dies ~41k GUN repairs; remaining SAMs **400**; minNeut **7**; no A-10 |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 

@@ -1,55 +1,137 @@
 /**
- * Pure post-west remaining-SAM approach for east-b free tanks.
+ * Pure post-west remaining-SAM / GUN approach for east-b free tanks.
  *
- * Best TRACE paths:
- * - l16: free@395 35,55→42,33→42,29→33,26→27,19→19,18 (GUN theatre, full HP)
- * - l25/l28: free@395 reached y=9–12 via east detour but could not path west to
- *   NW SAM{12,5}; NE rim is a dead end.
- * - l18: free@335 at 11,20 (GUN fire line) — close enough to trade with GUN.
- * - l30: early cut-west at y=28 thrashed mid-map (west blocked).
+ * TRACE (goal implementer):
+ * - free@395 reaches GUN theatre via east detour (l16/l32) but loses point-blank
+ *   trade when attack-ordered onto GUN (paths to 11,20@255 then dies).
+ * - NE rim y=9 cannot path west to NW SAM{12,5} — GUN must die first, then spine.
+ * - missionEightDistance is Chebyshev; MTNK weapon range ~4.
  *
- * Rail: pad north → east mid detour (x≈40) → cut west-north to ~20,18 (l16)
- * → GUN standoff/kill → spine north to NW SAM. Healthy free engages GUN.
+ * GUN micro: force-move to a SE fire cell at Chebyshev 4 from GUN{11,18}, then
+ * attack in place (flags=0). Never path onto the GUN cell. After GUN dead,
+ * spine north x≈12 to NW SAM.
+ */
+
+/** SE standoff cells at Chebyshev 3–5 from GUN{11,18} — approach from east.
+ * TRACE l42: free@16,21 Cheby 5 not firing; only chipped at 14,22 (dist 4).
+ * Prefer cells at dist 4–5 so free starts DPS earlier while still healthy. */
+export const EAST_B_GUN_FIRE_CELLS = [
+  { cellX: 16, cellY: 20 },
+  { cellX: 16, cellY: 21 },
+  { cellX: 15, cellY: 20 },
+  { cellX: 15, cellY: 21 },
+  { cellX: 14, cellY: 21 },
+  { cellX: 14, cellY: 22 },
+  { cellX: 13, cellY: 22 },
+];
+
+export function eastBChebyshev(a, b) {
+  return Math.max(Math.abs(a.cellX - b.cellX), Math.abs(a.cellY - b.cellY));
+}
+
+/** Closest fire cell to tank (stable order for ties). */
+export function eastBGunBestFireCell(tank, cells = EAST_B_GUN_FIRE_CELLS) {
+  let best = cells[0];
+  let bestD = Infinity;
+  for (const cell of cells) {
+    const d = eastBChebyshev(tank, cell);
+    if (d < bestD) {
+      bestD = d;
+      best = cell;
+    }
+  }
+  return best;
+}
+
+/**
+ * @param {object} tank - {cellX, cellY, strength?}
+ * @param {object} target - remaining SAM (usually NW 12,5)
+ * @param {object|null} westernGun - {cellX, cellY, strength} or null/dead
+ * @param {{soleFree?: boolean, stuck?: boolean, isScrap?: boolean, freeLeader?: object|null}} opts
  */
 export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
   const soleFree = opts.soleFree !== false;
   const stuck = Boolean(opts.stuck);
+  const isScrap = Boolean(opts.isScrap);
+  const freeLeader = opts.freeLeader ?? null;
   const hp = tank.strength ?? 400;
-  const dist = Math.abs(tank.cellX - target.cellX) + Math.abs(tank.cellY - target.cellY);
-  if (dist <= 5) {
+  const dist = eastBChebyshev(tank, target);
+  if (dist <= 4 && !isScrap) {
     return {
       cellX: target.cellX, cellY: target.cellY,
-      engage: true, cadence: 5, reason: "sam-range",
+      engage: true, cadence: 4, reason: "sam-range",
     };
   }
 
   const gunLive = Boolean(westernGun && westernGun.strength > 0);
-  const gunDist = gunLive
-    ? Math.abs(tank.cellX - westernGun.cellX) + Math.abs(tank.cellY - westernGun.cellY)
-    : 999;
-  const healthy = hp >= 250;
+  const gunDist = gunLive ? eastBChebyshev(tank, westernGun) : 999;
+  const fireCell = gunLive ? eastBGunBestFireCell(tank) : null;
+  const atFireCell = fireCell
+    ? eastBChebyshev(tank, fireCell) <= 1
+    : false;
 
-  // Engage GUN when close. TRACE l32: free@11,20@255 still healthy enough to
-  // finish the trade — only abort below 80 HP (flee left free@61 useless at hold).
-  if (gunLive && gunDist <= 5) {
-    if (hp >= 80 || !soleFree) {
+  // Scrap escort: hold mid-map until free is in GUN theatre (y≤28), then join
+  // fire cell (do not east-detour alone). TRACE l36–l37: early scrap suicided.
+  if (isScrap && gunLive) {
+    if (!freeLeader || freeLeader.cellY > 28) {
+      return {
+        cellX: Math.min(Math.max(tank.cellX, 30), 38),
+        cellY: Math.min(Math.max(tank.cellY - 2, 38), 42),
+        engage: false, cadence: 20, reason: "scrap-hold-for-free",
+      };
+    }
+    // Free in theatre — force scrap onto fire cell / standoff path.
+    if (gunDist <= 4 && (atFireCell || gunDist >= 3)) {
       return {
         cellX: westernGun.cellX, cellY: westernGun.cellY,
-        engage: true, cadence: 3, reason: "gun-adjacent",
+        engage: true, cadence: 1, reason: "gun-standoff-fire",
       };
     }
     return {
-      cellX: 18, cellY: Math.min(tank.cellY, 22),
-      engage: false, cadence: 3, reason: "gun-flee-east",
+      cellX: fireCell.cellX, cellY: fireCell.cellY,
+      engage: false, cadence: 8, reason: "gun-to-fire-cell",
     };
   }
-  // Healthy free in GUN theatre: direct attack so engine paths into range
-  // (l31 free@16,21@395 thrashed on standoff cells without hunting).
-  if (gunLive && hp >= 200 && tank.cellY <= 24 && tank.cellX <= 22 && gunDist <= 12) {
-    return {
-      cellX: westernGun.cellX, cellY: westernGun.cellY,
-      engage: true, cadence: 4, reason: "gun-hunt",
-    };
+
+  if (gunLive) {
+    // TRACE l43: free@155 gun@180 almost killed GUN then fled at 55 while gun
+    // repaired. Stay on GUN until dead or free <40 (or gun still healthy >250).
+    const gunNearDead = westernGun.strength <= 220;
+    if (soleFree && gunDist <= 5 && hp < 40) {
+      return {
+        cellX: 18, cellY: Math.min(tank.cellY, 22),
+        engage: false, cadence: 3, reason: "gun-flee-east",
+      };
+    }
+    if (soleFree && gunDist <= 5 && hp < 60 && !gunNearDead) {
+      return {
+        cellX: 18, cellY: Math.min(tank.cellY, 22),
+        engage: false, cadence: 3, reason: "gun-flee-east",
+      };
+    }
+    // Fire at Chebyshev ≤5. Cadence 1 — reissue every tick while trading.
+    if (gunDist <= 5 && (atFireCell || gunDist >= 3 || gunNearDead)) {
+      return {
+        cellX: westernGun.cellX, cellY: westernGun.cellY,
+        engage: true, cadence: 1, reason: "gun-standoff-fire",
+      };
+    }
+    // Too close: back up to outer fire cell. TRACE l45 free walked 17,22→13,23
+    // under GUN and bled faster; prefer dist 4–5 while healthy.
+    if (gunDist <= 2 || (gunDist <= 3 && hp >= 200 && westernGun.strength > 200)) {
+      const outer = { cellX: 16, cellY: 21 };
+      return {
+        cellX: outer.cellX, cellY: outer.cellY,
+        engage: false, cadence: 3, reason: "gun-back-to-standoff",
+      };
+    }
+    // Approach SE fire cell — never order the GUN cell as a move target.
+    if (tank.cellY <= 26 && tank.cellX <= 30) {
+      return {
+        cellX: fireCell.cellX, cellY: fireCell.cellY,
+        engage: false, cadence: 5, reason: "gun-to-fire-cell",
+      };
+    }
   }
 
   let approach;
@@ -72,8 +154,7 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
       cadence = 15;
     }
   } else if (tank.cellY > 22) {
-    // Past mid-band: cut west-north toward GUN theatre (l16 42,29→27,19).
-    // Do NOT order x≤16 yet (l30 thrash at y=28–32).
+    // Cut west-north toward GUN theatre (l16 42,29→27,19).
     if (tank.cellX > 24) {
       approach = { cellX: 24, cellY: Math.min(tank.cellY, 24) };
       reason = "cut-west-high";
@@ -84,20 +165,10 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
       cadence = 12;
     }
   } else if (gunLive) {
-    // GUN theatre (y≤22): close standoff then engage.
-    if (tank.cellX > 16) {
-      approach = { cellX: 15, cellY: Math.min(tank.cellY, 20) };
-      reason = "gun-approach";
-      cadence = 10;
-    } else if (gunDist > 5) {
-      approach = { cellX: 13, cellY: 20 };
-      reason = "gun-standoff";
-      cadence = 8;
-    } else {
-      approach = { cellX: westernGun.cellX, cellY: westernGun.cellY };
-      reason = "gun-close";
-      cadence = 5;
-    }
+    // Fallback theatre approach to fire cell.
+    approach = { cellX: fireCell.cellX, cellY: fireCell.cellY };
+    reason = "gun-to-fire-cell";
+    cadence = 8;
   } else if (tank.cellY > 10) {
     // GUN dead: western spine north to NW SAM.
     approach = { cellX: 12, cellY: Math.max(tank.cellY - 4, 8) };
@@ -105,14 +176,14 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
     cadence = 8;
   } else {
     approach = { cellX: target.cellX, cellY: target.cellY };
-    reason = dist <= 6 ? "sam-close" : "to-sam-standoff";
+    reason = dist <= 5 ? "sam-close" : "to-sam-standoff";
     cadence = 5;
   }
 
   if (stuck) {
-    if (gunLive) {
-      approach = { cellX: 13, cellY: 20 };
-      reason = "gun-standoff-stuck";
+    if (gunLive && fireCell) {
+      approach = { cellX: fireCell.cellX, cellY: fireCell.cellY };
+      reason = "gun-fire-cell-stuck";
     } else {
       approach = {
         cellX: tank.cellX + Math.sign(target.cellX - tank.cellX) * 3,
