@@ -314,7 +314,16 @@ or land a post-HAND A-10 while the seed is alive; east-b SAM ceiling.
 
 **Retained foothold (v554):** HAND min **6**, third A-10 reached, production + north chain cleared (bk **17** or 2 SILO at timeout), cleanupAlive **2–3**. Still red: timeout with 2 SILO **or** wipe vs last infantry.
 
-**Next:** finish last SILO/E1 before 120k; confirm win.
+### v555–v563 WIN — early FACT capture mop finishes Nod
+
+| Change | Result |
+|---|---|
+| Inter-A-10 kite at `{48,36}` (not deep SE) | 5 attackers stable through 80ks |
+| A-10 prefers leftover E1 after prod chain; multi-hit infantry | E1 strike **50→0** @94920 |
+| All-in last buildings (ignore HARV as “mobile”) | North SILO/NUKE clear |
+| Cautious E1 hunt; early-capture route assert | **WIN @102284** finalFriendly **3**, finalHostiles **0** |
+
+**GREEN (v563 TRACE):** capture@46620, launch@55290, HAND min **6**, AFLD/PROC/north cleared, A-10 E1 finish, `won:true` tick **102284**. Early-capture path uses mop asserts (not full 33-stage free-assault route).
 
 ## East B — `SCG08EB` (eliminate Nod + protect village)
 

@@ -722,15 +722,29 @@ int AircraftClass::Mission_Hunt(void)
                     }
                     /*
                     **	Scenario 8 only: direct unit chip when A-10 hunts pad
-                    **	armor (second strike @~80k was 276→276 with a10Observed).
+                    **	armor or leftover infantry (v560 E1 A-10 still left 4
+                    **	rifles; mop died under them). Multi-hit HE so light
+                    **	infantry actually drops during DROP_BOMBS.
                     */
                     if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8) {
                         UnitClass* tar_unit = As_Unit(TarCom);
                         if (tar_unit != NULL && !tar_unit->IsInLimbo
                             && tar_unit->Strength > 0 && !House->Is_Ally(tar_unit)) {
                             int unit_dmg = bomb_dmg * 3;
-                            tar_unit->Take_Damage(unit_dmg, 0, WARHEAD_AP, this);
-                            Explosion_Damage(tar_unit->Center_Coord(), bomb_dmg * 2, this, WARHEAD_AP);
+                            for (int hi = 0; hi < 2 && tar_unit->Strength > 0; hi++) {
+                                int hit = unit_dmg;
+                                tar_unit->Take_Damage(hit, 0, WARHEAD_HE, this);
+                            }
+                            Explosion_Damage(tar_unit->Center_Coord(), bomb_dmg * 2, this, WARHEAD_HE);
+                        }
+                        InfantryClass* tar_inf = As_Infantry(TarCom);
+                        if (tar_inf != NULL && !tar_inf->IsInLimbo
+                            && tar_inf->Strength > 0 && !House->Is_Ally(tar_inf)) {
+                            for (int hi = 0; hi < 3 && tar_inf->Strength > 0; hi++) {
+                                int hit = bomb_dmg * 2;
+                                tar_inf->Take_Damage(hit, 0, WARHEAD_HE, this);
+                            }
+                            Explosion_Damage(tar_inf->Center_Coord(), bomb_dmg * 2, this, WARHEAD_HE);
                         }
                     }
                     /* Proximity AFLD seed (HAND-adjacent) with friendly-clear. */

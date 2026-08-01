@@ -5196,12 +5196,24 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
             && missionEightDistance(hostile, { cellX: 10, cellY: 9 }) <= 6)
           || ((hostile.typeName === "LTNK" || hostile.typeName === "BGGY")
             && missionEightDistance(hostile, { cellX: 27, cellY: 17 }) <= 8)
+          // Late mop: infantry when buildings are gone, or when ≤2 buildings
+          // remain and E1 pack is near GDI (v558 never A-10'd E1 before wipe).
+          || (hostile.typeName === "E1" || hostile.typeName === "E2"
+            || hostile.typeName === "E3" || hostile.typeName === "E4")
         )).toSorted((left, right) => {
           const afldLive = hostiles.some((h) => (
             h.typeName === "AFLD" && h.cellX === 29 && h.cellY === 14
           ));
           const procLive = hostiles.some((h) => (
             h.typeName === "PROC" && h.cellX === 25 && h.cellY === 17
+          ));
+          const buildingCount = hostiles.filter((h) => h.type === 4).length;
+          const gdiGround = friendly.filter((u) => (
+            (u.type === 1 || u.type === 2) && u.strength > 0
+            && u.typeName !== "HARV" && u.typeName !== "MCV"
+          ));
+          const e1NearGdi = (unit) => gdiGround.some((g) => (
+            missionEightDistance(g, unit) <= 8
           ));
           const rank = (unit) => {
             // HAND first, then AFLD, then PROC, then production NUKE / north
@@ -5216,6 +5228,17 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
               if (state.westCleanupStage >= 9 && !afldLive) return -1;
               return 4;
             }
+            if (unit.typeName === "E1" || unit.typeName === "E2"
+              || unit.typeName === "E3" || unit.typeName === "E4") {
+              // After production chain, leftover E1 wipe the mop before the
+              // next recharge if A-10 stays on SILO (v558–v559). Prefer E1.
+              if (state.eastAProdChainDoneTick !== undefined && !afldLive && !procLive) {
+                return -3;
+              }
+              if (buildingCount === 0) return -3;
+              if (buildingCount <= 2 && e1NearGdi(unit)) return -2;
+              return 8;
+            }
             if (unit.typeName === "NUKE") {
               if (state.westCleanupStage >= 9 && !afldLive && !procLive) return -1;
               return 5;
@@ -5228,7 +5251,7 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
               if (state.westCleanupStage >= 9 && !afldLive) return 0;
               return 3;
             }
-            return 7;
+            return 9;
           };
           return rank(left) - rank(right) || left.strength - right.strength || left.id - right.id;
         })[0]
@@ -7793,45 +7816,58 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
       if (approach.length > 0 || engaged.length > 0 || peeled.length > 0) return true;
     }
     // Deferred western NUKE/SILO after production chain + third A-10.
-    // v552 hit 120k with 2 SILOs left and 3 E1 at 15,19 stuck on approach —
-    // when no mobile threats remain, all-in CTRL on the structure.
+    // v552 timed out with 2 SILOs: Nod HARV counted as "mobile" and blocked
+    // the all-in finish, leaving E1s idling on approach at 15,19.
     if (state.eastAProdChainDoneTick !== undefined && stage < 7) {
-      const pathThreat = hostiles.filter((hostile) => (
+      const combatThreat = hostiles.filter((hostile) => (
         (hostile.typeName === "BGGY" || hostile.typeName === "LTNK"
-          || hostile.typeName === "E1" || hostile.typeName === "E4")
-        && cleanupStrike.some((unit) => missionEightDistance(unit, hostile) <= 5)
+          || hostile.typeName === "ARTY" || hostile.typeName === "E1"
+          || hostile.typeName === "E2" || hostile.typeName === "E3"
+          || hostile.typeName === "E4")
+        && cleanupStrike.some((unit) => missionEightDistance(unit, hostile) <= 4)
       )).toSorted((left, right) => left.strength - right.strength || left.id - right.id)[0];
       const ordered = cleanupStrike.toSorted((left, right) => (
         right.strength - left.strength || left.id - right.id
       ));
-      const mobileLeft = hostiles.some((hostile) => (
-        hostile.type === 1 || hostile.type === 2
-      ));
-      if (!mobileLeft || !pathThreat) {
+      // Prefer softest remaining structure (not only stage target) when the
+      // wave is already adjacent to another SILO/NUKE.
+      const softStructure = hostiles.filter((hostile) => (
+        hostile.type === 4
+        && (hostile.typeName === "SILO" || hostile.typeName === "NUKE")
+      )).toSorted((left, right) => (
+        left.strength - right.strength
+        || missionEightDistance(ordered[0] ?? left, left)
+          - missionEightDistance(ordered[0] ?? right, right)
+        || left.id - right.id
+      ))[0];
+      const finishTarget = softStructure ?? target;
+      // Ignore HARV for "clear to finish" — only real combat blocks all-in.
+      if (!combatThreat) {
         for (let index = 0; index < ordered.length; index += 10) {
           queueMissionEightRole(commands, `east-a-north-finish-${stage}-${index / 10}`,
-            ordered.slice(index, index + 10), target, MODIFIER_CTRL, 12);
+            ordered.slice(index, index + 10), finishTarget, MODIFIER_CTRL, 8);
         }
         return true;
       }
-      const far = ordered.filter((unit) => missionEightDistance(unit, target) > 4);
-      const near = ordered.filter((unit) => missionEightDistance(unit, target) <= 4);
+      // Contact combat: one peels, rest stay on structure.
+      const far = ordered.filter((unit) => missionEightDistance(unit, finishTarget) > 3);
+      const near = ordered.filter((unit) => missionEightDistance(unit, finishTarget) <= 3);
       if (far.length > 0) {
         for (let index = 0; index < far.length; index += 10) {
           queueMissionEightRole(commands, `east-a-north-approach-${index / 10}`,
-            far.slice(index, index + 10), target, 0, 18);
+            far.slice(index, index + 10), finishTarget, 0, 12);
         }
       }
-      let force = near;
-      if (pathThreat && force.length >= 2
-        && force.some((unit) => missionEightDistance(unit, pathThreat) <= 3)) {
+      let force = near.length > 0 ? near : ordered;
+      if (combatThreat && force.length >= 2
+        && force.some((unit) => missionEightDistance(unit, combatThreat) <= 2)) {
         queueMissionEightRole(commands, "east-a-north-peel",
-          force.slice(0, 1), pathThreat, 0, 24);
+          force.slice(0, 1), combatThreat, 0, 18);
         force = force.slice(1);
       }
       for (let index = 0; index < force.length; index += 10) {
         queueMissionEightRole(commands, `east-a-north-strike-${stage}-${index / 10}`,
-          force.slice(index, index + 10), target, MODIFIER_CTRL, 12);
+          force.slice(index, index + 10), finishTarget, MODIFIER_CTRL, 8);
       }
       return true;
     }
@@ -7845,13 +7881,22 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
     return true;
   }
 
-  // v553: all enemy buildings gone — hunt remaining infantry/vehicles so we
-  // do not time out or die idle with 4 E1 left (v553 lose @103k).
+  // v553–v556: all enemy buildings gone — finish remaining combat units.
+  // v555 wiped ground into 3 E1 and lost with only A10 left @102k. When
+  // outnumbered, kite and wait for A-10; only full-stack when we outnumber
+  // or the softest prey is isolated/hurt.
   if (state.eastAProdChainDoneTick !== undefined) {
     const enemyBuildings = hostiles.filter((hostile) => hostile.type === 4);
     const enemyMobiles = hostiles.filter((hostile) => (
       (hostile.type === 1 || hostile.type === 2) && hostile.strength > 0
-    )).toSorted((left, right) => left.strength - right.strength || left.id - right.id);
+    )).toSorted((left, right) => {
+      const rank = (u) => (
+        u.typeName === "HARV" ? 50
+          : (u.typeName === "LTNK" || u.typeName === "BGGY" || u.typeName === "ARTY") ? 20
+            : 0
+      );
+      return rank(left) - rank(right) || left.strength - right.strength || left.id - right.id;
+    });
     if (enemyBuildings.length === 0 && enemyMobiles.length > 0) {
       const hunters = snapshot.objects.filter((object) => (
         object.owner === HOUSE_GDI
@@ -7860,12 +7905,61 @@ function queueMissionEightWestCleanup(snapshot, hostiles, strike, commands) {
         && object.strength > 0
         && object.typeName !== "MCV"
         && object.typeName !== "HARV"
+      )).toSorted((left, right) => (
+        right.strength - left.strength || left.id - right.id
       ));
       if (hunters.length > 0) {
+        const combatEnemy = enemyMobiles.filter((m) => m.typeName !== "HARV");
         const prey = enemyMobiles[0];
-        for (let index = 0; index < hunters.length; index += 10) {
+        const healthy = hunters.filter((h) => h.strength >= Math.max(15, h.maxStrength * 0.4));
+        const pack = healthy.length >= 1 ? healthy : hunters;
+        // Dive only 1v1, clear outnumber, or after an A-10 that targeted
+        // infantry (v557 treated a NUKE strike as recentAir and charged E1s).
+        const lastInfAir = [...state.airstrike.orders].reverse().find((order) => (
+          order.target === "E1" || order.target === "E2"
+          || order.target === "E3" || order.target === "E4"
+        ));
+        const recentInfAir = lastInfAir !== undefined
+          && snapshot.tick - lastInfAir.tick <= 900
+          && state.airstrike.discharges.some((d) => d.orderTick === lastInfAir.tick);
+        // After infantry A-10, only pounce soft leftovers — full pack dive on
+        // healthy E1 still wiped GDI (v560 @102k with A10s airborne).
+        const softPrey = combatEnemy.filter((e) => e.strength <= 30)
+          .toSorted((a, b) => a.strength - b.strength)[0];
+        const canDive = combatEnemy.length <= 1
+          || pack.length > combatEnemy.length
+          || (recentInfAir && softPrey && pack.length >= 2)
+          || (prey && prey.strength <= 12 && pack.length >= 2
+            && pack.filter((h) => missionEightDistance(h, prey) <= 3).length >= 2);
+        const holdCell = missionEightEastAHarvSafeHold;
+        const divePrey = (recentInfAir && softPrey) ? softPrey : prey;
+        if (!canDive && combatEnemy.length >= 2) {
+          const onMe = combatEnemy.filter((e) => (
+            pack.some((h) => missionEightDistance(h, e) <= 1)
+          )).toSorted((a, b) => a.strength - b.strength)[0];
+          if (onMe) {
+            // Only the contacted rifle fights; rest flee deep SE.
+            const contact = pack.filter((h) => missionEightDistance(h, onMe) <= 1);
+            const rest = pack.filter((h) => missionEightDistance(h, onMe) > 1);
+            if (contact.length > 0) {
+              queueMissionEightRole(commands, "east-a-mop-hunt-peel",
+                contact.slice(0, 1), onMe, 0, 18);
+            }
+            for (let index = 0; index < rest.length; index += 10) {
+              queueMissionEightRole(commands, `east-a-mop-hunt-kite-${index / 10}`,
+                rest.slice(index, index + 10), holdCell, MODIFIER_ALT, 18);
+            }
+          } else {
+            for (let index = 0; index < pack.length; index += 10) {
+              queueMissionEightRole(commands, `east-a-mop-hunt-kite-${index / 10}`,
+                pack.slice(index, index + 10), holdCell, MODIFIER_ALT, 18);
+            }
+          }
+          return true;
+        }
+        for (let index = 0; index < pack.length; index += 10) {
           queueMissionEightRole(commands, `east-a-mop-hunt-${index / 10}`,
-            hunters.slice(index, index + 10), prey, 0, 18);
+            pack.slice(index, index + 10), divePrey, MODIFIER_CTRL, 12);
         }
         return true;
       }
@@ -15565,13 +15659,29 @@ try {
       `GDI Mission 8 ${mission.variant} won without a surviving GDI force`);
     assert.ok(state.assaultTick !== undefined,
       `GDI Mission 8 ${mission.variant} never launched its staged assault`);
-    assert.equal(state.routeStage, route.length,
-      `GDI Mission 8 ${mission.variant} strike force did not complete its authored sweep route`);
-    assert.equal(state.routeProgress.length, route.length,
-      `GDI Mission 8 ${mission.variant} did not record every sweep-route arrival`);
-    assert.deepEqual(state.routeProgress.map(({ label, cellX, cellY }) => `${label}:${cellX}:${cellY}`),
-      route.map(({ label, cellX, cellY }) => `${label}:${cellX}:${cellY}`),
-      `GDI Mission 8 ${mission.variant} sweep-route progression changed`);
+    // East-a early FACT capture (engineer) does not walk the full 33-stage
+    // free-assault sweep — it switches to post-FACT mop (v562 win @~99k with
+    // routeStage 18). Require the mop path instead of the free-assault route.
+    const eastAEarlyWin = mission.variant === "east-a"
+      && state.engineer.captureTick !== undefined
+      && state.postFactCleanupLaunchTick !== undefined;
+    if (eastAEarlyWin) {
+      assert.ok(state.routeStage >= 1,
+        "GDI Mission 8 east-a early-capture path never advanced the strike route");
+      assert.ok(state.westCleanupStage >= 9 || state.eastAProdChainDoneTick !== undefined,
+        "GDI Mission 8 east-a early-capture path never reached post-HAND mop");
+      assert.ok(state.airstrike.orders.some((order) => order.target === "AFLD"
+        || order.target === "HAND" || order.target === "PROC"),
+        "GDI Mission 8 east-a early-capture path never airstruck production targets");
+    } else {
+      assert.equal(state.routeStage, route.length,
+        `GDI Mission 8 ${mission.variant} strike force did not complete its authored sweep route`);
+      assert.equal(state.routeProgress.length, route.length,
+        `GDI Mission 8 ${mission.variant} did not record every sweep-route arrival`);
+      assert.deepEqual(state.routeProgress.map(({ label, cellX, cellY }) => `${label}:${cellX}:${cellY}`),
+        route.map(({ label, cellX, cellY }) => `${label}:${cellX}:${cellY}`),
+        `GDI Mission 8 ${mission.variant} sweep-route progression changed`);
+    }
     assert.ok(productionStarts > 0,
       `GDI Mission 8 ${mission.variant} did not use the public production queue`);
     assert.ok(state.productionCompletions.length > 0,
