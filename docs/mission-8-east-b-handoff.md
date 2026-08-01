@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead (held); **WEAP@400 through lose** (v394); remaining 4 SAMs live; lose **civ-near-threshold** |
+| Status | **RED** — western SAM dead (held); free→strike works (v395n); remaining 4 SAMs still 400; WEAP often dies post-west; lose civ / all-destr |
 | Branch | `browser-port` |
-| Commit | `bf0ac04` |
+| Commit | *(update after push)* |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v394f — western SAM **0**; **WEAP/PROC/NUKE/PYLE live** at lose; free tank @36.6k; routeStage **9**; civ deaths **8** (minNeut 6); remaining SAMs 400; no A-10 |
+| Last TRACE suite | v395n — western SAM **0**; free tank **strike=1** @36.6k moves NW briefly (`35,51→34,48`); **no remaining-SAM chip** (all 400); WEAP often **0** by free spawn; routeStage **8–9**; minNeut **6–7**; no A-10 |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -136,20 +136,26 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Finisher logistics | Village loan chain + free MTNK→strike (not village re-home) while SAM chipped |
 | Emergency cash | Can sell NUKE when strike empty + SAM chipped + funds &lt; 800 (funds often stuck ~740) |
 
+### Post-west (v390–v395n) — held
+
+| Area | Evidence |
+|---|---|
+| Western SAM kill | **Held** — dead ~tick 33.0k (samMin 15 → 0) |
+| Free→strike promote | **Held** — post-west free tank lands in `strikeKeys` (was bg=1 strike=0 forever in v395b) |
+| Dead-SAM gate | Hostiles corpse at (13,16) no longer blocks `queueEastBSamPostWesternSamPush` (strength>0 check) |
+| Post-west free cohort | `eastBPostWestProducedTankKeys` — only tanks emerged after western death count for rebuild/push |
+| Typed remaining-SAM route | NW → SE → SW → NE approaches with `typeName:SAM` |
+
 ### Still broken
 
 | Symptom | Detail |
 |---|---|
-| Western SAM not dead | Never reaches 0; no A-10 (`readyTicks` empty) |
-| First-wave wipe | GUN/SAM dual fire shreds armor before finish (~300 ticks) |
-| Finisher late / thin | Second wave often arrives with SAM still **280–360** and dies in one exchange |
-| Free tanks east-wander | Mid-assault free MTNKs at `x≈32–45` then re-rail (costs HP/time) |
-| E3 corridor deaths | Fixed in latest WIP by parking E3 at `{13,32}` until routeStage ≥ 5; re-verify |
-| Post-wave economy | Harvest often freezes; rebuild MTNK late; NUKE sell can blackout WEAP briefly |
-| **Tank pathfinding off-corridor** | Partially improved: east-of-spine tanks detour south to X=13 (v76: id=29 14,22→13,26); still need finisher overlap |
-| **GUN respawn** | Not re-landed — prior WIP regressed samMin to 400; dropped for v76 minimal patch |
-| **SAM chip** | v86: **400→330** @32400; strike wipes; SAM repairs/stuck; no A-10 |
-| **NUKE sell** | Selling sole NUKE blackouts WEAP — only sell when **2+ NUKEs** remain |
+| Remaining 4 SAMs | All stay **400**; free strike tank dies near base (~28–35,x 48–54) before NW SAM |
+| Free tank path | Micro-hops NW; still bleeds HP to base raiders; pathfind sometimes drifts south into village |
+| WEAP post-west | Often **0** by free@36.6k (v394 held WEAP@400 through lose — do not fully regress that) |
+| Civ margin | minNeut **6–7** (need ≥9); post-west deaths from ~34.5k while village thin |
+| A-10 / map clear | Blocked until all five SAMs dead |
+| Rebuild economy | Funds often stuck ~740 while banking MTNK; WEAP repair + raiders drain cash |
 
 ### Latest TRACE shape (v76)
 
