@@ -157,6 +157,7 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Post-GUN GUN latch | `eastBPostWestGunClearedTick` — ignore GUN respawn after first kill (free stays on NW spine) |
 | Post-GUN east peel | After GUN dead: peel x=18 then north |
 | Post-GUN north-first | Stay on east lane to y≈10 before cut-west; free **108@19,12** (l110) |
+| GUN finish standoff | When GUN≤100 and free dist≤3, pin SE fire cell (l117); kill held free@128 |
 | Post-GUN NUKE sell | Last NUKE only after GUN dead → funds ~240 (still &lt;800 rebuild) |
 | Post-GUN free residual | Best **128@17,20** at GUN death; north-first east-lane to **108@19,12** (l110) |
 

@@ -125,6 +125,21 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
         engage: false, cadence: 3, reason: "gun-flee-east",
       };
     }
+    // TRACE l117: when GUN finishing (≤100), pin free at dist 4–5 SE fire —
+    // pathing into dist≤3 walks free to 11,22 and burns HP needed for NE GUN.
+    // Full attack-in-place closed (l92 free@15); this only gates finish band.
+    if (westernGun.strength <= 100 && gunDist <= 3 && hp >= 80) {
+      return {
+        cellX: 15, cellY: 21,
+        engage: false, cadence: 2, reason: "gun-finish-standoff",
+      };
+    }
+    if (westernGun.strength <= 100 && gunDist <= 5 && gunDist >= 4) {
+      return {
+        cellX: westernGun.cellX, cellY: westernGun.cellY,
+        engage: true, cadence: 1, reason: "gun-standoff-fire",
+      };
+    }
     // Fire at Chebyshev ≤5. Cadence 1 — reissue every tick while trading.
     if (gunDist <= 5 && (atFireCell || gunDist >= 3 || gunNearDead)) {
       return {

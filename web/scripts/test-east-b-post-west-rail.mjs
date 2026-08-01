@@ -214,4 +214,24 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.cellX, 13);
 }
 
+// GUN finish band: back up from dist≤3 to SE standoff (l117).
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 12, cellY: 21, strength: 150 }, nwSam,
+    { cellX: 11, cellY: 18, strength: 90 },
+  );
+  assert.equal(r.reason, "gun-finish-standoff");
+  assert.equal(r.engage, false);
+  assert.ok(eastBChebyshev(r, { cellX: 11, cellY: 18 }) >= 4);
+}
+// GUN finish at dist 4–5: keep firing.
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 14, cellY: 22, strength: 169 }, nwSam,
+    { cellX: 11, cellY: 18, strength: 90 },
+  );
+  assert.equal(r.reason, "gun-standoff-fire");
+  assert.equal(r.engage, true);
+}
+
 console.log("test-east-b-post-west-rail: ok");
