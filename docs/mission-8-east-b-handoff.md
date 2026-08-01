@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead; GUN **0@38700**; free far-east **y=10–11@108–128** (l146); keep NUKE; NW **400**; lose ~41k civ-near; l148–l151 closed |
+| Status | **RED** — western SAM dead; GUN **0@38700**; free far-east **y=10–11@108–128** (l146); keep NUKE; NW **400**; lose ~41k civ-near; post-west levers **exhausted l148–l156** |
 | Branch | `browser-port` |
-| Commit | `a266b55` |
+| Commit | `5b03806` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l146 held; l148–l151 TRACE-closed (no rail keep) — free **108@21,10**; NW **400**; lose **41257** civ-near |
+| Last TRACE suite | l146 held; l148–l156 TRACE-closed — free **108@21,10**; NW **400**; lose **41257** civ-near; cash/civ/cut-west walls held |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -440,12 +440,19 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Keep PROC (no sell) + free#4 harvest bank | l152: freeT stuck 1–2; free#1 dies solo; free#2 partner-wait; funds hit ~820 but no free#3; WEAP bleed; lose ~36780 minN6 — **closed** |
 | Post-GUN SILO/GTWR/ADV sell for free#4 | l153: no sellables left after freeT=3; funds still **90**; same free@108@21,10 as l146 — **no-op closed** |
 | freeT cap@2 until GUN cleared (bank 890 for free#3) | l154: funds **890** held but GUN **never dies** (freeT 2→0 @37800); WEAP dies; minN6 — **closed** (same class l72/l78) |
+| Keep villageGuard off GUN scrap when freeT≥2 | l155: freeT peak 2 / GUN never dies / lose ~36720 — **REGRESS closed** |
+| Park free#3 (southern freeT≥3) on village while GUN live | l156: same free@108@21,10 / minN7 as l146 — **no-op closed** (vg still 8→0) |
 
 ### Next (ordered)
 
-1. **Civ screen / minNeut ≥9** after free dies — lose ~41257 civ-near (8 deaths); MTNK anchors closed (l95–l97). Cash wall held: freeT=3 spends bank to ~90; freeT=2 banks 890 but no GUN kill; no last-NUKE; no leftover sellables.
-2. **NW SAM chip → A-10** blocked by free residual ~128 + NE GUN@16,9 (cash free#4 / residual≥200 closed).
-3. **Engine/pathfind: true north of NE GUN@16,9** — multi-cell north from x=21 enters GUN range; x≥24 cannot path to y=4 (l148).
+**Post-west tactical levers largely exhausted (l148–l156).** Remaining are structural walls:
+
+1. **Cash wall** — freeT=3 spends FACT bank to ~90; freeT=2 banks 890 but no GUN kill; no last-NUKE; no leftover sellables; keep-PROC starves freeT.
+2. **NE GUN@16,9 wall** — free residual ~128 Cheby 5 at y=10–11; solo free cannot kill NE GUN; pathfind cannot open north corridor (l148–l151).
+3. **Civ wall** — vg 8→0 mid free push; hospital anchors closed (l95–l97); keep-village / free#3-park no gain (l155–l156).
+4. **NW SAM chip → A-10** blocked by (1)+(2).
+
+If new evidence appears (engine path API, capture cash, free residual ≥200 path), reopen the matching wall.
 
 ---
 
