@@ -9096,7 +9096,10 @@ function eastBPostWestPromoteCombatTanks(attackers, hostiles = [], friendly = []
       ));
     }
   }
-  // Post-GUN: re-promote any free stuck as base picket while already on spine.
+  // Post-GUN: re-promote free on spine to strike (l102/l110). TRACE l161 all-free
+  // promote → dual peel residual 128+87 but lose ~39024 unknown (earlier than
+  // l146 ~41k) — closed. l165: keep healthiest free on strike; park wounded
+  // free (str<100) on village for civ screen (dual-north under ARTY hurt lose).
   if (!westernGunLiveForPromote) {
     for (const tank of attackers) {
       if (tank.typeName !== "MTNK" || tank.strength < 40) continue;
@@ -9120,11 +9123,20 @@ function eastBPostWestPromoteCombatTanks(attackers, hostiles = [], friendly = []
     unit.typeName === "MTNK" && state.villageGuardKeys.has(objectKey(unit))
     && unit.strength > 0
   ));
-  // Village only from surplus after WEAP secure + ≥1 free for SAM.
-  if (weapSecure && villageMtnk.length < 1 && freeAfter.length >= 2) {
+  // Village from surplus while GUN live; post-GUN park only wounded free.
+  if (weapSecure && westernGunLiveForPromote && villageMtnk.length < 1
+    && freeAfter.length >= 2) {
     const key = objectKey(freeAfter[freeAfter.length - 1]);
     clearMissionEightUnitRoleKey(key);
     state.villageGuardKeys.add(key);
+  }
+  if (weapSecure && !westernGunLiveForPromote && freeAfter.length >= 2) {
+    const wounded = freeAfter.filter((tank) => tank.strength < 100);
+    for (const tank of wounded) {
+      const key = objectKey(tank);
+      clearMissionEightUnitRoleKey(key);
+      state.villageGuardKeys.add(key);
+    }
   }
   // Release post-west free from WEAP picket only when factory is secure and tank
   // is healthy enough to survive the NW rail (TRACE v395n free died @105 HP).
@@ -9651,16 +9663,29 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     // TRACE l86–l89: wounded peel/standoff cut GUN DPS (gunMin 180–220, no
     // kill). Keep freeT=3 full-engage GUN micro (l85 free@108 after kill).
     // TRACE l103: early spine peel at GUN≤100 cut DPS → GUN repaired, no kill.
+    // TRACE l161/l162: promote all free post-GUN; 2 free engage NE GUN together.
+    const freePostWestForJoin = freePostWestMtnks;
+    const freeNorthCount = freePostWestForJoin.filter((object) => (
+      object.cellY <= 24 && object.strength >= 40
+    )).length;
+    const neGun = hostiles.find((hostile) => (
+      hostile.typeName === "GUN" && hostile.cellX === 16 && hostile.cellY === 9
+      && hostile.strength > 0
+    ));
     const rail = eastBPostWestRailApproach(tank, target, westernGun, {
       soleFree, stuck, isScrap, freeLeader, waitPartner,
+      freeNorthCount, neGun: neGun ?? null,
     });
     if (rail.engage) {
       stuckMap.delete(tankKey);
-      const isGun = rail.reason.startsWith("gun-") && westernGun;
-      const engageTarget = isGun ? westernGun : target;
-      const role = isGun
+      const isWestGun = rail.reason.startsWith("gun-") && westernGun;
+      const isNeGun = rail.reason.startsWith("ne-gun-") && neGun;
+      const engageTarget = isWestGun ? westernGun : isNeGun ? neGun : target;
+      const role = isWestGun
         ? `east-b-post-west-gun-${tankKey}`
-        : `east-b-post-west-sam-${tankKey}`;
+        : isNeGun
+          ? `east-b-post-west-negun-${tankKey}`
+          : `east-b-post-west-sam-${tankKey}`;
       queueMissionEightRole(commands, role, [tank], engageTarget, 0, rail.cadence);
       continue;
     }

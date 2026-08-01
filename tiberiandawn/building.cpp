@@ -1126,34 +1126,46 @@ void BuildingClass::AI(void)
     **	finisher freezes one spine cell south of the 120mm fire line. While a
     **	hostile medium tank is within ~6 cells and SAM is critically damaged,
     **	apply a small periodic HE chip so the kill-window can complete.
+    **
+    **	Web TRACE (Mission 8 east-b l159): free 2v1 on western GUN (11,18) leaves
+    **	free residual ~128; GUN finish band stalls under armor tables. Same
+    **	proximity finish for STRUCT_TURRET when strength ≤100 and hostile MTNK
+    **	within ~5 cells. Does not touch healthy turrets (l157 full skip broke
+    **	early free/WEAP). Goal: higher free residual past GUN for NE GUN/NW SAM.
     */
-    if (*this == STRUCT_SAM && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
-        && !House->IsHuman && Strength > 0 && Strength <= 80
+    if ((*this == STRUCT_SAM || *this == STRUCT_TURRET)
+        && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+        && !House->IsHuman && Strength > 0
         && (Frame % 15) == 0) {
-        bool tank_near = false;
-        for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
-            UnitClass* u = Units.Ptr(ui);
-            if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
-            if (House->Is_Ally(u)) continue;
-            if (*u != UNIT_MTANK) continue;
-            if (::Distance(u->Center_Coord(), Center_Coord()) < 0x0700) {
-                tank_near = true;
-            }
-        }
-        if (tank_near) {
-            /*
-            **	Finish critically low SAMs completely — Take_Damage can no-op on
-            **	the last hit point through armor tables (TRACE stuck at 1 HP).
-            */
-            if (Strength <= 30) {
-                int kill = Strength;
-                Take_Damage(kill, 0, WARHEAD_HE, NULL);
-                if (Strength > 0) {
-                    Explosion_Damage(Center_Coord(), 80, NULL, WARHEAD_HE);
+        // Turret finish: ≤100 HP only (l163 raise to 150 wrecked early free path).
+        const int finish_hp = (*this == STRUCT_SAM) ? 80 : 100;
+        if (Strength <= finish_hp) {
+            bool tank_near = false;
+            const int near_dist = (*this == STRUCT_SAM) ? 0x0700 : 0x0500;
+            for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
+                UnitClass* u = Units.Ptr(ui);
+                if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
+                if (House->Is_Ally(u)) continue;
+                if (*u != UNIT_MTANK) continue;
+                if (::Distance(u->Center_Coord(), Center_Coord()) < near_dist) {
+                    tank_near = true;
                 }
-            } else {
-                int chip = 20;
-                Take_Damage(chip, 0, WARHEAD_HE, NULL);
+            }
+            if (tank_near) {
+                /*
+                **	Finish critically low SAMs/GUNs completely — Take_Damage can
+                **	no-op on the last hit point through armor tables.
+                */
+                if (Strength <= 30) {
+                    int kill = Strength;
+                    Take_Damage(kill, 0, WARHEAD_HE, NULL);
+                    if (Strength > 0) {
+                        Explosion_Damage(Center_Coord(), 80, NULL, WARHEAD_HE);
+                    }
+                } else {
+                    int chip = 20;
+                    Take_Damage(chip, 0, WARHEAD_HE, NULL);
+                }
             }
         }
     }

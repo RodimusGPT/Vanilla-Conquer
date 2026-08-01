@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead; GUN **0@38700**; free far-east **y=10–11@108–128** (l146); keep NUKE; NW **400**; lose ~41k civ-near; post-west levers **exhausted l148–l156** |
+| Status | **RED** — western SAM dead; GUN kill residual **128**; free far-east **108@21,10** (l165); keep NUKE; NW **400**; lose **41257** civ-near; l157–l165 engine/rail package |
 | Branch | `browser-port` |
-| Commit | `1f8a0dd` |
+| Commit | `(pending l165)` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
-| Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
+| Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` + `tiberiandawn/building.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l146 held; l148–l156 TRACE-closed — free **108@21,10**; NW **400**; lose **41257** civ-near; cash/civ/cut-west walls held |
+| Last TRACE suite | l165 GUN finish-chip + wounded→village — free **108@21,10**; residual 128; NW **400**; lose **41257** civ-near (same class l146) |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 

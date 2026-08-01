@@ -47,7 +47,7 @@ export function eastBGunBestFireCell(tank, cells = EAST_B_GUN_FIRE_CELLS) {
  * @param {object} tank - {cellX, cellY, strength?}
  * @param {object} target - remaining SAM (usually NW 12,5)
  * @param {object|null} westernGun - {cellX, cellY, strength} or null/dead
- * @param {{soleFree?: boolean, stuck?: boolean, isScrap?: boolean, freeLeader?: object|null, waitPartner?: boolean}} opts
+ * @param {{soleFree?: boolean, stuck?: boolean, isScrap?: boolean, freeLeader?: object|null, waitPartner?: boolean, waitPartnerPostGun?: boolean, neGun?: {cellX:number,cellY:number,strength:number}|null, freeNorthCount?: number}} opts
  */
 export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
   const soleFree = opts.soleFree !== false;
@@ -55,6 +55,7 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
   const isScrap = Boolean(opts.isScrap);
   const freeLeader = opts.freeLeader ?? null;
   const waitPartner = Boolean(opts.waitPartner);
+  const waitPartnerPostGun = Boolean(opts.waitPartnerPostGun);
   const hp = tank.strength ?? 400;
   const dist = eastBChebyshev(tank, target);
   if (dist <= 4 && !isScrap) {
@@ -171,6 +172,35 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
   // @14,22 still bleeds under Nod west fire. l105: peel east to x=18 first
   // (escape west-base LOS) then north on x=18 to y=12, then cut west to SAM.
   if (!gunLive && tank.cellX <= 28 && tank.cellY <= 40) {
+    // TRACE l161: re-promote all free post-GUN → residual 128+87 both peel.
+    // l162 early NE GUN / partner-wait under ARTY → earlier lose ~39k — closed.
+    // l164: only engage NE GUN when freeNorth≥2 and already in SE fire band
+    // (y≤15, dist 3–5) so free#1 is not pulled north into ARTY alone.
+    void waitPartnerPostGun;
+    const neGun = opts.neGun && opts.neGun.strength > 0 ? opts.neGun : null;
+    const freeNorth = opts.freeNorthCount ?? 0;
+    if (neGun && freeNorth >= 2 && hp >= 50 && tank.cellX >= 17 && tank.cellY <= 15) {
+      const nd = eastBChebyshev(tank, neGun);
+      if (nd <= 2) {
+        return {
+          cellX: 20,
+          cellY: 13,
+          engage: false,
+          cadence: 2,
+          reason: "ne-gun-back-standoff",
+          stopFirst: true,
+        };
+      }
+      if (nd <= 5 && nd >= 3) {
+        return {
+          cellX: neGun.cellX,
+          cellY: neGun.cellY,
+          engage: true,
+          cadence: 1,
+          reason: "ne-gun-standoff-fire",
+        };
+      }
+    }
     if (dist <= 4) {
       return {
         cellX: target.cellX, cellY: target.cellY,

@@ -257,4 +257,25 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.engage, true);
 }
 
+// l164: 2 free in SE fire band engage NE GUN.
+{
+  const neGun = { cellX: 16, cellY: 9, strength: 400 };
+  const r = eastBPostWestRailApproach(
+    { cellX: 20, cellY: 13, strength: 128 }, nwSam, null,
+    { freeNorthCount: 2, neGun },
+  );
+  assert.equal(r.reason, "ne-gun-standoff-fire");
+  assert.equal(r.engage, true);
+}
+// y=18 still peels east (do not dive NE GUN early under ARTY).
+{
+  const neGun = { cellX: 16, cellY: 9, strength: 400 };
+  const r = eastBPostWestRailApproach(
+    { cellX: 18, cellY: 18, strength: 128 }, nwSam, null,
+    { freeNorthCount: 2, neGun },
+  );
+  assert.ok(r.reason === "spine-east-north" || r.reason === "spine-dodge-east"
+    || r.reason === "spine-east-peel", r.reason);
+}
+
 console.log("test-east-b-post-west-rail: ok");
