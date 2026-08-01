@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — western SAM dead (held); **western GUN dead @~38700** (v399/v400 2v1); post-GUN spine hard-rail + no demote; free dies ~88 HP before NW SAM; remaining SAMs **400**; no A-10 |
 | Branch | `browser-port` |
-| Commit | `3f1bf50` |
+| Commit | `8003ecb` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
