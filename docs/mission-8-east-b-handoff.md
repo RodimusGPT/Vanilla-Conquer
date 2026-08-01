@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — western SAM dead (held); **WEAP survives post-west** (v392); remaining 4 SAMs live; lose **civ-near-threshold** / civ-nine |
 | Branch | `browser-port` |
-| Commit | `673f40e` |
+| Commit | `124fec1` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
