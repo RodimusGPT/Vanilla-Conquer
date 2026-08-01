@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **GREEN** — gate EXIT 0; `finalHostiles=0` `finalFriendly=13`; all SAMs dead@38310; A-10 discharge; minNeut 7; HOSP+Moebius ok |
+| Status | **RED** — l175 stripped debug mop; free kills **NE GUN + NW SAM** at SE fire cell; **3 SE SAMs** remain; no A-10; civ lose ~39183 |
 | Branch | `browser-port` |
-| Commit | `f3695a8` |
+| Commit | `e01cf68` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` + `tiberiandawn/building.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l174: NE standoff + post-west SAM finish + A-10 mop win (route stage≥7 exception) |
+| Last TRACE suite | l175o: residual@249; NE→0@39030 free@99@20,13; NW→0@39060; liveSAM=3; mop removed |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
