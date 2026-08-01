@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead (held); free→strike + pad escape (v396h); remaining 4 SAMs still 400; free dies ~30,49 before NW |
+| Status | **RED** — western SAM dead (held); free@400 east-detour → GUN theatre / north rim; remaining 4 SAMs **400**; sole free loses GUN trade; no partner free / A-10 |
 | Branch | `browser-port` |
-| Commit | `7f17103` |
+| Commit | *(pending v397 push — update after push)* |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
-| Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` |
+| Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v396h — western SAM **0**; free **strike=1** @36.6k path `34,55→30,49` (HP 262→93) then dies; remaining SAMs **400**; WEAP repairs mid-window then dies; minNeut **6**; no A-10 |
+| Last TRACE suite | v397 / goal l23–l33 — western SAM **0**; free@400 path east-detour `35,55→42,29→~18–24,y19` (HP395); best north **y=9@395** (l28); GUN fire line **11,20@255** (l32); remaining SAMs **400**; minNeut **6–7**; no A-10 |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -136,33 +136,43 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Finisher logistics | Village loan chain + free MTNK→strike (not village re-home) while SAM chipped |
 | Emergency cash | Can sell NUKE when strike empty + SAM chipped + funds &lt; 800 (funds often stuck ~740) |
 
-### Post-west (v390–v396h) — held
+### Post-west (v390–v397) — held
 
 | Area | Evidence |
 |---|---|
 | Western SAM kill | **Held** — dead ~tick 33.0k |
-| Free→strike promote | **Held** — post-west free in `strikeKeys` |
+| Free→strike promote | **Held** — post-west free in `strikeKeys` @400 HP |
 | Dead-SAM gate | Corpse at (13,16) no longer blocks push |
-| Pad escape | Force-move north while y≥50; reached **y=49** (v396h) |
-| WEAP repair | Post-west heals below 95% (334→400 mid-window) |
-| Secure release | Leave when WEAP &lt;65% HP or picket timeout 300t |
+| Pad escape + east detour | free@400: `35,55→42,33→42,29→~24,19` (l16/l28/l32) |
+| Pure rail helper | `east-b-post-west-rail.mjs` + unit tests (imported by verifier) |
+| WEAP@400 through free transit | Held until free mid-map (~39k); pinned non-postWest defender |
+| Secure release | WEAP≥80% → free leaves immediately |
+| Village E3 after free | After mtnk busy / free≥1 (never before MTNK buy) |
+| North rim / GUN theatre | Best: **y=9@395** (l28); GUN line **11,20@255** (l32) |
 
 ### Still broken
 
 | Symptom | Detail |
 |---|---|
-| Remaining 4 SAMs | All **400** — free dies ~`30,49` @~93 HP |
-| Free spawn HP | Emerges ~262 into pad war (no defenders while free builds) |
-| WEAP / civs | WEAP dies after free leaves; minNeut **6** |
+| Remaining 4 SAMs | All **400** — free never chips NW SAM (12,5) |
+| Sole free vs GUN | free@395 reaches GUN theatre; trade loses (~255→0); GUN survives |
+| NE path to NW SAM | Pathfind from y≈9–12 x≈20+ cannot cut west to (12,5) — dead end (l25–l29) |
+| Partner free | NUKE sell refund ≪800; funds stuck ~4–174; producedTanks stays 4 |
+| WEAP / civs | WEAP dies ~39–40k after free leaves; minNeut **6–7** |
 | A-10 / clear | Needs all five SAMs dead |
-| Next | Keep a defender until free emerges; free@400 on escape |
 
-### Avoid
+### Avoid (post-west levers closed with TRACE)
 
 | Idea | Why |
 |---|---|
 | E3 pad-screen before free MTNK | v396f/g spent rebuild cash → no free, WEAP dead |
 | Forever-picket free on WEAP | v396 free+WEAP both die |
+| Pre-free village E3 | Burns cash; free never builds |
+| Force west at y≈35 | Mid-band west blocked — thrash @28,35 (l24) |
+| Long NW diagonal / {12,8} from spine | Paths through GUN — death @10,21 (l20) |
+| Direct SAM attack from y=12–15 | Pathfind routes south into GUN (l27) |
+| North-rim west cut at y=9 | Pathfind detours east to x=39 (l28/l29) |
+| Partner free via sole NUKE sell | Refund insufficient; funds never hit 800 (l21–l33) |
 
 ### Latest TRACE shape (v76)
 
@@ -193,6 +203,8 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Village→strike loan | When `routeStage >= 5`; last village tank if strike empty + SAM chipped |
 | Free tank assignment | While SAM chipped, unassigned free MTNK → **strike**, not village |
 | Emergency sell | `eastBSamFinishSellTick`; sell NUKE if funds &lt; 800, strike empty, SAM chipped |
+| Post-west free rail | `eastBPostWestRailApproach` in `east-b-post-west-rail.mjs`; `queueEastBSamPostWesternSamPush` |
+| Post-west promote | `eastBPostWestPromoteCombatTanks`, `eastBWeapSecureForSamPush`, pinned `eastBPostWestWeapDefenderKey` |
 
 ---
 
@@ -371,9 +383,11 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 ### Next (ordered)
 
-1. **Stream free tanks into strike** once WEAP picket + ≥1 village tank exist — push NW SAM (12,5).
-2. **minNeut ≥ 9** — hold 2 village MTNKs through 40k without emptying WEAP.
-3. **allSamsDead → A-10 → map clear.**
+1. **Kill GUN {11,18} with free@395** — sole free reaches theatre but loses trade; need micro (standoff fire cells), partner free from real income, or village scrap loan to GUN.
+2. **After GUN down: spine north x≈12–13 → NW SAM (12,5)** — NE rim approach is closed (pathfind).
+3. **Partner free / second tank** — sole NUKE sell cannot fund 800; need harvest hold, second plant earlier, or sell+rebuild timing that actually hits MTNK cost while WEAP lives.
+4. **allSamsDead → A-10 → map clear** (still blocked on remaining SAMs@400).
+5. **minNeut ≥ 9** without regressing free@400 escape.
 
 ---
 
