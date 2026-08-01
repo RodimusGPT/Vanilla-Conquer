@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v400b / goal l78–l81 — GUN **0 @38700** held; freeT=2 bank/dist-6 closed (no kill); NUKE@GUN≤100 closed (blackout); spine force-move y=9; free@~108 dies before NW; SAMs **400** |
+| Last TRACE suite | v400b / goal l78–l85 — GUN **0 @38700** held; freeT=2 / no-attack-hold closed; free@~108 dies before NW; SAMs **400** |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -190,6 +190,7 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | freeT cap@2 + dist-6 engage | free#2 stuck @17,20; gunMin 170–250 no kill (l78–l79) |
 | Sell last NUKE while GUN ≤100 | Mid-2v1 power blackout; gunMin 200 no kill (l80) |
 | freeT=2 bank 800 for post-GUN free#3 | free#2 never finishes GUN from SE idle (l78–l79) |
+| No GUN attack-order until ≤80 (fire-cell hold only) | free@359 HP but gunMin 160 no kill — auto-acquire insufficient (l84) |
 | Ultra-strict dist-4-only GUN engage | free@17,20 dist 6 never fires; gunMin ~210 (l74) |
 | freeReady y≤40 (with freeT=3) | weaker than y≤36 rendezvous for 2v1 kill path (l72) |
 
