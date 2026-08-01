@@ -110,6 +110,8 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
   if (gunLive) {
     // TRACE l43: free@155 gun@180 almost killed GUN then fled at 55 while gun
     // repaired. Stay on GUN until dead or free <40 (or gun still healthy >250).
+    // freeT=3 2v1 (l77) kills GUN — keep proven engage band; freeT=2 bank
+    // closed (l78–l79 free#2 stuck @17,20).
     const gunNearDead = westernGun.strength <= 220;
     if (soleFree && gunDist <= 5 && hp < 40) {
       return {
@@ -148,29 +150,29 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
     }
   }
 
-  // TRACE l68/l71: after GUN dead free south-rallied / thrashed mid-spine.
-  // Force spine-north whenever GUN is dead and free is west/north of mid.
+  // TRACE l68/l77: after GUN dead free@88 dies before NW; south-rally closed.
+  // Hard-rail to NW approach y=9 cadence 1 — long force-move so weak free
+  // spends fewer ticks thrashing mid-spine under fire.
   if (!gunLive && (tank.cellY <= 36 || tank.cellX <= 22)) {
     if (dist <= 4) {
       return {
         cellX: target.cellX, cellY: target.cellY,
-        engage: true, cadence: 2, reason: "sam-range",
+        engage: true, cadence: 1, reason: "sam-range",
       };
     }
-    if (tank.cellY > 12) {
-      const spineY = Math.max(8, Math.min(tank.cellY - 6, 18));
+    if (tank.cellY > 10) {
       return {
         cellX: 12,
-        cellY: spineY < tank.cellY ? spineY : Math.max(tank.cellY - 3, 8),
+        cellY: 9,
         engage: false,
-        cadence: 3,
+        cadence: 1,
         reason: "spine-north",
       };
     }
     return {
       cellX: target.cellX, cellY: target.cellY,
       engage: dist <= 5,
-      cadence: 3,
+      cadence: 1,
       reason: dist <= 5 ? "sam-close" : "to-sam-standoff",
     };
   }

@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v400 / goal l69–l77 — western SAM **0**; GUN **0 @38700** held; spine-north hard-rail + no WEAP demote post-GUN; free@~88 dies before NW chip; post-GUN NUKE funds **240**; remaining SAMs **400**; minNeut **7** |
+| Last TRACE suite | v400b / goal l78–l81 — GUN **0 @38700** held; freeT=2 bank/dist-6 closed (no kill); NUKE@GUN≤100 closed (blackout); spine force-move y=9; free@~108 dies before NW; SAMs **400** |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -161,7 +161,7 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Symptom | Detail |
 |---|---|
 | Remaining 4 SAMs | All **400** — free never chips NW SAM (12,5) after GUN die |
-| Post-GUN survivors | free@~67 after GUN kill; lose ~38869 before NW approach |
+| Post-GUN survivors | free@~88–108 after GUN kill; die ~300t before NW SAM; spine y=9 hard-rail held |
 | Village / civs | minNeut **7**; civ cascade risk while free push |
 | A-10 / clear | Needs all five SAMs dead |
 
@@ -187,6 +187,9 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Post-free FACT sell | FACT already dead to raiders ~36.6k (l66) |
 | freeT≥2 without mid-map rendezvous | free#1 alone at GUN → gunMin 180 (l67) |
 | freeT cap@2 while GUN live | funds 890 but GUN not killed; sole free@17,20 idle (l72–l74) |
+| freeT cap@2 + dist-6 engage | free#2 stuck @17,20; gunMin 170–250 no kill (l78–l79) |
+| Sell last NUKE while GUN ≤100 | Mid-2v1 power blackout; gunMin 200 no kill (l80) |
+| freeT=2 bank 800 for post-GUN free#3 | free#2 never finishes GUN from SE idle (l78–l79) |
 | Ultra-strict dist-4-only GUN engage | free@17,20 dist 6 never fires; gunMin ~210 (l74) |
 | freeReady y≤40 (with freeT=3) | weaker than y≤36 rendezvous for 2v1 kill path (l72) |
 

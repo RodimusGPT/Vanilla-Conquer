@@ -4790,9 +4790,8 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         }
       }
     }
-    // TRACE l68: after GUN dead funds~90 free survivors weak — sell last NUKE
-    // only once western GUN is down (power needed through 2v1) to rebuild armor
-    // for NW SAM spine. Keep WEAP production path via early-return FACT fix.
+    // TRACE l80: selling NUKE at GUN≤100 blacked out mid-2v1 (gunMin 200, no
+    // kill). Only sell last NUKE when western GUN is fully dead.
     const westernGunStillUp = hostiles.some((hostile) => (
       hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
       && hostile.strength > 0
@@ -4800,7 +4799,6 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
     if (state.eastBPostWestPostGunNukeSellTick === undefined
       && !westernGunStillUp
       && freePostWestLive >= 1
-      && freePostWestLive < 3
       && liveFundsNow < 800
       && builtAssets.has("WEAP")) {
       const nuke = buildings.find((object) => (
@@ -5095,9 +5093,9 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
   if (mission.variant === "east-b" && builtAssets.has("WEAP")) {
     // Always prefer MTNK once WEAP is up — the western SAM needs a continuous
     // armor stream, not Jeeps.
-    // TRACE l72–l74: freeT cap@2 left funds 890 but GUN did not die (sole
-    // free@17,20 idle). freeT=3 2v1 kills GUN (l68/l70); accept low post-GUN
-    // cash and rebuild via post-GUN NUKE sell.
+    // TRACE l78–l79: freeT cap@2 + dist-6 engage left free#2 stuck @17,20 and
+    // gunMin 170–250 (no kill). freeT=3 2v1 kills GUN (l77); bank post-GUN via
+    // NUKE sell only.
     if (eastBMtnkEntry && !eastBMtnkEntry.constructing && !eastBMtnkEntry.completed
       && !eastBMtnkEntry.onHold && !eastBMtnkEntry.busy
       && funds >= eastBMtnkEntry.cost) {
@@ -9614,9 +9612,7 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
         x: tank.cellX, y: tank.cellY, bestDist: distNow, since: snapshot.tick,
       });
     }
-    // TRACE l67/l68: free#1 alone at GUN while partners lag → gunMin 180.
-    // Hold until ≥2 free at y≤36 (rendezvous) then 2v1. l72 y≤40 was for
-    // freeT=2 cash path; freeT=3 2v1 uses y≤36 as in v399 GUN kill.
+    // TRACE l67/l77: freeT=3 rendezvous at y≤36 then 2v1 kills GUN.
     const freePostWestMtnks = friendlies.filter((object) => (
       object.typeName === "MTNK"
       && state.eastBPostWestProducedTankKeys.has(objectKey(object))

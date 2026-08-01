@@ -160,8 +160,8 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
     { soleFree: true },
   );
   assert.equal(r.reason, "spine-north");
-  assert.ok(r.cellY < 30);
   assert.equal(r.cellX, 12);
+  assert.equal(r.cellY, 9);
 }
 {
   const r = eastBPostWestRailApproach(
