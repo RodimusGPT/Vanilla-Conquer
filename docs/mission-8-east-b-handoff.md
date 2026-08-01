@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead (held); **western GUN dead @~38700** (v399 2v1); remaining 4 SAMs **400**; free survivors weak; no A-10 |
+| Status | **RED** — western SAM dead (held); **western GUN dead @~38700** (v399/v400 2v1); post-GUN spine hard-rail + no demote; free dies ~88 HP before NW SAM; remaining SAMs **400**; no A-10 |
 | Branch | `browser-port` |
 | Commit | `3f1bf50` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | v399 / goal l66–l68 — western SAM **0**; early FACT sell → funds **2816** freeT**3**; partner rendezvous 2v1 → **westGun 0 @38700**; remaining SAMs **400**; lose ~38.9k; minNeut **7** |
+| Last TRACE suite | v400 / goal l69–l77 — western SAM **0**; GUN **0 @38700** held; spine-north hard-rail + no WEAP demote post-GUN; free@~88 dies before NW chip; post-GUN NUKE funds **240**; remaining SAMs **400**; minNeut **7** |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -152,6 +152,9 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | GUN TRACE field | Compact TRACE `westGun` strength |
 | Partner free / FACT cash | Early FACT sell post-west → funds **2816**, freeT **3** (l67–l68) |
 | Partner rendezvous | Hold free mid-east until ≥2 free MTNKs at y≤36, then GUN 2v1 |
+| Post-GUN spine | Hard `spine-north` x=12 when GUN dead; no south-rally if free x≤22 y≤40 str≥40 |
+| Post-GUN promote | Never demote free on spine to WEAP picket; re-promote stuck pickets |
+| Post-GUN NUKE sell | Last NUKE only after GUN dead → funds ~240 (still &lt;800 rebuild) |
 
 ### Still broken
 
@@ -183,6 +186,9 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | PROC+PYLE+last-NUKE (post-free) | peak **774** <800; last NUKE power risk (l65) |
 | Post-free FACT sell | FACT already dead to raiders ~36.6k (l66) |
 | freeT≥2 without mid-map rendezvous | free#1 alone at GUN → gunMin 180 (l67) |
+| freeT cap@2 while GUN live | funds 890 but GUN not killed; sole free@17,20 idle (l72–l74) |
+| Ultra-strict dist-4-only GUN engage | free@17,20 dist 6 never fires; gunMin ~210 (l74) |
+| freeReady y≤40 (with freeT=3) | weaker than y≤36 rendezvous for 2v1 kill path (l72) |
 
 ### Latest TRACE shape (v76)
 

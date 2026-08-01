@@ -152,4 +152,23 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   );
 }
 
+
+// Post-GUN: free mid-spine goes spine-north (l68/l71).
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 13, cellY: 30, strength: 119 }, nwSam, null,
+    { soleFree: true },
+  );
+  assert.equal(r.reason, "spine-north");
+  assert.ok(r.cellY < 30);
+  assert.equal(r.cellX, 12);
+}
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 17, cellY: 22, strength: 185 }, nwSam, null,
+  );
+  assert.equal(r.reason, "spine-north");
+  assert.ok(r.cellY < 22);
+}
+
 console.log("test-east-b-post-west-rail: ok");

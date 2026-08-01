@@ -3399,6 +3399,8 @@ const missionEightState = {
   eastBPostWestPyleSellTick: undefined,
   eastBPostWestFactSellTick: undefined,
   eastBPostWestNukeSellTick: undefined,
+  // Last-NUKE sell only after western GUN dead (keep power through 2v1).
+  eastBPostWestPostGunNukeSellTick: undefined,
   eastBPreviousTanks: new Map(),
   eastBTankCohortReadyTick: undefined,
   // Free/base MTNKs pre-positioned at western support hold; released at GUN stage.
@@ -4788,6 +4790,36 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         }
       }
     }
+    // TRACE l68: after GUN dead funds~90 free survivors weak — sell last NUKE
+    // only once western GUN is down (power needed through 2v1) to rebuild armor
+    // for NW SAM spine. Keep WEAP production path via early-return FACT fix.
+    const westernGunStillUp = hostiles.some((hostile) => (
+      hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
+      && hostile.strength > 0
+    ));
+    if (state.eastBPostWestPostGunNukeSellTick === undefined
+      && !westernGunStillUp
+      && freePostWestLive >= 1
+      && freePostWestLive < 3
+      && liveFundsNow < 800
+      && builtAssets.has("WEAP")) {
+      const nuke = buildings.find((object) => (
+        object.typeName === "NUKE" && object.strength >= 50
+        && !state.soldStructureIds.has(object.id)
+      ));
+      if (nuke) {
+        sellMissionSevenStructure(commands, nuke);
+        state.soldStructureIds.add(nuke.id);
+        state.eastBPostWestPostGunNukeSellTick = snapshot.tick;
+        state.saleOrders.push({
+          tick: snapshot.tick,
+          typeName: nuke.typeName,
+          cellX: nuke.cellX,
+          cellY: nuke.cellY,
+          reason: "east-b post-GUN last-NUKE sell for NW SAM rebuild tank",
+        });
+      }
+    }
   }
   const healthyReservedEastBTanks = mission.variant === "east-b" ? friendly.filter((object) => (
     object.typeName === "MTNK"
@@ -5063,6 +5095,9 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
   if (mission.variant === "east-b" && builtAssets.has("WEAP")) {
     // Always prefer MTNK once WEAP is up — the western SAM needs a continuous
     // armor stream, not Jeeps.
+    // TRACE l72–l74: freeT cap@2 left funds 890 but GUN did not die (sole
+    // free@17,20 idle). freeT=3 2v1 kills GUN (l68/l70); accept low post-GUN
+    // cash and rebuild via post-GUN NUKE sell.
     if (eastBMtnkEntry && !eastBMtnkEntry.constructing && !eastBMtnkEntry.completed
       && !eastBMtnkEntry.onHold && !eastBMtnkEntry.busy
       && funds >= eastBMtnkEntry.cost) {
@@ -9024,24 +9059,54 @@ function eastBPostWestPromoteCombatTanks(attackers, hostiles = [], friendly = []
     && !state.baseGuardKeys.has(objectKey(unit))
     && unit.strength >= 40
   )).toSorted((left, right) => right.strength - left.strength || left.id - right.id);
+  // TRACE l70: after GUN kill free@185@11,23 was demoted to WEAP picket and
+  // never spine-pushed NW SAM. Once western GUN is dead, free already west/
+  // north of mid stays on strike for remaining SAMs.
+  const westernGunLiveForPromote = hostiles.some((hostile) => (
+    hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
+    && hostile.strength > 0
+  ));
+  const freeOnSpinePush = (tank) => (
+    !westernGunLiveForPromote
+    && tank.cellX <= 24 && tank.cellY <= 36 && tank.strength >= 40
+  );
   // Staff WEAP picket from free while factory is not secure (hurt or threatened).
   // Prefer keeping the sole free on the pad until WEAP is healthy (v395n).
   if (!weapSecure && weap.strength > 0 && baseMtnk.length < 1 && freePostWest.length > 0) {
-    const key = objectKey(freePostWest[freePostWest.length - 1]);
-    clearMissionEightUnitRoleKey(key);
-    state.baseGuardKeys.add(key);
-    baseMtnk = attackers.filter((unit) => (
-      unit.typeName === "MTNK" && state.baseGuardKeys.has(objectKey(unit))
-      && unit.strength > 0
-    ));
+    const pick = freePostWest[freePostWest.length - 1];
+    if (!freeOnSpinePush(pick)) {
+      const key = objectKey(pick);
+      clearMissionEightUnitRoleKey(key);
+      state.baseGuardKeys.add(key);
+      baseMtnk = attackers.filter((unit) => (
+        unit.typeName === "MTNK" && state.baseGuardKeys.has(objectKey(unit))
+        && unit.strength > 0
+      ));
+    }
   } else if (weapThreat && baseMtnk.length < 1 && freePostWest.length >= 2) {
-    const key = objectKey(freePostWest[freePostWest.length - 1]);
-    clearMissionEightUnitRoleKey(key);
-    state.baseGuardKeys.add(key);
-    baseMtnk = attackers.filter((unit) => (
-      unit.typeName === "MTNK" && state.baseGuardKeys.has(objectKey(unit))
-      && unit.strength > 0
-    ));
+    const pick = freePostWest[freePostWest.length - 1];
+    if (!freeOnSpinePush(pick)) {
+      const key = objectKey(pick);
+      clearMissionEightUnitRoleKey(key);
+      state.baseGuardKeys.add(key);
+      baseMtnk = attackers.filter((unit) => (
+        unit.typeName === "MTNK" && state.baseGuardKeys.has(objectKey(unit))
+        && unit.strength > 0
+      ));
+    }
+  }
+  // Post-GUN: re-promote any free stuck as base picket while already on spine.
+  if (!westernGunLiveForPromote) {
+    for (const tank of attackers) {
+      if (tank.typeName !== "MTNK" || tank.strength < 40) continue;
+      const key = objectKey(tank);
+      if (!state.eastBPostWestProducedTankKeys.has(key)) continue;
+      if (!freeOnSpinePush(tank)) continue;
+      if (state.baseGuardKeys.has(key) || state.villageGuardKeys.has(key)) {
+        clearMissionEightUnitRoleKey(key);
+        state.strikeKeys.add(key);
+      }
+    }
   }
   const freeAfter = attackers.filter((unit) => (
     unit.typeName === "MTNK"
@@ -9406,6 +9471,9 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
   // Commit with 1+ combat tank once rebuild-ready.
   // TRACE l25/l34: free north of y=24 must never south-rally to support hold
   // (through/away from GUN). Keep fighting GUN/SAM while strength ≥40.
+  // TRACE l68: after GUN dead free@119 @13,30 failed healthy (need ≥140) and
+  // was south-rallied off the spine — never chipped NW SAM. Post-GUN: any free
+  // on western half with strength ≥40 stays committed north.
   const westernGunLive = hostiles.some((hostile) => (
     hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
     && hostile.strength > 0
@@ -9414,14 +9482,22 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     tank.strength >= Math.ceil(tank.maxStrength * 0.35)
     || (tank.cellY <= 24 && tank.strength >= 40)
     || (westernGunLive && tank.cellY <= 28 && tank.strength >= 40)
+    || (!westernGunLive && tank.cellX <= 22 && tank.cellY <= 40 && tank.strength >= 40)
   ));
   if (healthy.length < 1 && state.allSamsDeadTick === undefined) {
     for (const tank of tanks) {
+      // Never south-rally tanks already west/north of mid after GUN dead.
       if (tank.cellY <= 28 && tank.strength >= 40) continue;
+      if (!westernGunLive && tank.cellX <= 22 && tank.cellY <= 40 && tank.strength >= 40) {
+        continue;
+      }
       queueMissionEightRole(commands, `east-b-post-west-rally-${objectKey(tank)}`,
         [tank], eastBPostWestSupportHold, MODIFIER_ALT, 20);
     }
-    if (!tanks.some((tank) => tank.cellY <= 28 && tank.strength >= 40)) {
+    if (!tanks.some((tank) => (
+      (tank.cellY <= 28 && tank.strength >= 40)
+      || (!westernGunLive && tank.cellX <= 22 && tank.cellY <= 40 && tank.strength >= 40)
+    ))) {
       return true;
     }
   }
@@ -9538,9 +9614,9 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
         x: tank.cellX, y: tank.cellY, bestDist: distNow, since: snapshot.tick,
       });
     }
-    // TRACE l67: early FACT sell funded freeT=3 and funds 2816, but free#1
-    // reached GUN alone (gunMin 180) while #2/#5 lagged mid-map. Hold lead free
-    // at mid-east until ≥2 free MTNKs are at y≤36 (rendezvous), then 2v1 GUN.
+    // TRACE l67/l68: free#1 alone at GUN while partners lag → gunMin 180.
+    // Hold until ≥2 free at y≤36 (rendezvous) then 2v1. l72 y≤40 was for
+    // freeT=2 cash path; freeT=3 2v1 uses y≤36 as in v399 GUN kill.
     const freePostWestMtnks = friendlies.filter((object) => (
       object.typeName === "MTNK"
       && state.eastBPostWestProducedTankKeys.has(objectKey(object))

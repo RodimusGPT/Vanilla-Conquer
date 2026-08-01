@@ -148,6 +148,33 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
     }
   }
 
+  // TRACE l68/l71: after GUN dead free south-rallied / thrashed mid-spine.
+  // Force spine-north whenever GUN is dead and free is west/north of mid.
+  if (!gunLive && (tank.cellY <= 36 || tank.cellX <= 22)) {
+    if (dist <= 4) {
+      return {
+        cellX: target.cellX, cellY: target.cellY,
+        engage: true, cadence: 2, reason: "sam-range",
+      };
+    }
+    if (tank.cellY > 12) {
+      const spineY = Math.max(8, Math.min(tank.cellY - 6, 18));
+      return {
+        cellX: 12,
+        cellY: spineY < tank.cellY ? spineY : Math.max(tank.cellY - 3, 8),
+        engage: false,
+        cadence: 3,
+        reason: "spine-north",
+      };
+    }
+    return {
+      cellX: target.cellX, cellY: target.cellY,
+      engage: dist <= 5,
+      cadence: 3,
+      reason: dist <= 5 ? "sam-close" : "to-sam-standoff",
+    };
+  }
+
   let approach;
   let cadence = 18;
   let reason = "rail";
