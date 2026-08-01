@@ -218,6 +218,7 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Far-east peel x=22 | l113: free bleeds peels east; minY 21 worse than l110 y=12 |
 | Attack NE GUN@16,9 mid peel | l114: free@19,13 engages then dies 128→88; no NW gain vs l110 |
 | North-to-y=16 then dodge east x=22 | l115: free@128@21,16 but minY 16 (no further north); die ~39058 — closed |
+| Scrap/E3 kill NE GUN@16,9 while free peels | l116: free path = l110 (scrap too late/absent); no NW gain |
 
 ### Latest TRACE shape (v76)
 
