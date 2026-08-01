@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — western SAM dead (held); free@400 standoff-chips western GUN to **180** then dies (GUN repairs); remaining 4 SAMs **400**; no A-10 |
 | Branch | `browser-port` |
-| Commit | `acfb744` |
+| Commit | `7a41798` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
