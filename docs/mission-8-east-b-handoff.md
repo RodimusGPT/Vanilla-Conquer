@@ -437,13 +437,15 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Solo free engage NE GUN@16,9 after east peel | l149: free@128 peels to 20,14 then bleeds **20,12@16** never kills NE GUN; minY 12 worse than l146 — **closed** |
 | Partner peel weakest free when GUN≤100 | l150: under-DPS; GUN repairs 40→400; free wipe; gun never dies — **closed** (same class l88/l103) |
 | x≥22 one-cell north + NE-GUN-envelope dodge | l151: free thrash/bleed **@21,16** 128→35 never reaches y=10; minY 16 worse than l146 — **closed** |
+| Keep PROC (no sell) + free#4 harvest bank | l152: freeT stuck 1–2; free#1 dies solo; free#2 partner-wait; funds hit ~820 but no free#3; WEAP bleed; lose ~36780 minN6 — **closed** |
+| Post-GUN SILO/GTWR/ADV sell for free#4 | l153: no sellables left after freeT=3; funds still **90**; same free@108@21,10 as l146 — **no-op closed** |
+| freeT cap@2 until GUN cleared (bank 890 for free#3) | l154: funds **890** held but GUN **never dies** (freeT 2→0 @37800); WEAP dies; minN6 — **closed** (same class l72/l78) |
 
 ### Next (ordered)
 
-1. **Post-GUN cash ≥800 without last-NUKE sell** — funds stuck **~90** after freeT=3; free#4 never builds; residual stays ~128 so NE GUN/2v1 cut-west unworkable.
-2. **Civ screen / minNeut ≥9** after free dies — lose ~41257 civ-near (8 deaths); MTNK anchors closed (l95–l97).
-3. **NW SAM chip → A-10** once free can approach with residual ≥200 or NE GUN dead (blocked by cash + residual wall).
-4. **Engine/pathfind: true north of NE GUN@16,9** — force-move multi-cell north from x=21 pathfinds into GUN range; far-east x≥24 cannot path to y=4 (l148).
+1. **Civ screen / minNeut ≥9** after free dies — lose ~41257 civ-near (8 deaths); MTNK anchors closed (l95–l97). Cash wall held: freeT=3 spends bank to ~90; freeT=2 banks 890 but no GUN kill; no last-NUKE; no leftover sellables.
+2. **NW SAM chip → A-10** blocked by free residual ~128 + NE GUN@16,9 (cash free#4 / residual≥200 closed).
+3. **Engine/pathfind: true north of NE GUN@16,9** — multi-cell north from x=21 enters GUN range; x≥24 cannot path to y=4 (l148).
 
 ---
 
