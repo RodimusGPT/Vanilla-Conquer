@@ -218,6 +218,9 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
     // TRACE l142: free@21,11@128. l145 require x=22 before north stuck thrash.
     // l146: dodge only while x<20; once x≥20 north hard to y=7 then SAM AM.
     // No force cut-west through GUN@16,9 (that bled free to death).
+    // Closed post-l146: l148 far-east x≥24 thrash@28,9 + earlier civ lose;
+    // l149 solo NE GUN free@128 dies never kills; l150 partner peel@GUN≤100
+    // under-DPS GUN repairs; l151 x≥22 one-cell thrash@21,16 bleed.
     if (tank.cellX < 20 && tank.cellY <= 16) {
       return {
         cellX: 22,

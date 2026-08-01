@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — western SAM dead; GUN **0@38700**; free far-east **y=10–11@108–128** (l146); keep NUKE; NW **400**; lose ~41k civ-near |
+| Status | **RED** — western SAM dead; GUN **0@38700**; free far-east **y=10–11@108–128** (l146); keep NUKE; NW **400**; lose ~41k civ-near; l148–l151 closed |
 | Branch | `browser-port` |
 | Commit | `c3c2664` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l146 north-to-y7 then SAM AM — free **108@21,10** (FINE); NW **400**; lose **41257** civ-near |
+| Last TRACE suite | l146 held; l148–l151 TRACE-closed (no rail keep) — free **108@21,10**; NW **400**; lose **41257** civ-near |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -165,9 +165,9 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 
 | Symptom | Detail |
 |---|---|
-| Remaining 4 SAMs | All **400** — free reaches y=11@128 then bleeds cutting west under GUN@16,9 |
-| Post-GUN survivors | far-east **128@21,11** (l142); cut-west dies; lose ~40891 civ-near |
-| Village / civs | minNeut **7**; civ cascade risk while free push |
+| Remaining 4 SAMs | All **400** — free reaches y=10@108 (l146) still Cheby 5 from NE GUN@16,9; never chips NW |
+| Post-GUN survivors | far-east **108@21,10** (l146 FINE) / **128@21,11** (l142); cut-west / NE GUN clear / residual≥200 closed l148–l151 |
+| Village / civs | minNeut **7**; lose ~41257 civ-near after free dies |
 | A-10 / clear | Needs all five SAMs dead |
 
 ### Avoid (post-west levers closed with TRACE)
@@ -433,17 +433,17 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Weak free to NE GUN@16,9 at GUN≤100 | l121: west GUN repairs to 360+; free wipe — **closed** |
 | Broad GUN standoff ≤250 | l120: free already at dist 4; residual still 128 — no gain |
 | Far-north past GUN@16,9 (dodge x=22 then y=8) | l130: free@128@21,16 then lose@39058 same wall; minY 16 worse than l110 |
+| Far-east x≥24 corridor north to y=4 then cut-west | l148: free peels to **28,9@124** (pathfind drifts east, never y=4); minN→6 earlier civ lose ~39570 — **closed** |
+| Solo free engage NE GUN@16,9 after east peel | l149: free@128 peels to 20,14 then bleeds **20,12@16** never kills NE GUN; minY 12 worse than l146 — **closed** |
+| Partner peel weakest free when GUN≤100 | l150: under-DPS; GUN repairs 40→400; free wipe; gun never dies — **closed** (same class l88/l103) |
+| x≥22 one-cell north + NE-GUN-envelope dodge | l151: free thrash/bleed **@21,16** 128→35 never reaches y=10; minY 16 worse than l146 — **closed** |
 
 ### Next (ordered)
 
-1. **Cut west to NW SAM north of GUN@16,9 (y≤7) without bleeding** — free reaches **21,11@128** then dies cutting west through GUN range (l142–l144 thrash).
-2. **Clear NE GUN@16,9 before cut-west** without diverting free 2v1 (scrap/E3 too late; weak free peel under-kills west GUN).
-3. **Free residual ≥200** through west GUN (still ~128).
-4. **Civ screen** — lose@40891 civ-near-threshold (8 deaths) after free dies.
-5. **Post-GUN cash ≥800** without selling last NUKE (kept for power/lose timing).
-6. **NW SAM chip → A-10**.
-5. **Civ screen without thinning free GUN DPS** — MTNK anchors closed (l95–l97).
-6. **minNeut ≥ 9** without regressing GUN kill / free@128.
+1. **Post-GUN cash ≥800 without last-NUKE sell** — funds stuck **~90** after freeT=3; free#4 never builds; residual stays ~128 so NE GUN/2v1 cut-west unworkable.
+2. **Civ screen / minNeut ≥9** after free dies — lose ~41257 civ-near (8 deaths); MTNK anchors closed (l95–l97).
+3. **NW SAM chip → A-10** once free can approach with residual ≥200 or NE GUN dead (blocked by cash + residual wall).
+4. **Engine/pathfind: true north of NE GUN@16,9** — force-move multi-cell north from x=21 pathfinds into GUN range; far-east x≥24 cannot path to y=4 (l148).
 
 ---
 
