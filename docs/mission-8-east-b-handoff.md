@@ -177,6 +177,7 @@ console.log({assault:rows.find(r=>r.assaultTick)?.assaultTick,samMin:min,at:mint
 | Point-blank GUN attack-hunt | free paths into turret, worse trade (l32) |
 | Scrap MTNK 2v1 loan | only 1 live MTNK after pad; vg keys are infantry (l38–l42) |
 | E3 rocket assist alone | atk rose mid-fight; gunMin still 180 (l45) |
+| Early sole-NUKE sell for partner (pre-free, funds≥50) | Cash thrash; free never emerges (l47); WEAP blackout |
 
 ### Latest TRACE shape (v76)
 
