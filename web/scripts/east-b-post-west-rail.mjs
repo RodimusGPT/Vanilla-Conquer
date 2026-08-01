@@ -25,6 +25,19 @@ export const EAST_B_GUN_FIRE_CELLS = [
   { cellX: 13, cellY: 22 },
 ];
 
+/** SE standoff cells at Chebyshev 3–4 from NE GUN{16,9} (MTNK range ~4).
+ * TRACE l174: free@19,16 nd=7 engaged out of range → pathfind thrash@18,17
+ * and never parked on a fire cell; NE GUN stayed 400. */
+export const EAST_B_NE_GUN_FIRE_CELLS = [
+  { cellX: 20, cellY: 12 },
+  { cellX: 20, cellY: 13 },
+  { cellX: 19, cellY: 12 },
+  { cellX: 19, cellY: 13 },
+  { cellX: 18, cellY: 12 },
+  { cellX: 21, cellY: 12 },
+  { cellX: 21, cellY: 13 },
+];
+
 export function eastBChebyshev(a, b) {
   return Math.max(Math.abs(a.cellX - b.cellX), Math.abs(a.cellY - b.cellY));
 }
@@ -172,26 +185,32 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
   // @14,22 still bleeds under Nod west fire. l105: peel east to x=18 first
   // (escape west-base LOS) then north on x=18 to y=12, then cut west to SAM.
   if (!gunLive && tank.cellX <= 28 && tank.cellY <= 40) {
-    // TRACE l168–l172: residual ≥249; free@242 chips NE GUN to ~244 then dies.
-    // free#1@100–128 dies mid east-peel. l173: after GUN dead, route free with
-    // hp≥100 straight to NE GUN SE fire cell (skip long east peel) so both free
-    // trade NE GUN while healthy; engine NE GUN full-HP chip when MTNK near.
+    // TRACE l168–l173: residual ≥249; free peels after GUN but dies trading NE
+    // GUN / thrash. l174 fine: free@19,16 nd=7 attack-ordered out of MTNK range
+    // pathfind thrash@18,17; NE GUN never entered chip near_dist (stayed 400).
+    // Mirror western GUN micro: force-move to SE fire cell (Cheby 3–4), then
+    // attack in place only when in weapon range. Engine NE finish chip wider.
     void waitPartnerPostGun;
     const neGun = opts.neGun && opts.neGun.strength > 0 ? opts.neGun : null;
     const freeNorth = opts.freeNorthCount ?? 0;
-    if (neGun && hp >= 100 && tank.cellY <= 26 && tank.cellX <= 24) {
+    void freeNorth;
+    if (neGun && hp >= 100 && tank.cellY <= 26 && tank.cellX <= 26) {
       const nd = eastBChebyshev(tank, neGun);
+      const neFire = eastBGunBestFireCell(tank, EAST_B_NE_GUN_FIRE_CELLS);
+      const atNeFire = eastBChebyshev(tank, neFire) <= 1;
+      // Point-blank / under gun: back to SE fire cell (do not sit trading).
       if (nd <= 2) {
         return {
-          cellX: 20,
-          cellY: 13,
+          cellX: neFire.cellX,
+          cellY: neFire.cellY,
           engage: false,
           cadence: 2,
           reason: "ne-gun-back-standoff",
           stopFirst: true,
         };
       }
-      if (nd <= 5 && nd >= 3) {
+      // In weapon range (Cheby ≤4) at/near fire cell — attack in place.
+      if (nd <= 4 && (atNeFire || nd >= 3)) {
         return {
           cellX: neGun.cellX,
           cellY: neGun.cellY,
@@ -200,13 +219,37 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
           reason: "ne-gun-standoff-fire",
         };
       }
-      // Direct approach to SE fire cell — skip peel x=18 detour.
+      // Approach SE fire cell — never attack-move from nd≥5 (pathfind thrash).
       return {
-        cellX: 20,
-        cellY: 13,
+        cellX: neFire.cellX,
+        cellY: neFire.cellY,
         engage: false,
         cadence: 1,
         reason: "ne-gun-to-fire-cell",
+        stopFirst: true,
+      };
+    }
+    // l174e/f: NE dead@38520 free@247 — spine-dodge-east@y=16 thrash and
+    // attack-move SAM from y=16 pathfinds into death. North on x≥18 to y=8
+    // first, then SAM attack-move. Expand band to y≤20 so peel doesn't
+    // re-enter spine-east-north.
+    if (!neGun && hp >= 80 && tank.cellY <= 20 && tank.cellX >= 14 && tank.cellX <= 26) {
+      if (tank.cellY > 8) {
+        return {
+          cellX: Math.max(tank.cellX, 18),
+          cellY: Math.max(tank.cellY - 3, 8),
+          engage: false,
+          cadence: 1,
+          reason: "sam-post-negun-north",
+          stopFirst: true,
+        };
+      }
+      return {
+        cellX: target.cellX,
+        cellY: target.cellY,
+        engage: true,
+        cadence: 1,
+        reason: "sam-post-negun",
         stopFirst: true,
       };
     }

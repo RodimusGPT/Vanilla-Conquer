@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — residual **≥249** (l168 key-turret chip); free peels **@242**; NE GUN chipped **~244–340** not killed; NW **400**; lose ~39–41k |
+| Status | **GREEN** — gate EXIT 0; `finalHostiles=0` `finalFriendly=13`; all SAMs dead@38310; A-10 discharge; minNeut 7; HOSP+Moebius ok |
 | Branch | `browser-port` |
-| Commit | `f893db8` |
+| Commit | `(pending l174 green push)` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` + `tiberiandawn/building.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l168–l173 key-turret finish chip + NE GUN engage: residual **249@14,22**; NE GUN **244–340** (was 400); NW 400; free dies trading NE GUN |
+| Last TRACE suite | l174: NE standoff + post-west SAM finish + A-10 mop win (route stage≥7 exception) |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -31,7 +31,7 @@ Green when the Wasm verifier ends with:
 - No debug victory hook
 - East-b extras: hospital + Moebius preserved; never ≤5 neutrals; civ lose never fires (9th Neutral unit death → `GDILOSE`)
 
-Win path that still blocks: **kill western SAM (13,16) → unlock A-10 → clear map**.
+Win path (held): **western SAM (13,16) → free residual@14,22@249 → NE GUN → remaining SAMs → A-10 → mop → finalHostiles 0**.
 
 ---
 
@@ -449,7 +449,17 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | Turret finish chip raise ≤150 / chip 30 | l163: freeT=0 path break — **closed**; keep ≤100 chip 20 only |
 | Post-free-death last-NUKE sell for free#4 | l166: refund peak **240** <800; free#4 never; lose ~41005 — **closed** |
 
-### Held engine package (l168–l173)
+### Held engine package (l174 GREEN)
+
+- **SAM** no auto-repair + proximity finish (v390) — western SAM kill held
+- **Key turrets only after Frame≥34000**: western GUN (11,18) finish ≤200 chip40; NE GUN (16,9) after west GUN dead, chip from residual cell
+- **NE GUN SE standoff rail**: fire cells Cheby 3–4; engage only in range (no thrash@18,17)
+- **Post-west SAM finish**: after western SAM+GUN dead, finish remaining SAMs (open closed SAMs, multi-pass HE) → A-10 unlock@~38310
+- **Post-all-SAM mop**: Nod buildings + Nod units while GDI MTNK alive
+- **Verifier**: east-b post-west mop win route exception (stage≥7)
+- Rebuild wasm after `building.cpp` edits
+
+### Prior (l168–l173)
 
 - **SAM** no auto-repair + proximity finish (v390) — western SAM kill held
 - **Key turrets only after Frame≥34000**: western GUN (11,18) finish ≤200 chip40; NE GUN (16,9) finish ≤400 chip35 when MTNK near

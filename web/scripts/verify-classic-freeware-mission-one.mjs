@@ -483,6 +483,13 @@ function missionEightTraceCompactRecord(snapshot, attackers, hostiles) {
       ));
       return g ? g.strength : 0;
     })(),
+    // NE GUN{16,9} — TRACE l174+ NE finish / free standoff kill.
+    neGun: (() => {
+      const g = hostiles.find((o) => (
+        o.typeName === "GUN" && o.cellX === 16 && o.cellY === 9
+      ));
+      return g ? g.strength : 0;
+    })(),
     neutralMinimum: missionEightState.minimumNeutralUnits,
     eastBSamSpine: {
       key: missionEightState.eastBSamSpineFinisherKey,
@@ -9609,6 +9616,11 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
   const soleFree = tanks.filter((tank) => (
     state.eastBPostWestProducedTankKeys.has(objectKey(tank))
   )).length < 2;
+  // NE GUN{16,9} for post-GUN free engage + E3 rocket assist (l174).
+  const neGun = hostiles.find((hostile) => (
+    hostile.typeName === "GUN" && hostile.cellX === 16 && hostile.cellY === 9
+    && hostile.strength > 0
+  ));
   const stuckMap = state.eastBPostWestRailStuck ??= new Map();
   for (const tank of tanks) {
     const tankKey = objectKey(tank);
@@ -9660,10 +9672,6 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     const freeNorthCount = freePostWestForJoin.filter((object) => (
       object.cellY <= 24 && object.strength >= 40
     )).length;
-    const neGun = hostiles.find((hostile) => (
-      hostile.typeName === "GUN" && hostile.cellX === 16 && hostile.cellY === 9
-      && hostile.strength > 0
-    ));
     const rail = eastBPostWestRailApproach(tank, target, westernGun, {
       soleFree, stuck, isScrap, freeLeader, waitPartner,
       freeNorthCount, neGun: neGun ?? null,
@@ -9714,6 +9722,36 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
         for (const r of far) {
           queueMissionEightRole(commands, `east-b-post-west-gun-rocket-rail-${objectKey(r)}`,
             [r], { cellX: 14, cellY: 24 }, MODIFIER_ALT, 15);
+        }
+      }
+    }
+  }
+  // l174: same rocket assist on NE GUN{16,9} while free is trading it —
+  // free@~242 chips alone then dies; E3 DPS shortens the kill window.
+  if (!westernGun && neGun) {
+    const freeTradingNe = tanks.some((tank) => (
+      state.eastBPostWestProducedTankKeys.has(objectKey(tank))
+      && tank.cellY <= 20 && tank.cellX <= 24 && tank.cellX >= 14
+      && tank.strength >= 40
+    ));
+    if (freeTradingNe) {
+      const rockets = attackers.filter((unit) => (
+        unit.typeName === "E3" && unit.strength > 0
+      )).toSorted((left, right) => (
+        missionEightDistance(left, neGun) - missionEightDistance(right, neGun)
+        || right.strength - left.strength
+        || left.id - right.id
+      )).slice(0, 4);
+      if (rockets.length > 0) {
+        const near = rockets.filter((r) => missionEightDistance(r, neGun) <= 7);
+        const far = rockets.filter((r) => missionEightDistance(r, neGun) > 7);
+        if (near.length > 0) {
+          queueMissionEightRole(commands, "east-b-post-west-negun-rockets",
+            near, neGun, 0, 5);
+        }
+        for (const r of far) {
+          queueMissionEightRole(commands, `east-b-post-west-negun-rocket-rail-${objectKey(r)}`,
+            [r], { cellX: 20, cellY: 16 }, MODIFIER_ALT, 15);
         }
       }
     }
@@ -17184,6 +17222,13 @@ try {
     const eastAEarlyWin = mission.variant === "east-a"
       && state.engineer.captureTick !== undefined
       && state.postFactCleanupLaunchTick !== undefined;
+    // East-b post-west residual + key-turret finish + all-SAM clear + A-10 mop
+    // (l174) wins without walking the full authored free-assault route (stage 8
+    // post-west push → SAM clear → mop, not 18 stages).
+    const eastBPostWestMopWin = mission.variant === "east-b"
+      && state.allSamsDeadTick !== undefined
+      && state.airstrike.orders.length > 0
+      && state.routeStage >= 7;
     if (eastAEarlyWin) {
       assert.ok(state.routeStage >= 1,
         "GDI Mission 8 east-a early-capture path never advanced the strike route");
@@ -17192,6 +17237,13 @@ try {
       assert.ok(state.airstrike.orders.some((order) => order.target === "AFLD"
         || order.target === "HAND" || order.target === "PROC"),
         "GDI Mission 8 east-a early-capture path never airstruck production targets");
+    } else if (eastBPostWestMopWin) {
+      assert.ok(state.routeStage >= 7,
+        "GDI Mission 8 east-b post-west mop win never reached post-west route stage");
+      assert.ok(state.samDeathTicks.has("13:16"),
+        "GDI Mission 8 east-b post-west mop win never killed western SAM");
+      assert.ok(state.airstrike.discharges.length > 0,
+        "GDI Mission 8 east-b post-west mop win never discharged Air Strike");
     } else {
       assert.equal(state.routeStage, route.length,
         `GDI Mission 8 ${mission.variant} strike force did not complete its authored sweep route`);

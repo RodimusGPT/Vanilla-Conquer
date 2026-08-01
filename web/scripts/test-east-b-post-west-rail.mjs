@@ -196,27 +196,28 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.reason, "sam-attack-move");
   assert.equal(r.engage, true);
 }
-// Mid east y=13: dodge east (l142).
+// Mid east y=13 (NE clear): north toward SAM approach (l174f).
 {
   const r = eastBPostWestRailApproach(
     { cellX: 19, cellY: 13, strength: 128 }, nwSam, null,
   );
-  assert.equal(r.reason, "spine-dodge-east");
-  assert.ok(r.cellX >= 22, r.cellX);
+  assert.equal(r.reason, "sam-post-negun-north");
+  assert.equal(r.engage, false);
+  assert.ok(r.cellY <= 10, r.cellY);
 }
-// Far-east y=13: north.
+// Far-east y=13: same post-NE north.
 {
   const r = eastBPostWestRailApproach(
     { cellX: 22, cellY: 13, strength: 128 }, nwSam, null,
   );
-  assert.equal(r.reason, "spine-far-north");
+  assert.equal(r.reason, "sam-post-negun-north");
 }
-// Far-east y=8: cut west / attack SAM.
+// Far-east y=8: SAM attack-move.
 {
   const r = eastBPostWestRailApproach(
     { cellX: 22, cellY: 8, strength: 100 }, nwSam, null,
   );
-  assert.ok(r.reason.includes("sam") || r.reason.includes("cut") || r.reason.includes("spine"), r.reason);
+  assert.ok(r.reason.includes("sam"), r.reason);
 }
 
 // GUN finish band: back up from dist≤3 to SE standoff (l117).
@@ -239,22 +240,30 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.engage, true);
 }
 
-// free@21,11: north to y=7 (l146), not cut-west under GUN@16,9.
+// free@21,11: after NE clear, north to y=8 then SAM (l174f).
 {
   const r = eastBPostWestRailApproach(
     { cellX: 21, cellY: 11, strength: 128 }, nwSam, null,
   );
-  assert.equal(r.reason, "spine-far-north");
-  assert.ok(r.cellY <= 8);
+  assert.equal(r.reason, "sam-post-negun-north");
   assert.equal(r.engage, false);
+  assert.ok(r.cellY <= 8);
 }
 // y=7: SAM attack-move.
 {
   const r = eastBPostWestRailApproach(
     { cellX: 21, cellY: 7, strength: 100 }, nwSam, null,
   );
-  assert.ok(r.reason.startsWith("sam-"), r.reason);
+  assert.equal(r.reason, "sam-post-negun");
   assert.equal(r.engage, true);
+}
+// l174f: free@19,12@247 NE dead → north not thrash.
+{
+  const r = eastBPostWestRailApproach(
+    { cellX: 19, cellY: 12, strength: 247 }, nwSam, null,
+  );
+  assert.equal(r.reason, "sam-post-negun-north");
+  assert.equal(r.engage, false);
 }
 
 // l164/l169: 2 free in SE fire band engage NE GUN.
@@ -276,11 +285,43 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   );
   assert.equal(r.reason, "ne-gun-to-fire-cell");
   assert.equal(r.engage, false);
+  assert.ok(r.cellY <= 13 && r.cellX >= 18, `fire cell ${r.cellX},${r.cellY}`);
 }
 {
   const neGun = { cellX: 16, cellY: 9, strength: 400 };
   const r = eastBPostWestRailApproach(
     { cellX: 20, cellY: 13, strength: 200 }, nwSam, null,
+    { freeNorthCount: 1, neGun },
+  );
+  assert.equal(r.reason, "ne-gun-standoff-fire");
+  assert.equal(r.engage, true);
+}
+// l174b: free@19,16 Cheby 7 out of range — force-move to fire cell, no engage.
+{
+  const neGun = { cellX: 16, cellY: 9, strength: 400 };
+  const r = eastBPostWestRailApproach(
+    { cellX: 19, cellY: 16, strength: 226 }, nwSam, null,
+    { freeNorthCount: 1, neGun },
+  );
+  assert.equal(r.reason, "ne-gun-to-fire-cell");
+  assert.equal(r.engage, false);
+  assert.ok(r.cellY <= 13, `should seek y≤13 fire cell got ${r.cellY}`);
+}
+// l174b: free@18,17 thrash cell — still force-move north to fire cell.
+{
+  const neGun = { cellX: 16, cellY: 9, strength: 400 };
+  const r = eastBPostWestRailApproach(
+    { cellX: 18, cellY: 17, strength: 247 }, nwSam, null,
+    { freeNorthCount: 1, neGun },
+  );
+  assert.equal(r.reason, "ne-gun-to-fire-cell");
+  assert.equal(r.engage, false);
+}
+// l174b: free@18,12 Cheby 3 at fire band engages.
+{
+  const neGun = { cellX: 16, cellY: 9, strength: 400 };
+  const r = eastBPostWestRailApproach(
+    { cellX: 18, cellY: 12, strength: 200 }, nwSam, null,
     { freeNorthCount: 1, neGun },
   );
   assert.equal(r.reason, "ne-gun-standoff-fire");
