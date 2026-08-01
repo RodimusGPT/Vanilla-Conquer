@@ -4795,16 +4795,8 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         }
       }
     }
-    // TRACE l80: selling NUKE at GUN≤100 blacked out mid-2v1 (gunMin 200, no
-    // kill). Only sell last NUKE when western GUN is fully dead.
-    const westernGunStillUp = hostiles.some((hostile) => (
-      hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
-      && hostile.strength > 0
-    ));
-    // TRACE l141: do NOT sell last NUKE post-GUN while free peels (ends ~39058).
-    // TRACE l166: post-free-death NUKE sell refund ~240 <800 — free#4 never
-    // builds; keep last NUKE. Cash wall held.
-    void westernGunStillUp;
+    // TRACE l80/l141/l166: do NOT sell last NUKE post-GUN (free peel ends early)
+    // or post-free-death (refund ~240 <800 free#4). Keep power plant online.
   }
   const healthyReservedEastBTanks = mission.variant === "east-b" ? friendly.filter((object) => (
     object.typeName === "MTNK"
