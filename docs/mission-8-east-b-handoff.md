@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **RED** — western SAM dead (held); free@400 east-detour → GUN theatre / north rim; remaining 4 SAMs **400**; sole free loses GUN trade; no partner free / A-10 |
 | Branch | `browser-port` |
-| Commit | *(pending v397 push — update after push)* |
+| Commit | `222ed53` |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
