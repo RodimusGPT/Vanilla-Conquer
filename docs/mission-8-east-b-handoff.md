@@ -389,26 +389,29 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | l412 | free-near PROC; free@47,17 PROC→3 | free dead AFLD 1000 | civ-nine |
 | l413 | free@47,18 PROC+AFLD dead NUKEs left | free dead; AFLD rebuilds | all-destr-gg |
 | l417 | freeForce scrap + AFLD hop; free@41,19 str32 dies | AFLD→433 post-death | Moebius/hosp |
+| l418 | pad-hop first (MODIFIER_ALT); free@47,16 | PROC+AFLD dead, NUKEs left | civ-nine |
+| l419 | harder NUKE free-near; free@47,16 scrap | **entire east pad clear**@49800 | all-destr-gg |
+| l420 | keep-PROC after free | **REGRESS** freeLast 43800 air=0 | civ-nine — **reverted** |
 
 **Engine (free-near theatre only, not map mop):**
 - residual corridor GUNs Frame≥48000, chip 200/kill 350, near 0x0A00
-- residual east AFLD/PROC/NUKE Frame≥49000 free-near chip
+- residual east AFLD/PROC/NUKE Frame≥49000 free-near chip (NUKE 200/400/0x0E00)
 - A-10 DROP_BOMBS *4 + explosion *3; scen8 TURRET also legal tarcom
+- **Mop re-proof l418:** Frame≥55500 multi-pass + A-10 *40 place-chip **absent** (comments only)
 
 **Verifier residual:**
 - no soft-kite / no stage-hold retreat
-- west-first GUN (41,8→42,5→45,16); defer GUN@50,16 until pad done
-- residual commit str≥5; freeForce includes residual scrap x≥30 str≥5
-- pad-finish PROC→AFLD→NUKE after corridor guns dead
+- west-first GUN; defer GUN@50,16; pad-hop PROC→AFLD→NUKE while str≥80
+- residual commit str≥5; freeForce residual scrap x≥30 str≥5
+- keep-PROC after free **closed** (l411/l420 SAM path die)
 
 ### Recommended next (residual only)
 
-1. **Keep free alive after PROC** — free@39,14 str112 still bleeds under GUN@50,16 / pad fire while free-near chips PROC; force move onto PROC cell then AFLD hop {48,12} **before** str&lt;80.
-2. **Partner free#2 after all-SAM** — funds stuck **90** (PROC sold for SAM-pack partner); residual multi-sell not funding MTNK. Need live partner during residual or bank 800 before residual leave.
-3. **Stop AFLD rebuild** — west HAND@5,12 rebuilds pad after free death; free scrap cannot walk west. A-10 pass3+ on HAND/FACT while free residual, or free#2 continues.
-4. **All Destr. unit mop** after structures — minHostiles still ~63–70 (infantry/LTNK). free scrap unit-hunt no d cap once east pad structures dead.
-5. **Civ / Moebius** — lose civ-nine or Moebius/hosp after free dies; village screen must hold longer or free finishes faster (~49000–51000 window).
-6. **Gate** — 8GB EXIT0 `finalHostiles===0` without mop; then scratch evidence + handoff GREEN + commit/push **fork only**.
+1. **Partner free#2 during residual** without keep-PROC — bank 800 before residual leave (protect freeT=2 through SE SAM); multi-sell GTWR/SILO only; never sell sole NUKE.
+2. **Unit mop after pad clear** — free dies as pad empties (str~27). free scrap unit-hunt + A-10 pass3; minHostiles still ~70.
+3. **Stop AFLD rebuild** — west HAND rebuilds@52500; free#2 or A-10 HAND/FACT.
+4. **Civ hold** through residual window (~49–53k).
+5. **Gate** — 8GB EXIT0 `finalHostiles===0` without mop; scratch+handoff GREEN+push **fork only**.
 
 ---
 
