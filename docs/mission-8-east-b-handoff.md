@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — freeAfterPad + free survive to ~52k (str144@clear); WEAP dies@50100; civ-nine before pass3; maxAir=2. Mop absent. |
+| Status | **RED** — unit/inf mop stripped (skeptic); village TRAN peel; pass3 once (l430v maxAir=3); still civ/Moebius lose. |
 | Branch | `browser-port` |
-| Commit | WIP l430u free-near infantry/LTNK theatre + post-clear home band |
+| Commit | WIP l430v3 mop-strip + village airlift peel |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
-| Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `tiberiandawn/{building,infantry,unit}.cpp` + `aircraft.cpp` |
+| Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `tiberiandawn/{building,infantry,unit}.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l430u. Scratch: `m8-eastb-l430u.*` + `skeptic-mop-absent-l430u.txt` + `m8-eastb-l430u-summary.md` |
+| Last TRACE suite | l430v3. Scratch: `m8-eastb-l430v3.*` + `skeptic-mop-absent-l430v.txt` |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 

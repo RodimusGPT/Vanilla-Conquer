@@ -3516,6 +3516,7 @@ const missionEightState = {
   eastBSawEastAfld: false,
   // l346: latch residual commit so free does not bounce back to village bait.
   eastBResidualCommit: false,
+  eastBVillageTranCleared: false,
   // l308: tick of 8th civ death — shallow emergency window then pure hide.
   eastBCiv9LatchTick: undefined,
   eastBPostRidgePyleRebuildTick: undefined,
@@ -9869,11 +9870,15 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     // l274/l417: on ridge OR residual pad keep free control down to str≥5.
     // l416 free@39,14 PROC dead str64→32 fell out of freeForce (≥40) and idled
     // while AFLD@1000 — scrap free never received pad-finish/AFLD-hop orders.
+    // l430y: residual free after TRAN peel often scrap (str~28). Old gate
+    // required x≥30 str≥5 OR str≥40 — free@18,32 str28 idled mid-map until
+    // death (no pad clear). Once residual latched, keep free in freeForce
+    // down to str≥5 anywhere.
     const freeForce = attackers.filter((unit) => (
       unit.typeName === "MTNK"
       && (unit.strength >= 40
         || (unit.cellY >= 44 && unit.cellX <= 16 && unit.strength >= 5)
-        || (state.eastBResidualCommit && unit.cellX >= 30 && unit.strength >= 5))
+        || (state.eastBResidualCommit && unit.strength >= 5))
       && (state.eastBPostWestProducedTankKeys.has(objectKey(unit))
         || state.strikeKeys.has(objectKey(unit)))
       && !state.villageGuardKeys.has(objectKey(unit))
@@ -9901,7 +9906,7 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     const assaultForce = freeForce.filter((t) => (
       t.strength >= 80
       || (t.cellY >= 44 && t.cellX <= 16 && t.strength >= 5)
-      || (state.eastBResidualCommit && t.cellX >= 30 && t.strength >= 5)
+      || (state.eastBResidualCommit && t.strength >= 5)
     ));
     // l196: safe AFLD stand — free dies at 45,19 pathing to 50,14. Hold x≤42
     // y≈14 while A-10 softens east base; only ease east after AFLD is low.
@@ -9984,24 +9989,55 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                 || (d.targetStrengthMin ?? d.targetStrengthAfter ?? 1e9) < 700
               )
             ));
-            // l403/l425: residual leave@46k pass≥1 str≥100 (E4 death wall ~51k).
-            // l425 delayed leave@50k pass≥2 REGRESS — e4Emergency still forced
-            // leave@46k; free died without full pad clear; Moebius lose.
-            // Emergency leave when E4 swarm d≤6 after 45k (str still ≥90).
-            const e4Village = hostiles.filter((h) => (
-              h.typeName === "E4" && h.strength > 0
-              && missionEightDistance(tank, h) <= 6
-            )).length;
+            // l430v-restore: free peels village TRAN/E4/E1 (y≤54) until clear,
+            // then residual. l430v got maxAir=3 WEAP~54k nDeaths=8; later
+            // variants either died@43k chasing y=59 or bled scrap mid residual.
+            const freeInVillageBand = tank.cellY >= 44 && tank.cellY <= 54
+              && tank.cellX <= 16;
+            if (tank.cellY > 54 && tank.cellX <= 18
+              && !state.eastBResidualCommit) {
+              queueMissionEightRole(commands, `east-b-post-sam-village-reband-${key}`,
+                [tank], { cellX: 11, cellY: 48 }, MODIFIER_ALT, 1);
+              continue;
+            }
+            // No y-upper on airlift filter — TRAN often lands y=55–58. Free
+            // still reband if free itself drifts y>54 (pathfind death).
+            const villageAirlift = hostiles.filter((h) => (
+              h.strength > 0
+              && h.cellY >= 46 && h.cellX <= 20
+              && (h.typeName === "TRAN" || h.typeName === "E4"
+                || h.typeName === "E1" || h.typeName === "E3")
+            ));
+            if (freeInVillageBand && villageAirlift.length > 0
+              && tank.strength >= 50
+              && !state.eastBResidualCommit) {
+              const prey = villageAirlift.toSorted((a, b) => {
+                const rank = (h) => (
+                  h.typeName === "TRAN" ? 0
+                    : h.typeName === "E4" ? 1
+                      : h.typeName === "E3" ? 2 : 3
+                );
+                return rank(a) - rank(b)
+                  || missionEightDistance(tank, a) - missionEightDistance(tank, b)
+                  || a.strength - b.strength;
+              })[0];
+              // Engage TRAN even if y>54; only reband after kill if free drifts.
+              queueMissionEightRole(commands, `east-b-post-sam-village-airlift-${key}`,
+                [tank], prey, 0, 1);
+              continue;
+            }
             const lateVillageHold = tank.strength >= 100
-              && tank.cellY >= 46 && tank.cellX <= 12
+              && freeInVillageBand
               && passes >= 1
-              && snapshot.tick >= 46_000;
-            const e4EmergencyLeave = tank.strength >= 90
-              && tank.cellY >= 46 && tank.cellX <= 14
-              && passes >= 1
-              && snapshot.tick >= 45_000
-              && e4Village >= 1;
-            if (lateVillageHold || e4EmergencyLeave || afldSoft || afldChipped) {
+              && snapshot.tick >= 46_000
+              && villageAirlift.length === 0;
+            // pass3 residual: free still village-holds until pass≥3 so vg/WEAP
+            // live (l430v). Soft AFLD alone must not yank free pre-pass3.
+            const pass3Residual = passes >= 3 || snapshot.tick >= 54_500;
+            const canLatch = villageAirlift.length === 0
+              || !freeInVillageBand
+              || tank.cellX >= 20;
+            if (canLatch && (pass3Residual || lateVillageHold)) {
               state.eastBResidualCommit = true;
             }
             // l409: residual pad free fights to scrap (str≥5). l408 free@48,14
