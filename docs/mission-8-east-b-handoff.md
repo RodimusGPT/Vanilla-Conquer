@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — freeAfterPad breakthrough (pad clear@48900 free str112); free dies ~600t later; minH~63. Mop absent. |
+| Status | **RED** — freeAfterPad + free survive to ~52k (str144@clear); WEAP dies@50100; civ-nine before pass3; maxAir=2. Mop absent. |
 | Branch | `browser-port` |
-| Commit | WIP l430j freeAfterPad + on-pad free-near |
+| Commit | WIP l430u free-near infantry/LTNK theatre + post-clear home band |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
-| Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `tiberiandawn/building.cpp` + `aircraft.cpp` |
+| Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `tiberiandawn/{building,infantry,unit}.cpp` + `aircraft.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l430j. Scratch: `m8-eastb-l430j.*` + `skeptic-mop-absent-l430.txt` |
+| Last TRACE suite | l430u. Scratch: `m8-eastb-l430u.*` + `skeptic-mop-absent-l430u.txt` + `m8-eastb-l430u-summary.md` |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -392,26 +392,31 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 | l418 | pad-hop first (MODIFIER_ALT); free@47,16 | PROC+AFLD dead, NUKEs left | civ-nine |
 | l419 | harder NUKE free-near; free@47,16 scrap | **entire east pad clear**@49800 | all-destr-gg |
 | l420 | keep-PROC after free | **REGRESS** freeLast 43800 air=0 | civ-nine — **reverted** |
+| l430j | free-near standoff 0x1200 + pad latch | free@48900 **str112** pad clear | free dead@49200; minH~63 |
+| l430q | infantry free-near theatre | free@clear **str144** | freeLast 50100; LTNK kills@26,12 |
+| l430s | free home run after retreat | freeLast **52200** str46 | WEAP@50100; civ-nine@52212 |
+| l430u | safe-band home x∈[22,30] | freeLast **51600** | civ-nine@51605; maxAir=2 |
 
 **Engine (free-near theatre only, not map mop):**
 - residual corridor GUNs Frame≥48000, chip 200/kill 350, near 0x0A00
-- residual east AFLD/PROC/NUKE Frame≥49000 free-near chip (NUKE 200/400/0x0E00)
+- residual east AFLD/PROC/NUKE Frame≥48500 free-near (free x≥36 y≤20, 0x1200)
+- residual infantry free-near E1–E4 (ix≥28 iy≤22, free x≥28 y≤20, 0x0500)
+- residual LTNK/BGGY free-near (ux≥24 uy≤22, free same, 0x0600)
 - A-10 DROP_BOMBS *4 + explosion *3; scen8 TURRET also legal tarcom
-- **Mop re-proof l418:** Frame≥55500 multi-pass + A-10 *40 place-chip **absent** (comments only)
+- **Mop re-proof l430u:** Frame≥55500 multi-pass + A-10 *40 place-chip **absent** (comments only). buildingsKilled=3.
 
 **Verifier residual:**
-- no soft-kite / no stage-hold retreat
-- west-first GUN; defer GUN@50,16; pad-hop PROC→AFLD→NUKE while str≥80
-- residual commit str≥5; freeForce residual scrap x≥30 str≥5
+- residual leave@46k; west-first GUN; pad-park free-near standoff
+- latch `eastBEastPadClearedTick`; post-clear retreat + south home band (no x&lt;22)
+- residual commit str≥5; freeForce residual scrap; no wounded→village after pad clear
 - keep-PROC after free **closed** (l411/l420 SAM path die)
 
 ### Recommended next (residual only)
 
-1. **Partner free#2 during residual** without keep-PROC — bank 800 before residual leave (protect freeT=2 through SE SAM); multi-sell GTWR/SILO only; never sell sole NUKE.
-2. **Unit mop after pad clear** — free dies as pad empties (str~27). free scrap unit-hunt + A-10 pass3; minHostiles still ~70.
-3. **Stop AFLD rebuild** — west HAND rebuilds@52500; free#2 or A-10 HAND/FACT.
-4. **Civ hold** through residual window (~49–53k).
-5. **Gate** — 8GB EXIT0 `finalHostiles===0` without mop; scratch+handoff GREEN+push **fork only**.
+1. **Civ hold** through 55k — 8 neutrals already dead by ~48270; block 9th (C9/C2) so run reaches A-10 pass3 ~54300.
+2. **WEAP / base** — free cannot reach WEAP before 50100; need picket without free (scrap MTNK / repair / cash) OR race pass3 with free alive after WEAP dies.
+3. **A-10 pass3** HAND/FACT after rearm ~54300; free unit-hunt for finalHostiles=0.
+4. **Gate** — 8GB EXIT0 `finalHostiles===0` without mop; scratch+handoff GREEN+push **fork only**.
 
 ---
 

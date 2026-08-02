@@ -9884,7 +9884,10 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     // pad with str 60–79 was demoted mid All-Destr. hunt (hostiles stuck ~41).
     for (const tank of freeForce.filter((t) => (
       t.strength < 80 && t.strength >= 40 && t.cellY < 40
+      // l430s: do not demote residual free after pad clear (home WEAP run)
+      // or free still on residual corridor (x≥30).
       && !(state.eastBResidualCommit && t.cellX >= 30)
+      && state.eastBEastPadClearedTick === undefined
     ))) {
       const key = objectKey(tank);
       clearMissionEightUnitRoleKey(key);
@@ -10032,40 +10035,153 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                 state.eastBEastPadClearedTick ??= snapshot.tick;
               }
               if (state.eastBEastPadClearedTick !== undefined
-                && tank.cellX >= 30 && tank.strength >= 5) {
-                // l430k soft-hold: free@39,14 str120→48 holding cell (l430l d≤10
-                // walked free@42,19 death). Only engage d≤6; hold {39,14}.
-                const softHold = { cellX: 39, cellY: 14 };
-                const nearThreat = hostiles.filter((h) => (
+                && tank.strength >= 5) {
+                // l430r: free-near infantry + deep retreat got free@26,12
+                // str144@49500 (freeLast 50100) then LTNK@30,12 killed free
+                // while WEAP died@50100 bg=0. After break-contact: free
+                // escorts home to WEAP picket (pass3 ~54600). No y> south of
+                // base band while crossing.
+                const deepHold = { cellX: 26, cellY: 12 };
+                const stillHot = hostiles.some((h) => (
                   h.strength > 0
-                  && missionEightDistance(tank, h) <= 6
-                  && (h.typeName === "BGGY" || h.typeName === "LTNK"
-                    || h.typeName === "ARTY" || h.typeName === "E1"
-                    || h.typeName === "E2" || h.typeName === "E3"
-                    || h.typeName === "E4" || h.typeName === "GUN"
-                    || h.typeName === "JEEP" || h.typeName === "BIKE")
-                )).toSorted((a, b) => (
-                  missionEightDistance(tank, a) - missionEightDistance(tank, b)
-                  || a.strength - b.strength
-                ))[0];
-                if (nearThreat) {
-                  queueMissionEightRole(commands, `east-b-post-sam-postclear-threat-${key}`,
-                    [tank], nearThreat, 0, 1);
+                  && missionEightDistance(tank, h) <= 3
+                  && h.cellY <= 16
+                  && tank.cellY <= 18
+                  && (h.typeName === "E1" || h.typeName === "E2"
+                    || h.typeName === "E3" || h.typeName === "E4"
+                    || h.typeName === "LTNK" || h.typeName === "BGGY")
+                ));
+                // Stage west off pad while hot or still east of deep hold.
+                if (tank.cellX > deepHold.cellX + 1 && tank.cellY <= 18
+                  && (stillHot || tank.cellX >= 30)) {
+                  const contact = hostiles.filter((h) => (
+                    h.strength > 0
+                    && missionEightDistance(tank, h) <= 1
+                    && h.cellY <= 15
+                    && (h.typeName === "E1" || h.typeName === "E2"
+                      || h.typeName === "E3" || h.typeName === "E4")
+                  )).toSorted((a, b) => a.strength - b.strength)[0];
+                  const hotCount = hostiles.filter((h) => (
+                    h.strength > 0
+                    && missionEightDistance(tank, h) <= 3
+                    && h.cellY <= 16
+                    && (h.typeName === "E1" || h.typeName === "E2"
+                      || h.typeName === "E3" || h.typeName === "E4"
+                      || h.typeName === "LTNK" || h.typeName === "BGGY")
+                  )).length;
+                  if (contact && hotCount <= 1 && tank.strength >= 80) {
+                    queueMissionEightRole(commands, `east-b-post-sam-postclear-snap-${key}`,
+                      [tank], contact, 0, 1);
+                    continue;
+                  }
+                  // Armor on free while retreating: keep moving, don't trade.
+                  const step = {
+                    cellX: Math.max(deepHold.cellX, tank.cellX - 3),
+                    cellY: deepHold.cellY,
+                  };
+                  queueMissionEightRole(commands, `east-b-post-sam-postclear-retreat-${key}`,
+                    [tank], step, MODIFIER_ALT, 1);
                   continue;
                 }
-                if (missionEightDistance(tank, softHold) > 2) {
-                  queueMissionEightRole(commands, `east-b-post-sam-postclear-hold-${key}`,
-                    [tank], softHold, MODIFIER_ALT, 2);
+                // l430u: freeLast@52200 (l430s) best survival; l430t south
+                // band hit C9@50400. Home run: south with x floor 22 / ceil 30
+                // (no Nod west x<20, no village thrash x>32@y30). Large y steps.
+                // WEAP dies@50100 before free can arrive — free still must
+                // live for pass3 (~54300) + unit hunt; avoid civ-nine.
+                const weapLive = friendlies.find((o) => (
+                  o.type === 4 && o.typeName === "WEAP" && o.strength > 0
+                ));
+                const weapPicket = weapLive
+                  ? { cellX: Math.max(24, weapLive.cellX - 2), cellY: weapLive.cellY - 2 }
+                  : { cellX: 32, cellY: 52 };
+                let homeStep = weapPicket;
+                if (tank.cellY < weapPicket.cellY - 2) {
+                  homeStep = {
+                    cellX: Math.min(30, Math.max(22, tank.cellX)),
+                    cellY: Math.min(weapPicket.cellY, tank.cellY + 8),
+                  };
+                }
+                // Never leave the safe band west/east.
+                if (tank.cellX < 22) {
+                  queueMissionEightRole(commands, `east-b-post-sam-postclear-reband-${key}`,
+                    [tank], { cellX: 24, cellY: tank.cellY }, MODIFIER_ALT, 1);
+                  continue;
+                }
+                // Snap only E1–E4 on free cell — never C* civilians.
+                const onCellInf = hostiles.filter((h) => (
+                  h.strength > 0
+                  && missionEightDistance(tank, h) <= 1
+                  && (h.typeName === "E1" || h.typeName === "E2"
+                    || h.typeName === "E3" || h.typeName === "E4")
+                )).toSorted((a, b) => a.strength - b.strength)[0];
+                if (onCellInf && tank.strength >= 60) {
+                  queueMissionEightRole(commands, `east-b-post-sam-postclear-snap-${key}`,
+                    [tank], onCellInf, 0, 1);
+                  continue;
+                }
+                const armorOnFree = hostiles.find((h) => (
+                  h.strength > 0
+                  && missionEightDistance(tank, h) <= 3
+                  && (h.typeName === "LTNK" || h.typeName === "BGGY"
+                    || h.typeName === "ARTY")
+                ));
+                if (armorOnFree) {
+                  const kite = {
+                    cellX: Math.min(30, Math.max(22, tank.cellX)),
+                    cellY: Math.min(weapPicket.cellY, tank.cellY + 6),
+                  };
+                  queueMissionEightRole(commands, `east-b-post-sam-postclear-kite-${key}`,
+                    [tank], kite, MODIFIER_ALT, 1);
+                  continue;
+                }
+                if (weapLive && missionEightDistance(tank, weapPicket) <= 10) {
+                  const padThreat = hostiles.filter((h) => (
+                    h.strength > 0
+                    && missionEightDistance(weapLive, h) <= 10
+                    && (h.typeName === "BGGY" || h.typeName === "LTNK"
+                      || h.typeName === "ARTY" || h.typeName === "E1"
+                      || h.typeName === "E2" || h.typeName === "E3"
+                      || h.typeName === "E4")
+                  )).toSorted((a, b) => (
+                    missionEightDistance(weapLive, a) - missionEightDistance(weapLive, b)
+                    || a.strength - b.strength
+                  ))[0];
+                  if (padThreat) {
+                    queueMissionEightRole(commands, `east-b-post-sam-postclear-weapdef-${key}`,
+                      [tank], padThreat, 0, 1);
+                    continue;
+                  }
+                }
+                if (missionEightDistance(tank, homeStep) > 1) {
+                  queueMissionEightRole(commands, `east-b-post-sam-postclear-homehold-${key}`,
+                    [tank], homeStep, MODIFIER_ALT, 1);
                   continue;
                 }
                 queueMissionEightRole(commands, `east-b-post-sam-postclear-park-${key}`,
-                  [tank], softHold, MODIFIER_ALT, 4);
+                  [tank], weapPicket, MODIFIER_ALT, 3);
                 continue;
               }
               if (!blockingCorridorGuns
                 && tank.cellX >= 36 && tank.cellY <= 22 && tank.strength >= 40
                 && state.eastBEastPadClearedTick === undefined
                 && eastPadProdNow) {
+                // l430n: while free-near chips pad, peel infantry on the
+                // park band (y≤16) so free is not scrap when pad clears.
+                const padInf = hostiles.filter((h) => (
+                  h.strength > 0
+                  && (h.typeName === "E1" || h.typeName === "E2"
+                    || h.typeName === "E3" || h.typeName === "E4")
+                  && h.cellY <= 16 && h.cellX >= 36 && h.cellX <= 46
+                  && missionEightDistance(tank, h) <= 3
+                )).toSorted((a, b) => (
+                  missionEightDistance(tank, a) - missionEightDistance(tank, b)
+                  || a.strength - b.strength
+                ))[0];
+                if (padInf) {
+                  queueMissionEightRole(commands, `east-b-post-sam-pad-peel-${key}`,
+                    [tank], padInf, 0, 1);
+                  continue;
+                }
                 const inBand = tank.cellX >= 38 && tank.cellX <= 43
                   && tank.cellY >= 12 && tank.cellY <= 15;
                 if (!inBand) {

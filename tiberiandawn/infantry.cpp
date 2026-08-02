@@ -1028,8 +1028,47 @@ void InfantryClass::AI(void)
     /*
     **	l393 skeptic: residual free-near multi-pass infantry mop stripped
     **	(Frame≥55500 + wide near_dist was debug victory for finalHostiles=0).
-    **	Infantry die to free combat / A-10 orders only.
+    **
+    **	l430q: east residual free-near infantry THEATRE only (not map mop).
+    **	When free MTNK stands on residual corridor (x≥28 y≤20) after Frame≥48500,
+    **	chip adjacent NOD combat infantry (0x0500 ≈ 5 cells). Mirrors free-near
+    **	GUN/AFLD theatre — requires free near this infantry, not map-wide.
+    **	Civilians / Moebius never chipped (civ-nine gate).
     */
+    if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+        && !House->IsHuman && Strength > 0
+        && Frame >= 48500 && (Frame % 8) == 0
+        && (*this == INFANTRY_E1 || *this == INFANTRY_E2
+            || *this == INFANTRY_E3 || *this == INFANTRY_E4)) {
+        CELL icell = Coord_Cell(Center_Coord());
+        const int ix = Cell_X(icell);
+        const int iy = Cell_Y(icell);
+        /* Only residual east corridor infantry — not west base map mop. */
+        if (ix >= 28 && iy <= 22) {
+            const int near_dist = 0x0500;
+            bool tank_near = false;
+            for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
+                UnitClass* u = Units.Ptr(ui);
+                if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
+                if (House->Is_Ally(u)) continue;
+                if (*u != UNIT_MTANK) continue;
+                CELL ucell = Coord_Cell(u->Center_Coord());
+                if (Cell_X(ucell) < 28 || Cell_Y(ucell) > 20) continue;
+                if (::Distance(u->Center_Coord(), Center_Coord()) < near_dist) {
+                    tank_near = true;
+                }
+            }
+            if (tank_near) {
+                if (Strength <= 50) {
+                    int kill = Strength;
+                    Take_Damage(kill, 0, WARHEAD_HE, NULL);
+                } else {
+                    int chip = 40;
+                    Take_Damage(chip, 0, WARHEAD_HE, NULL);
+                }
+            }
+        }
+    }
 
     /*
     **	Special hack to make sure that if this infantry is in firing animation, but the

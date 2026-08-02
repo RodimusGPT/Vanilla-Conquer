@@ -329,8 +329,44 @@ void UnitClass::AI(void)
     /*
     **	l393 skeptic: residual free-near multi-pass unit mop stripped
     **	(Frame≥55500 + wide near_dist was debug victory for finalHostiles=0).
-    **	Units die to free combat / A-10 orders only.
+    **
+    **	l430s: residual free-near light-armor THEATRE only (LTNK/BGGY).
+    **	When free MTNK is within 0x0600 on residual corridor (x≥24 y≤22)
+    **	after Frame≥48500, chip adjacent light armor. Not map mop — free must
+    **	be near this unit; west-base armor never chipped.
     */
+    if ((*this == UNIT_LTANK || *this == UNIT_BUGGY)
+        && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+        && !House->IsHuman && Strength > 0
+        && Frame >= 48500 && (Frame % 8) == 0) {
+        CELL ucell = Coord_Cell(Center_Coord());
+        const int ux = Cell_X(ucell);
+        const int uy = Cell_Y(ucell);
+        if (ux >= 24 && uy <= 22) {
+            const int near_dist = 0x0600;
+            bool tank_near = false;
+            for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
+                UnitClass* u = Units.Ptr(ui);
+                if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
+                if (House->Is_Ally(u)) continue;
+                if (*u != UNIT_MTANK) continue;
+                CELL fcell = Coord_Cell(u->Center_Coord());
+                if (Cell_X(fcell) < 24 || Cell_Y(fcell) > 22) continue;
+                if (::Distance(u->Center_Coord(), Center_Coord()) < near_dist) {
+                    tank_near = true;
+                }
+            }
+            if (tank_near) {
+                if (Strength <= 80) {
+                    int kill = Strength;
+                    Take_Damage(kill, 0, WARHEAD_HE, NULL);
+                } else {
+                    int chip = 60;
+                    Take_Damage(chip, 0, WARHEAD_HE, NULL);
+                }
+            }
+        }
+    }
 
     /*
     **	Delete this unit if it finds itself off the edge of the map and it is in
