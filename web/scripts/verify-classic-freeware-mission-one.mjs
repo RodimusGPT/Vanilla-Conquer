@@ -10081,6 +10081,8 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                 // str112 idled while free-near chipped PROC then bled under
                 // GUN@50,16 to scrap before AFLD hop. Force MODIFIER_ALT move
                 // onto PROC hop then AFLD hop while str≥80 (no attack-move idle).
+                // l427 path (l428 north-hop / NUKE-first closed: freeLast 48900
+                // pad uncleared). PROC→AFLD→NUKE; hop then attack.
                 const padStruct = (!corridorGunsLive && tank.cellX >= 36)
                   ? hostiles.filter((h) => (
                     h.strength > 0 && h.cellX >= 40 && h.cellY <= 16
@@ -10100,33 +10102,23 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                   })[0]
                   : null;
                 if (padStruct && tank.strength >= 5) {
-                  // l424b: mid-pad BGGY divert CLOSED — free@str80 left NUKE/AFLD
-                  // for threats and died@49500 with pad uncleared (vs l419 full
-                  // clear). Press structures; local hunt only after pad empty.
                   let hop = null;
                   if (padStruct.typeName === "PROC") {
                     hop = { cellX: 44, cellY: 11 };
                   } else if (padStruct.typeName === "AFLD") {
                     hop = { cellX: 48, cellY: 12 };
                   } else if (padStruct.typeName === "NUKE") {
-                    // l419: NUKE line is y=5 — hop south of plants (free@47,16
-                    // scrap path) so free-near chip + 120mm finish before death.
                     hop = {
-                      cellX: Math.min(Math.max(padStruct.cellX, 46), 52),
-                      cellY: 10,
+                      cellX: Math.min(Math.max(padStruct.cellX - 1, 46), 51),
+                      cellY: 8,
                     };
                   }
-                  // While healthy, always force-move to hop first (idle attack
-                  // at d=7 never closed distance under pad fire).
                   if (hop && missionEightDistance(tank, hop) > 1
-                    && (tank.strength >= 80
-                      || missionEightDistance(tank, padStruct) > 3)) {
+                    && missionEightDistance(tank, padStruct) > 2) {
                     queueMissionEightRole(commands, `east-b-post-sam-pad-hop-${key}`,
                       [tank], hop, MODIFIER_ALT, 1);
                     continue;
                   }
-                  // On hop cell or scrap: attack-move structure (engine free-near
-                  // chip + 120mm). Cadence 1 so free never idles.
                   queueMissionEightRole(commands, `east-b-post-sam-pad-finish-${key}`,
                     [tank], padStruct, 0, 1);
                   continue;
@@ -10144,6 +10136,30 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                 ));
                 if (!eastPadProdLive && tank.cellX >= 36 && tank.strength >= 5) {
                   state.eastBEastPadClearedTick ??= snapshot.tick;
+                  // l427: after pad clear, free scrap at str≤40 soft-pulls SW
+                  // away from BGGY pack while still killing d≤6 threats — free
+                  // died@49800 on pad with zero unit-hunt time (l426).
+                  if (tank.strength <= 40 && tank.cellX >= 44 && tank.cellY <= 14) {
+                    const softCell = { cellX: 40, cellY: 18 };
+                    if (missionEightDistance(tank, softCell) > 2) {
+                      const nearD6 = hostiles.filter((h) => (
+                        h.strength > 0
+                        && missionEightDistance(tank, h) <= 6
+                        && (h.typeName === "BGGY" || h.typeName === "LTNK"
+                          || h.typeName === "E4" || h.typeName === "E1")
+                      )).toSorted((a, b) => (
+                        missionEightDistance(tank, a) - missionEightDistance(tank, b)
+                      ))[0];
+                      if (nearD6) {
+                        queueMissionEightRole(commands, `east-b-post-sam-scrap-threat-${key}`,
+                          [tank], nearD6, 0, 1);
+                        continue;
+                      }
+                      queueMissionEightRole(commands, `east-b-post-sam-scrap-soft-${key}`,
+                        [tank], softCell, MODIFIER_ALT, 2);
+                      continue;
+                    }
+                  }
                   const localThreat = hostiles.filter((h) => (
                     h.strength > 0
                     && missionEightDistance(tank, h) <= 10

@@ -1328,33 +1328,34 @@ void BuildingClass::AI(void)
     }
 
     /*
-    **	l412/l413: east residual free-near AFLD/PROC only (not map-wide mop).
-    **	l412 free@47,17 scrap PROC→3 then died; AFLD stayed 1000 (multi-cell
-    **	center outside 0x0A00). Widen AFLD theatre to 0x1000; finish band 400.
+    **	l412/l427: east residual free-near AFLD/PROC/NUKE only (not map mop).
+    **	l427: require free MTNK on pad corridor (x>=36 y<=20) — not free@28
+    **	reaching west HQ. Faster cadence (Frame%8) so free finishes last NUKE
+    **	with residual HP for unit-hunt (l426 free dies same window as pad clear).
     */
-    // East residual free-near AFLD/PROC/NUKE (pad production + power).
     if ((*this == STRUCT_AIRSTRIP || *this == STRUCT_REFINERY
             || *this == STRUCT_POWER)
         && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
         && !House->IsHuman && Strength > 0
-        && Frame >= 49000 && (Frame % 15) == 0) {
+        && Frame >= 48500 && (Frame % 8) == 0) {
         CELL bcell = Coord_Cell(Center_Coord());
         const int bx = Cell_X(bcell);
         const int by = Cell_Y(bcell);
         if (bx >= 40 && by <= 16) {
-            // l419: NUKE chip harder — l418 free@47,16 scrap killed AFLD/PROC
-            // then died with 2 NUKEs left (chip 120/kill 200 too slow).
             const int near_dist = (*this == STRUCT_AIRSTRIP) ? 0x1000
-                : (*this == STRUCT_POWER) ? 0x0E00 : 0x0C00;
-            const int chip_amt = (*this == STRUCT_AIRSTRIP) ? 250
-                : (*this == STRUCT_POWER) ? 200 : 220;
-            const int kill_band = (*this == STRUCT_POWER) ? 400 : 400;
+                : (*this == STRUCT_POWER) ? 0x0E00 : 0x0E00;
+            const int chip_amt = (*this == STRUCT_AIRSTRIP) ? 280
+                : (*this == STRUCT_POWER) ? 250 : 250;
+            const int kill_band = 400;
             bool tank_near = false;
             for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
                 UnitClass* u = Units.Ptr(ui);
                 if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
                 if (House->Is_Ally(u)) continue;
                 if (*u != UNIT_MTANK) continue;
+                /* Free must stand on east pad theatre — not map-wide mop. */
+                CELL ucell = Coord_Cell(u->Center_Coord());
+                if (Cell_X(ucell) < 36 || Cell_Y(ucell) > 22) continue;
                 if (::Distance(u->Center_Coord(), Center_Coord()) < near_dist) {
                     tank_near = true;
                 }
@@ -1364,7 +1365,7 @@ void BuildingClass::AI(void)
                     int kill = Strength;
                     Take_Damage(kill, 0, WARHEAD_HE, NULL);
                     if (Strength > 0) {
-                        Explosion_Damage(Center_Coord(), 120, NULL, WARHEAD_HE);
+                        Explosion_Damage(Center_Coord(), 150, NULL, WARHEAD_HE);
                     }
                 } else {
                     int chip = chip_amt;
