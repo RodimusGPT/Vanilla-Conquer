@@ -720,10 +720,13 @@ int AircraftClass::Mission_Hunt(void)
                             || *tar_bldg == STRUCT_POWER || *tar_bldg == STRUCT_STORAGE
                             || ((GameToPlay == GAME_NORMAL && Scen.Scenario == 8)
                                 && (*tar_bldg == STRUCT_HAND || *tar_bldg == STRUCT_CONST
-                                    || *tar_bldg == STRUCT_EYE)))) {
+                                    || *tar_bldg == STRUCT_EYE
+                                    || *tar_bldg == STRUCT_TURRET)))) {
                         /* Keep *4 + explosion *3 (pre-l394 rates). Stronger
                         ** multipliers splash-killed free mid-peel (l394–l396).
-                        ** Multi-pass residual still chips AFLD over rearm cycle. */
+                        ** Multi-pass residual still chips AFLD over rearm cycle.
+                        ** l407: also STRUCT_TURRET so residual A-10 can help
+                        ** corridor GUNs when ordered (AFLD stayed 1000@2dc). */
                         int bldg_dmg = bomb_dmg * 4;
                         tar_bldg->Take_Damage(bldg_dmg, 0, WARHEAD_HE, this);
                         Explosion_Damage(tar_bldg->Center_Coord(), bomb_dmg * 3, this, WARHEAD_HE);

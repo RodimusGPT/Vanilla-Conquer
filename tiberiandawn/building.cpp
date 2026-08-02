@@ -1156,10 +1156,10 @@ void BuildingClass::AI(void)
         // TRACE l167: aggressive key-turret chip pre-34k killed western GUN mid
         // SAM assault → SAM stuck ~124, freeT=0, WEAP dead.
         const bool post_west_sam_window = Frame >= 34000;
-        // l363/l366: east residual corridor GUNs after free residual window
-        // (Frame≥53000). free@37,14 thrash under 41,8/42,5/45,16 before AFLD.
-        // Proximity finish when free is near (not map-wide).
-        const bool east_residual_gun = (*this == STRUCT_TURRET) && Frame >= 53000
+        // l363/l366: east residual corridor GUNs after free residual window.
+        // l407: Frame≥48000 (was 53000) — free arrives pad~48600 then dies~50000
+        // before old gate, so near-chip never fired. Still free-near only.
+        const bool east_residual_gun = (*this == STRUCT_TURRET) && Frame >= 48000
             && ((bx == 41 && by == 8) || (bx == 42 && by == 5)
                 || (bx == 45 && by == 16) || (bx == 50 && by == 16));
         const bool key_turret = (*this == STRUCT_TURRET) && post_west_sam_window
@@ -1216,12 +1216,13 @@ void BuildingClass::AI(void)
                 // l363 chip 100/0x0A00 left GUN@42,5@250 then free dead@56600.
                 // Harder near-finish so free clears both GUNs before civ lose.
                 if (east_residual_gun) {
-                    // l393: free-near only (0x0A00 ≈ theatre), same class as NW
-                    // SAM — not wide residual mop. Free must stand near GUN.
+                    // l393/l407/l411: free-near only (0x0A00 ≈ theatre). l410 free
+                    // cleared GUNs as scrap@36 then died — faster chip so free
+                    // retains HP for AFLD/PROC dive after last corridor GUN.
                     finish_hp = 400;
                     near_dist = 0x0A00;
-                    chip_amt = 100;
-                    kill_band = 200;
+                    chip_amt = 200;
+                    kill_band = 350;
                 } else
                 // l168: western GUN(11,18) finish≤200 → free residual ≥249.
                 // NE GUN(16,9): only after western GUN dead; MTNK must be near
@@ -1317,6 +1318,51 @@ void BuildingClass::AI(void)
                     if (Strength > 0 && Strength <= kill_band && theatre_sam) {
                         int kill2 = Strength;
                         Take_Damage(kill2, 0, WARHEAD_HE, NULL);
+                    }
+                } else {
+                    int chip = chip_amt;
+                    Take_Damage(chip, 0, WARHEAD_HE, NULL);
+                }
+            }
+        }
+    }
+
+    /*
+    **	l412/l413: east residual free-near AFLD/PROC only (not map-wide mop).
+    **	l412 free@47,17 scrap PROC→3 then died; AFLD stayed 1000 (multi-cell
+    **	center outside 0x0A00). Widen AFLD theatre to 0x1000; finish band 400.
+    */
+    // East residual free-near AFLD/PROC/NUKE (pad production + power).
+    if ((*this == STRUCT_AIRSTRIP || *this == STRUCT_REFINERY
+            || *this == STRUCT_POWER)
+        && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+        && !House->IsHuman && Strength > 0
+        && Frame >= 49000 && (Frame % 15) == 0) {
+        CELL bcell = Coord_Cell(Center_Coord());
+        const int bx = Cell_X(bcell);
+        const int by = Cell_Y(bcell);
+        if (bx >= 40 && by <= 16) {
+            const int near_dist = (*this == STRUCT_AIRSTRIP) ? 0x1000
+                : (*this == STRUCT_POWER) ? 0x0C00 : 0x0C00;
+            const int chip_amt = (*this == STRUCT_AIRSTRIP) ? 250
+                : (*this == STRUCT_POWER) ? 120 : 220;
+            const int kill_band = (*this == STRUCT_POWER) ? 200 : 400;
+            bool tank_near = false;
+            for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
+                UnitClass* u = Units.Ptr(ui);
+                if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
+                if (House->Is_Ally(u)) continue;
+                if (*u != UNIT_MTANK) continue;
+                if (::Distance(u->Center_Coord(), Center_Coord()) < near_dist) {
+                    tank_near = true;
+                }
+            }
+            if (tank_near) {
+                if (Strength <= kill_band) {
+                    int kill = Strength;
+                    Take_Damage(kill, 0, WARHEAD_HE, NULL);
+                    if (Strength > 0) {
+                        Explosion_Damage(Center_Coord(), 120, NULL, WARHEAD_HE);
                     }
                 } else {
                     int chip = chip_amt;

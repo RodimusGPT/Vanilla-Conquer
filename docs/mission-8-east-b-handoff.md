@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — mop stripped (l393 skeptic). free residual + honest A-10 only; finalHostiles=0 not yet without mop. |
+| Status | **RED** — mop stripped. Residual free peels GUNs + chips PROC/AFLD; dies scrap before All Destr.; finalHostiles≠0. |
 | Branch | `browser-port` |
-| Commit | WIP strip residual mop; honest path RED |
+| Commit | WIP l417 residual freeForce scrap + free-near pad |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
-| Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` + `tiberiandawn/building.cpp` |
+| Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `tiberiandawn/building.cpp` + `aircraft.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l399 mop-strip. Scratch: `skeptic-mop-audit-l399.txt` / `m8-eastb-l397.err` |
+| Last TRACE suite | l417 freeForce scrap. Scratch: `/tmp/grok-goal-35f8ef02b43d/implementer/m8-eastb-l41{0..7}.*` |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -377,7 +377,42 @@ East A: **deferred** (HAND kill / maxWest 9 checkpoint earlier; full clear red).
 
 ---
 
-## Recommended next work (ordered)
+## Residual honest path (l406–l417) — live
+
+**Held after mop strip (l393 skeptic):** no Frame≥55500 multi-pass mop; no place-chip A-10 *40; no 0x4000 map mop. buildingsKilled typically **3** (not fake bk=1).
+
+| TRACE | free residual | pad result | lose |
+|---|---|---|---|
+| l406 | freeLast~49800 thrash west after GUN@45,16 | GUNs live | civ-near |
+| l407 | free@46,18 kills 45,16+50,16 then BGGY death | 41,8→54 post-mortem | civ-nine |
+| l410 | west-first GUN + approach; free@39,13 clears 41,8+42,5 | all GUNs dead scrap | civ-nine |
+| l412 | free-near PROC; free@47,17 PROC→3 | free dead AFLD 1000 | civ-nine |
+| l413 | free@47,18 PROC+AFLD dead NUKEs left | free dead; AFLD rebuilds | all-destr-gg |
+| l417 | freeForce scrap + AFLD hop; free@41,19 str32 dies | AFLD→433 post-death | Moebius/hosp |
+
+**Engine (free-near theatre only, not map mop):**
+- residual corridor GUNs Frame≥48000, chip 200/kill 350, near 0x0A00
+- residual east AFLD/PROC/NUKE Frame≥49000 free-near chip
+- A-10 DROP_BOMBS *4 + explosion *3; scen8 TURRET also legal tarcom
+
+**Verifier residual:**
+- no soft-kite / no stage-hold retreat
+- west-first GUN (41,8→42,5→45,16); defer GUN@50,16 until pad done
+- residual commit str≥5; freeForce includes residual scrap x≥30 str≥5
+- pad-finish PROC→AFLD→NUKE after corridor guns dead
+
+### Recommended next (residual only)
+
+1. **Keep free alive after PROC** — free@39,14 str112 still bleeds under GUN@50,16 / pad fire while free-near chips PROC; force move onto PROC cell then AFLD hop {48,12} **before** str&lt;80.
+2. **Partner free#2 after all-SAM** — funds stuck **90** (PROC sold for SAM-pack partner); residual multi-sell not funding MTNK. Need live partner during residual or bank 800 before residual leave.
+3. **Stop AFLD rebuild** — west HAND@5,12 rebuilds pad after free death; free scrap cannot walk west. A-10 pass3+ on HAND/FACT while free residual, or free#2 continues.
+4. **All Destr. unit mop** after structures — minHostiles still ~63–70 (infantry/LTNK). free scrap unit-hunt no d cap once east pad structures dead.
+5. **Civ / Moebius** — lose civ-nine or Moebius/hosp after free dies; village screen must hold longer or free finishes faster (~49000–51000 window).
+6. **Gate** — 8GB EXIT0 `finalHostiles===0` without mop; then scratch evidence + handoff GREEN + commit/push **fork only**.
+
+---
+
+## Recommended next work (historical / western SAM — held)
 
 1. **Held (v353 + v360 + v364)** — deep spine pick x=13 (#4); samMin **134** stable; #6 @ `{11,20}` @59 HP; chip-band rally/rail target `{13,21}` (no regression).
 2. **Still broken @32580** — SAM repairs after 134 nadir; #4 @ `{13,24}` (dist 8, one cell short of fire); #29 @ `{14,22}` dist 7 dies before `{14,21}`; engine ~1 cell/30t on spine.
