@@ -10019,9 +10019,9 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                   || (h.cellX === 42 && h.cellY === 5)
                   || (h.cellX === 45 && h.cellY === 16))
               ));
-              // l430i: latch pad clear when east AFLD/PROC/NUKE all dead once.
-              // free@48900 pad empty str112 (l430h) then AFLD fog-rebuild pulled
-              // free back to pad death. After first clear, prefer unit-hunt.
+              // l430i/k: latch pad clear; free@48900 str112 then dies@49500
+              // walking unit-hunt. After clear: soft-hold {39,14}, only kill
+              // threats d≤6 — survive toward A-10 pass3 / lower minH.
               const eastPadProdNow = hostiles.some((h) => (
                 h.strength > 0 && h.cellX >= 40 && h.cellY <= 16
                 && (h.typeName === "PROC" || h.typeName === "AFLD"
@@ -10031,30 +10031,59 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                 && tank.cellX >= 36) {
                 state.eastBEastPadClearedTick ??= snapshot.tick;
               }
-              if (!blockingCorridorGuns
-                && tank.cellX >= 36 && tank.cellY <= 22 && tank.strength >= 40
-                && state.eastBEastPadClearedTick === undefined) {
-                // HOLD in free-near band while pad prod still live.
-                if (eastPadProdNow) {
-                  const inBand = tank.cellX >= 38 && tank.cellX <= 43
-                    && tank.cellY >= 12 && tank.cellY <= 15;
-                  if (!inBand) {
-                    const padStand = {
-                      cellX: Math.min(43, Math.max(38, tank.cellX)),
-                      cellY: Math.min(15, Math.max(12, tank.cellY)),
-                    };
-                    if (tank.cellX >= 38 && tank.cellX <= 43) padStand.cellX = tank.cellX;
-                    if (tank.cellY >= 12 && tank.cellY <= 15) padStand.cellY = tank.cellY;
-                    if (missionEightDistance(tank, padStand) > 1) {
-                      queueMissionEightRole(commands, `east-b-post-sam-pad-park-${key}`,
-                        [tank], padStand, MODIFIER_ALT, 1);
-                      continue;
-                    }
-                  }
-                  queueMissionEightRole(commands, `east-b-post-sam-pad-park-hold-${key}`,
-                    [tank], { cellX: tank.cellX, cellY: tank.cellY }, MODIFIER_ALT, 2);
+              if (state.eastBEastPadClearedTick !== undefined
+                && tank.cellX >= 30 && tank.strength >= 5) {
+                // l430k soft-hold: free@39,14 str120→48 holding cell (l430l d≤10
+                // walked free@42,19 death). Only engage d≤6; hold {39,14}.
+                const softHold = { cellX: 39, cellY: 14 };
+                const nearThreat = hostiles.filter((h) => (
+                  h.strength > 0
+                  && missionEightDistance(tank, h) <= 6
+                  && (h.typeName === "BGGY" || h.typeName === "LTNK"
+                    || h.typeName === "ARTY" || h.typeName === "E1"
+                    || h.typeName === "E2" || h.typeName === "E3"
+                    || h.typeName === "E4" || h.typeName === "GUN"
+                    || h.typeName === "JEEP" || h.typeName === "BIKE")
+                )).toSorted((a, b) => (
+                  missionEightDistance(tank, a) - missionEightDistance(tank, b)
+                  || a.strength - b.strength
+                ))[0];
+                if (nearThreat) {
+                  queueMissionEightRole(commands, `east-b-post-sam-postclear-threat-${key}`,
+                    [tank], nearThreat, 0, 1);
                   continue;
                 }
+                if (missionEightDistance(tank, softHold) > 2) {
+                  queueMissionEightRole(commands, `east-b-post-sam-postclear-hold-${key}`,
+                    [tank], softHold, MODIFIER_ALT, 2);
+                  continue;
+                }
+                queueMissionEightRole(commands, `east-b-post-sam-postclear-park-${key}`,
+                  [tank], softHold, MODIFIER_ALT, 4);
+                continue;
+              }
+              if (!blockingCorridorGuns
+                && tank.cellX >= 36 && tank.cellY <= 22 && tank.strength >= 40
+                && state.eastBEastPadClearedTick === undefined
+                && eastPadProdNow) {
+                const inBand = tank.cellX >= 38 && tank.cellX <= 43
+                  && tank.cellY >= 12 && tank.cellY <= 15;
+                if (!inBand) {
+                  const padStand = {
+                    cellX: Math.min(43, Math.max(38, tank.cellX)),
+                    cellY: Math.min(15, Math.max(12, tank.cellY)),
+                  };
+                  if (tank.cellX >= 38 && tank.cellX <= 43) padStand.cellX = tank.cellX;
+                  if (tank.cellY >= 12 && tank.cellY <= 15) padStand.cellY = tank.cellY;
+                  if (missionEightDistance(tank, padStand) > 1) {
+                    queueMissionEightRole(commands, `east-b-post-sam-pad-park-${key}`,
+                      [tank], padStand, MODIFIER_ALT, 1);
+                    continue;
+                  }
+                }
+                queueMissionEightRole(commands, `east-b-post-sam-pad-park-hold-${key}`,
+                  [tank], { cellX: tank.cellX, cellY: tank.cellY }, MODIFIER_ALT, 2);
+                continue;
               }
               // l370/l380: structures map-wide once residual (HAND/FACT west
               // rebuild AFLD@57000 after free clears east pad@56400). Then any
