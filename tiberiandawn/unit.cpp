@@ -327,43 +327,10 @@ void UnitClass::AI(void)
     TarComClass::AI();
 
     /*
-    **	l379 Mission 8 east-b: residual free MTNK theatre unit finish.
-    **	When a GDI MTNK is already on the east pad (x≥36, Frame≥55500) and
-    **	near this Nod unit (0x0A00), apply free combat chip. Same tank_near
-    **	model as SE SAM/pad buildings — NOT map-wide mop (requires free near
-    **	each unit). Needed for All Destr. win after pad structures fall.
+    **	l393 skeptic: residual free-near multi-pass unit mop stripped
+    **	(Frame≥55500 + wide near_dist was debug victory for finalHostiles=0).
+    **	Units die to free combat / A-10 orders only.
     */
-    if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8
-        && House && !House->IsHuman && House->Class->House == HOUSE_BAD
-        && Strength > 0
-        && Frame >= 55500 && (Frame % 5) == 0
-        && !IsInLimbo) {
-        bool free_near = false;
-        for (int ui = 0; ui < Units.Count() && !free_near; ui++) {
-            UnitClass* u = Units.Ptr(ui);
-            if (u == NULL || u == this || u->IsInLimbo || u->Strength <= 0) continue;
-            if (House->Is_Ally(u)) continue; /* skip Nod allies; want GDI MTNK */
-            if (*u != UNIT_MTANK) continue;
-            CELL uc = Coord_Cell(u->Center_Coord());
-            if (Cell_X(uc) < 20) continue;
-            /* l383: free lives to 62k but hostiles stuck ~27 far from pad —
-            ** widen theatre 0x2000 so free residual sweep reaches remaining
-            ** packs (still requires free MTNK on map, not map-wide mop). */
-            if (::Distance(u->Center_Coord(), Center_Coord()) < 0x2000) {
-                free_near = true;
-            }
-        }
-        if (free_near) {
-            for (int pass = 0; pass < 3 && Strength > 0; pass++) {
-                int kill = Strength;
-                Take_Damage(kill, 0, WARHEAD_HE, NULL);
-                if (Strength > 0) {
-                    int kill2 = Strength;
-                    Take_Damage(kill2, 0, WARHEAD_AP, NULL);
-                }
-            }
-        }
-    }
 
     /*
     **	Delete this unit if it finds itself off the edge of the map and it is in

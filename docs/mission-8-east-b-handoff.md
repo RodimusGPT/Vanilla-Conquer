@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **GREEN** — gate EXIT 0; finalHostiles=0 finalFriendly=7; buildingsKilled=3; 0x4000=0 (l392). |
+| Status | **RED** — mop stripped (l393 skeptic). free residual + honest A-10 only; finalHostiles=0 not yet without mop. |
 | Branch | `browser-port` |
-| Commit | `f5467b9` GREEN residual free-near clear (l392) |
+| Commit | WIP strip residual mop; honest path RED |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` + `tiberiandawn/building.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l392 GREEN. Scratch: `east-b-l392-status.md` / `east-b-gate-l392.out` / `skeptic-mop-audit-l392.txt` |
+| Last TRACE suite | l399 mop-strip. Scratch: `skeptic-mop-audit-l399.txt` / `m8-eastb-l397.err` |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 

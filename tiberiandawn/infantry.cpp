@@ -1026,34 +1026,10 @@ void InfantryClass::AI(void)
         Mark(MARK_CHANGE);
 
     /*
-    **	l379 Mission 8 east-b: residual free MTNK theatre infantry finish.
-    **	Free dies under E1 swarm@46,17; chip when free MTNK near (0x0A00) and
-    **	on east pad (x≥36, Frame≥55500). Not map-wide mop.
+    **	l393 skeptic: residual free-near multi-pass infantry mop stripped
+    **	(Frame≥55500 + wide near_dist was debug victory for finalHostiles=0).
+    **	Infantry die to free combat / A-10 orders only.
     */
-    if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8
-        && House && !House->IsHuman && House->Class->House == HOUSE_BAD
-        && Strength > 0
-        && Frame >= 55500 && (Frame % 5) == 0
-        && !IsInLimbo) {
-        bool free_near = false;
-        for (int ui = 0; ui < Units.Count() && !free_near; ui++) {
-            UnitClass* u = Units.Ptr(ui);
-            if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
-            if (House->Is_Ally(u)) continue;
-            if (*u != UNIT_MTANK) continue;
-            CELL uc = Coord_Cell(u->Center_Coord());
-            if (Cell_X(uc) < 20) continue;
-            if (::Distance(u->Center_Coord(), Center_Coord()) < 0x2000) {
-                free_near = true;
-            }
-        }
-        if (free_near) {
-            for (int pass = 0; pass < 3 && Strength > 0; pass++) {
-                int dmg = Strength;
-                Take_Damage(dmg, 0, WARHEAD_HE, NULL);
-            }
-        }
-    }
 
     /*
     **	Special hack to make sure that if this infantry is in firing animation, but the

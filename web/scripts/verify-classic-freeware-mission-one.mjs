@@ -9710,27 +9710,18 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     const lastAirOrderTick = state.airstrike.orders.length > 0
       ? state.airstrike.orders[state.airstrike.orders.length - 1].tick
       : -Infinity;
-    // l353: pass1–2 fire early (no place-chip; free still west). Pass3+ wait
-    // until free residual mid-map (x≥20) so house.cpp place-chip softens AFLD
-    // while free is already on residual rail (not peel/village).
-    // free_mid matches house.cpp chip gate: residual rail x≥20 y≥30 (not SE stand).
-    const freeMidMap = attackers.some((unit) => (
-      unit.typeName === "MTNK" && unit.strength >= 80
-      && unit.cellX >= 20 && unit.cellY >= 30
-      && (state.eastBPostWestProducedTankKeys.has(objectKey(unit))
-        || state.strikeKeys.has(objectKey(unit)))
-    ));
-    // l366: free on residual east pad (x≥34) after commit — allow pass4+ while
-    // free finishes GUNs at y≈14 (freeMid y≥30 only covers southern rail).
-    const freeEastPad = attackers.some((unit) => (
-      unit.typeName === "MTNK" && unit.strength >= 80
-      && unit.cellX >= 34
+    // l353/l393: pass1–2 early. Pass3+ when residual free on map (place-chip
+    // mop stripped — honest A-10 overfly only). free scrap (str≥40) still gets
+    // multi-pass while hunting.
+    const freeResidualAir = attackers.some((unit) => (
+      unit.typeName === "MTNK" && unit.strength >= 40
+      && unit.cellX >= 20
       && (state.eastBPostWestProducedTankKeys.has(objectKey(unit))
         || state.strikeKeys.has(objectKey(unit)))
     ));
     const airPassCount = state.airstrike.orders?.length ?? 0;
     const airOk = airPassCount < 2
-      || (Boolean(state.eastBResidualCommit) && (freeMidMap || freeEastPad));
+      || (Boolean(state.eastBResidualCommit) && freeResidualAir);
     if (airstrikeEntry?.completed && !state.airstrike.pending
       && snapshot.tick >= state.allSamsDeadTick + 60
       && snapshot.tick >= lastAirOrderTick + 90
@@ -9761,20 +9752,25 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
           || h.typeName === "HQ" || h.typeName === "PROC"
         )
       ))).toSorted((a, b) => {
-        // Pass1–2 + residual pass3+: always-AFLD (l221 early-return). l364
-        // pass2→PROC regressed free BGGY death@52800. l368 pass3→GUN left AFLD
-        // spawning; free@41,19 civ-nine before pad clear. free kills GUNs via
-        // proximity (building.cpp east_residual_gun); A-10 place-chips AFLD.
+        // Pass1–2: always-AFLD (l221 early-return; l364 pass2→PROC regressed).
+        // Residual: soft AFLD still first; after AFLD dead diversify so multi-pass
+        // hits HAND/FACT/PROC (honest aircraft overfly, not place-chip mop).
+        const residualAir = Boolean(state.eastBResidualCommit);
+        const afldLive = hostiles.some((h) => (
+          h.typeName === "AFLD" && h.strength > 0 && h.cellX >= 40
+        ));
         const rank = (u) => {
-          // l221: always finish live AFLD before PROC/HAND (early return).
-          if (u.typeName === "AFLD" && u.strength > 0) return 0;
-          let r = u.typeName === "HAND" ? 1
-            : u.typeName === "FACT" ? 2
-              : u.typeName === "HQ" ? 3
-                : u.typeName === "PROC" ? 4
-                  : u.typeName === "GUN" ? 5
-                    : u.typeName === "NUKE" ? 6
-                      : 10;
+          if (!residualAir || afldLive) {
+            if (u.typeName === "AFLD" && u.strength > 0) return 0;
+          }
+          let r = u.typeName === "AFLD" ? 0
+            : u.typeName === "HAND" ? 1
+              : u.typeName === "FACT" ? 2
+                : u.typeName === "HQ" ? 3
+                  : u.typeName === "PROC" ? 4
+                    : u.typeName === "GUN" ? 5
+                      : u.typeName === "NUKE" ? 6
+                        : 10;
           if (orderedTypes.has(u.typeName)) r += 20;
           if (orderedCells.has(`${u.cellX},${u.cellY}`)) r += 40;
           return r;
@@ -9934,22 +9930,19 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                 || (d.targetStrengthMin ?? d.targetStrengthAfter ?? 1e9) < 700
               )
             ));
-            // Hard gate: free@139 village hold proven through ~53k; pass3 A-10
-            // rearm ~54060. Residual only after tick 53500 so free mid-rail can
-            // receive place-chip (house free x≥20 y≥30). Prior lastAir+N logic
-            // still left free@47520 for unknown reason.
+            // l400: residual leave@48k pass≥1 str≥130 (E4 death wall ~51k).
+            // Place-chip mop stripped — no free_mid wait for A-10 force-kill.
             const lateVillageHold = tank.strength >= 130
               && tank.cellY >= 46 && tank.cellX <= 12
-              && passes >= 2
-              && snapshot.tick >= 53_500;
-            if ((lateVillageHold || afldSoft || afldChipped)
-              && snapshot.tick >= 53_500) {
+              && passes >= 1
+              && snapshot.tick >= 48_000;
+            if (lateVillageHold || afldSoft || afldChipped) {
               state.eastBResidualCommit = true;
             }
             const commitResidual = Boolean(state.eastBResidualCommit)
               && tank.strength >= 80
-              && passes >= 2
-              && snapshot.tick >= 53_500;
+              && passes >= 1
+              && snapshot.tick >= 48_000;
             if (commitResidual) {
               // l370/l380: structures map-wide once residual (HAND/FACT west
               // rebuild AFLD@57000 after free clears east pad@56400). Then any
@@ -10114,17 +10107,14 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
           // free@4 BGGY#8@48@52920, dead@52950 under E4×3 (~1350t before pass-3).
           void airReady;
           const hideCell = { cellX: 5, cellY: 48 };
-          const pass2Tick = (state.airstrike.orders ?? [])
-            .filter((o) => o.tick !== undefined)
-            .map((o) => o.tick)
-            .sort((a, b) => a - b)[1];
-          const pastPass2Hold = passes >= 2 && pass2Tick !== undefined
-            && snapshot.tick >= pass2Tick + 2_000;
-          if (pastPass2Hold && tank.strength >= 5 && tank.cellY >= 44) {
-            // l323 bait → free@54300 ord=3. l328 south chase thrash closed.
-            // l329: bait only + d≤8 BGGY micro. Soft-def-fast free@148/139.
-            // l341: residual softEastStruct closed (false leave). Clamp/civ-soft
-            // deep-raid closed (unknown lose@50842). Pure bait+BGGY hold.
+          // l395: soft-def whenever free is in village after all-SAM (do not
+          // wait for A-10 pass — l394 free died@47k before rearm BGGY wall).
+          const villageSoftDef = state.allSamsDeadTick !== undefined
+            && tank.cellY >= 44 && tank.cellX <= 16 && tank.strength >= 5
+            && !state.eastBResidualCommit;
+          if (villageSoftDef) {
+            // l323 bait → free@54300 ord=3. l329 soft-def-fast free@148/139.
+            // l398 hide-e4 regressed free death@46800 — restore bait@str≥130.
             const bggyCadence = 1;
             if (tank.strength >= 130) {
               const bait = { cellX: 9, cellY: 49 };

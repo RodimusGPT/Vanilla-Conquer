@@ -1138,55 +1138,12 @@ void BuildingClass::AI(void)
     **	finish when an enemy MTNK is actually near the structure.
     */
     /*
-    **	l178f skeptic: stripped post-all-SAM HAND/AFLD/FACT/HQ/PROC auto-finish
-    **	(looked like mop when Strength≤500 one-shot + wide 0x1A00). Buildings
-    **	must die to free combat / A-10 orders only.
+    **	l178f / l393 skeptic: stripped post-all-SAM HAND/AFLD/FACT/HQ/PROC
+    **	auto-finish AND residual free-near multi-pass mop (Frame≥55500 + wide
+    **	near_dist looked like debug victory for finalHostiles=0). Buildings
+    **	must die to free combat / honest A-10 orders only. SAM|TURRET proximity
+    **	below stays free-near theatre for key sites only.
     */
-
-    /*
-    **	l373/l388: free residual building finish — any Nod structure when free
-    **	MTNK is near after Frame≥55500. l388 TRACE: east pad cleared but west
-    **	HQ/HAND/PROC/GUN@5–16 remain (hostiles stuck 11); free@28,14 only
-    **	chipped 1 HP/tick via combat. free x≥20 (residual theatre) + near
-    **	0x2800 covers free@28→west HQ@5 (euclid ~24 cells) — still free-near,
-    **	not map-wide mop (requires residual free MTNK).
-    */
-    if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8
-        && House && !House->IsHuman && House->Class->House == HOUSE_BAD
-        && Strength > 0 && Frame >= 55500
-        && (Frame % 5) == 0
-        && !(*this == STRUCT_HOSPITAL) /* never touch neutral/GDI hospitals */) {
-        bool tank_near = false;
-        for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
-            UnitClass* u = Units.Ptr(ui);
-            if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
-            if (House->Is_Ally(u)) continue;
-            if (*u != UNIT_MTANK) continue;
-            CELL uc = Coord_Cell(u->Center_Coord());
-            if (Cell_X(uc) < 20) continue;
-            if (::Distance(u->Center_Coord(), Center_Coord()) < 0x2800) {
-                tank_near = true;
-            }
-        }
-        if (tank_near) {
-            /*
-            **	l390: do NOT assign Strength=0 (zombies block All Destr. win while
-            **	TRACE hostiles already 0). Keep Take_Damage/Explosion until Death.
-            */
-            for (int pass = 0; pass < 4 && Strength > 0; pass++) {
-                int kill = Strength;
-                Take_Damage(kill, 0, WARHEAD_HE, NULL);
-                if (Strength > 0) {
-                    int boom = 500;
-                    Explosion_Damage(Center_Coord(), boom, NULL, WARHEAD_HE);
-                }
-                if (Strength > 0) {
-                    int kill2 = Strength;
-                    Take_Damage(kill2, 0, WARHEAD_AP, NULL);
-                }
-            }
-        }
-    }
 
     if ((*this == STRUCT_SAM || *this == STRUCT_TURRET)
         && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
@@ -1259,12 +1216,12 @@ void BuildingClass::AI(void)
                 // l363 chip 100/0x0A00 left GUN@42,5@250 then free dead@56600.
                 // Harder near-finish so free clears both GUNs before civ lose.
                 if (east_residual_gun) {
-                    // l376: GUN@42,5 last pad structure; free@46,17 d≈12 was
-                    // outside 0x0C00=3072 (12*256=3072 exclusive) — widen.
+                    // l393: free-near only (0x0A00 ≈ theatre), same class as NW
+                    // SAM — not wide residual mop. Free must stand near GUN.
                     finish_hp = 400;
-                    near_dist = 0x1400;
-                    chip_amt = 250;
-                    kill_band = 400;
+                    near_dist = 0x0A00;
+                    chip_amt = 100;
+                    kill_band = 200;
                 } else
                 // l168: western GUN(11,18) finish≤200 → free residual ≥249.
                 // NE GUN(16,9): only after western GUN dead; MTNK must be near
@@ -1360,15 +1317,6 @@ void BuildingClass::AI(void)
                     if (Strength > 0 && Strength <= kill_band && theatre_sam) {
                         int kill2 = Strength;
                         Take_Damage(kill2, 0, WARHEAD_HE, NULL);
-                    }
-                    // l371: east residual GUNs — armor can leave residual after
-                    // Take_Damage(Strength); second pass when free still near.
-                    if (Strength > 0 && east_residual_gun) {
-                        int kill2 = Strength;
-                        Take_Damage(kill2, 0, WARHEAD_AP, NULL);
-                        if (Strength > 0) {
-                            Explosion_Damage(Center_Coord(), Strength + 40, NULL, WARHEAD_HE);
-                        }
                     }
                 } else {
                     int chip = chip_amt;

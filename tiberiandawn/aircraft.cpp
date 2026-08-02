@@ -709,13 +709,21 @@ int AircraftClass::Mission_Hunt(void)
                         }
                     }
                     /*
-                    **	Direct building chip: AFLD / PROC / power (NUKE). GUN
-                    **	never (capture wipe). Take_Damage alone often no-ops vs
-                    **	building armor — always pair with Explosion.
+                    **	Honest A-10 DROP_BOMBS overfly (source = this aircraft).
+                    **	l393: place-time *40 mop stripped; overfly must actually
+                    **	chip ordered tarcoms. HAND/FACT/EYE allowed on scen 8 so
+                    **	multi-pass residual A-10 hits production (not GUN).
+                    **	Take_Damage alone often no-ops vs armor — pair Explosion.
                     */
                     if (tar_bldg != NULL && tar_bldg->Strength > 0
                         && (*tar_bldg == STRUCT_AIRSTRIP || *tar_bldg == STRUCT_REFINERY
-                            || *tar_bldg == STRUCT_POWER || *tar_bldg == STRUCT_STORAGE)) {
+                            || *tar_bldg == STRUCT_POWER || *tar_bldg == STRUCT_STORAGE
+                            || ((GameToPlay == GAME_NORMAL && Scen.Scenario == 8)
+                                && (*tar_bldg == STRUCT_HAND || *tar_bldg == STRUCT_CONST
+                                    || *tar_bldg == STRUCT_EYE)))) {
+                        /* Keep *4 + explosion *3 (pre-l394 rates). Stronger
+                        ** multipliers splash-killed free mid-peel (l394–l396).
+                        ** Multi-pass residual still chips AFLD over rearm cycle. */
                         int bldg_dmg = bomb_dmg * 4;
                         tar_bldg->Take_Damage(bldg_dmg, 0, WARHEAD_HE, this);
                         Explosion_Damage(tar_bldg->Center_Coord(), bomb_dmg * 3, this, WARHEAD_HE);
