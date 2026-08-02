@@ -10132,6 +10132,20 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                 [tank], hideCell, MODIFIER_ALT, 4);
               continue;
             }
+            // l401: E4 flamers drop free 144→32@46800 — kill nearest E4 first
+            // before BGGY micro when d≤5 (tank crush + 120mm).
+            const nearE4 = hostiles.filter((h) => (
+              h.typeName === "E4" && h.strength > 0
+              && missionEightDistance(tank, h) <= 5
+            )).toSorted((a, b) => (
+              missionEightDistance(tank, a) - missionEightDistance(tank, b)
+              || a.strength - b.strength
+            ));
+            if (nearE4.length > 0 && tank.strength >= 80) {
+              queueMissionEightRole(commands, `east-b-post-sam-e4-kill-${key}`,
+                [tank], nearE4[0], 0, 1);
+              continue;
+            }
             const nearBuggies = hostiles.filter((h) => (
               h.typeName === "BGGY" && h.strength > 0
               && missionEightDistance(tank, h) <= 8
