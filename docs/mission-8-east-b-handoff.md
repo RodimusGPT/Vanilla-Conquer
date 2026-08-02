@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — mop stripped (re-proved l418). Free residual clears **entire east pad** (GUNs+PROC+AFLD+NUKEs) then dies; minHostiles~70; AFLD rebuilds. |
+| Status | **RED** — free residual clears **entire east pad** then dies; minHostiles~70; lose all-destr-gg before A-10 pass3 rearm. Mop absent. |
 | Branch | `browser-port` |
-| Commit | WIP l419 pad-hop + free-near NUKE; keep-PROC closed again |
+| Commit | WIP l423 pad clear + A-10 after free death |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `tiberiandawn/building.cpp` + `aircraft.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l419 east pad clear. Scratch: `/tmp/grok-goal-35f8ef02b43d/implementer/m8-eastb-l41{8,9}.*` + `skeptic-mop-absent-l418.txt` |
+| Last TRACE suite | l423b. Scratch: `m8-eastb-l41{8,9,22,23b}.*` + `skeptic-mop-absent-l418.txt` |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 

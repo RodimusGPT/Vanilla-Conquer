@@ -5257,6 +5257,8 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       }
     }
     // Prefer MTNK partner whenever residual needs one (even if free on ridge).
+    // l421 freeT cap@2 post-west REGRESS — free thrash@42,33 never all-SAM
+    // (air=0, freeLast 44700). free#3 load-bearing for SE SAM clear. Restored.
     if (eastBMtnkEntry && !eastBMtnkEntry.constructing && !eastBMtnkEntry.completed
       && !eastBMtnkEntry.onHold && !eastBMtnkEntry.busy
       && funds >= eastBMtnkEntry.cost
@@ -9742,18 +9744,19 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     const lastAirOrderTick = state.airstrike.orders.length > 0
       ? state.airstrike.orders[state.airstrike.orders.length - 1].tick
       : -Infinity;
-    // l353/l393: pass1–2 early. Pass3+ when residual free on map (place-chip
-    // mop stripped — honest A-10 overfly only). free scrap (str≥40) still gets
-    // multi-pass while hunting.
+    // l353/l393/l423: pass1–2 early. Pass3+ after residual commit even if free
+    // scrap dies (l419 free clears east pad@49800 then dies; AFLD rebuilds@52500
+    // while pass3 blocked without freeResidualAir). Honest multi-pass A-10.
     const freeResidualAir = attackers.some((unit) => (
-      unit.typeName === "MTNK" && unit.strength >= 40
+      unit.typeName === "MTNK" && unit.strength >= 5
       && unit.cellX >= 20
       && (state.eastBPostWestProducedTankKeys.has(objectKey(unit))
         || state.strikeKeys.has(objectKey(unit)))
     ));
     const airPassCount = state.airstrike.orders?.length ?? 0;
     const airOk = airPassCount < 2
-      || (Boolean(state.eastBResidualCommit) && freeResidualAir);
+      || Boolean(state.eastBResidualCommit)
+      || freeResidualAir;
     if (airstrikeEntry?.completed && !state.airstrike.pending
       && snapshot.tick >= state.allSamsDeadTick + 60
       && snapshot.tick >= lastAirOrderTick + 90
@@ -9791,7 +9794,17 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
         const afldLive = hostiles.some((h) => (
           h.typeName === "AFLD" && h.strength > 0 && h.cellX >= 40
         ));
+        // l423: after free died and east AFLD dead once, prioritize west HAND
+        // then FACT (stop AFLD rebuild) over re-bombing empty pad.
+        const eastAfldEverDead = residualAir && !afldLive;
         const rank = (u) => {
+          if (eastAfldEverDead) {
+            if (u.typeName === "HAND") return 0;
+            if (u.typeName === "FACT") return 1;
+            if (u.typeName === "HQ") return 2;
+            if (u.typeName === "AFLD") return 3;
+            if (u.typeName === "PROC") return 4;
+          }
           if (!residualAir || afldLive) {
             if (u.typeName === "AFLD" && u.strength > 0) return 0;
           }
