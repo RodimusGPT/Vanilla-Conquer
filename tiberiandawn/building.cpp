@@ -1342,11 +1342,13 @@ void BuildingClass::AI(void)
         const int bx = Cell_X(bcell);
         const int by = Cell_Y(bcell);
         if (bx >= 40 && by <= 16) {
+            // l419: NUKE chip harder — l418 free@47,16 scrap killed AFLD/PROC
+            // then died with 2 NUKEs left (chip 120/kill 200 too slow).
             const int near_dist = (*this == STRUCT_AIRSTRIP) ? 0x1000
-                : (*this == STRUCT_POWER) ? 0x0C00 : 0x0C00;
+                : (*this == STRUCT_POWER) ? 0x0E00 : 0x0C00;
             const int chip_amt = (*this == STRUCT_AIRSTRIP) ? 250
-                : (*this == STRUCT_POWER) ? 120 : 220;
-            const int kill_band = (*this == STRUCT_POWER) ? 200 : 400;
+                : (*this == STRUCT_POWER) ? 200 : 220;
+            const int kill_band = (*this == STRUCT_POWER) ? 400 : 400;
             bool tank_near = false;
             for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
                 UnitClass* u = Units.Ptr(ui);

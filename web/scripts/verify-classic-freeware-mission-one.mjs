@@ -4856,17 +4856,14 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       }
     }
     // After free is out, sell PROC/PYLE for partner free (l252i load-bearing).
-    // l411 tried keep-PROC for residual cash — free died pre-all-SAM, WEAP lost.
-    // Restore PROC sell. Residual partner is free-near GUN/AFLD finish + multi
-    // free built before economy dies.
-    // l254d: delay sell while village understaffed and PYLE still up so we can
-    // burst-buy ≥4 E1 for BGGY-wave screen (l253) before barracks is sold.
+    // l420 keep-PROC-after-free regressed SAM clear (freeLast 43800, air=0) —
+    // same as l411. Restore PROC sell. Residual free#2 needs other cash path.
+    // l254d: delay sell while village understaffed and PYLE still up.
     if (freeBand.length === 1 && liveFundsNow < 800) {
       const villageInfNow = friendly.filter((object) => (
         object.type === 1 && object.strength > 0
         && state.villageGuardKeys.has(objectKey(object))
       )).length;
-      // Only delay when we can actually buy E1 and still bank 800 for partner.
       const delaySellForVillageScreen = builtAssets.has("PYLE")
         && villageInfNow < 4
         && liveFundsNow >= 900;
@@ -10034,9 +10031,8 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                   || missionEightDistance(tank, a) - missionEightDistance(tank, b);
               })[0];
               if (eastPrey) {
-                // l407/l408/l415: corridor GUN first always. l414 free stuck
-                // after PROC with GUN@50,16 still counting as corridorGunsLive
-                // so pad-finish never ran. Match gun-dive filter (exclude 50,16).
+                // l407/l408/l415: corridor GUN first always. Match gun-dive filter
+                // (exclude GUN@50,16 — deferred until pad production dead).
                 const corridorGunsLive = hostiles.some((h) => (
                   h.typeName === "GUN" && h.strength > 0
                   && ((h.cellX === 41 && h.cellY === 8)
@@ -10044,16 +10040,12 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                     || (h.cellX === 45 && h.cellY === 16)
                     || (h.cellX >= 38 && h.cellX < 50 && h.cellY <= 16))
                 ));
-                // l414: only block on west/mid corridor GUNs (41,8/42,5/45,16).
-                // GUN@50,16 diverted free (l413 free@42,19 scrap after last GUN
-                // then died with PROC/AFLD already killable). Kill pad production
-                // first; mop 50,16 after AFLD/PROC.
                 const gunRank = (u) => {
                   if (u.cellX === 41 && u.cellY === 8) return 0;
                   if (u.cellX === 42 && u.cellY === 5) return 1;
                   if (u.cellX === 45 && u.cellY === 16) return 2;
                   if (u.cellX >= 38 && u.cellX < 50 && u.cellY <= 16) return 3;
-                  return 9; // 50,16+ deferred
+                  return 9;
                 };
                 const nearCorridorGun = hostiles.filter((h) => (
                   h.typeName === "GUN" && h.strength > 0
@@ -10066,6 +10058,57 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                   || a.strength - b.strength
                   || missionEightDistance(tank, a) - missionEightDistance(tank, b)
                 ))[0];
+                // l418: HIGH-HP pad dive FIRST after corridor guns — free@39,14
+                // str112 idled while free-near chipped PROC then bled under
+                // GUN@50,16 to scrap before AFLD hop. Force MODIFIER_ALT move
+                // onto PROC hop then AFLD hop while str≥80 (no attack-move idle).
+                const padStruct = (!corridorGunsLive && tank.cellX >= 36)
+                  ? hostiles.filter((h) => (
+                    h.strength > 0 && h.cellX >= 40 && h.cellY <= 16
+                    && (h.typeName === "PROC" || h.typeName === "AFLD"
+                      || h.typeName === "NUKE" || h.typeName === "HAND"
+                      || h.typeName === "FACT")
+                  )).toSorted((a, b) => {
+                    const rank = (u) => (
+                      u.typeName === "PROC" ? 0
+                        : u.typeName === "AFLD" ? 1
+                          : u.typeName === "NUKE" ? 2
+                            : u.typeName === "HAND" ? 3
+                              : 4
+                    );
+                    return rank(a) - rank(b) || a.strength - b.strength
+                      || missionEightDistance(tank, a) - missionEightDistance(tank, b);
+                  })[0]
+                  : null;
+                if (padStruct && tank.strength >= 5) {
+                  let hop = null;
+                  if (padStruct.typeName === "PROC") {
+                    hop = { cellX: 44, cellY: 11 };
+                  } else if (padStruct.typeName === "AFLD") {
+                    hop = { cellX: 48, cellY: 12 };
+                  } else if (padStruct.typeName === "NUKE") {
+                    // l419: NUKE line is y=5 — hop south of plants (free@47,16
+                    // scrap path) so free-near chip + 120mm finish before death.
+                    hop = {
+                      cellX: Math.min(Math.max(padStruct.cellX, 46), 52),
+                      cellY: 10,
+                    };
+                  }
+                  // While healthy, always force-move to hop first (idle attack
+                  // at d=7 never closed distance under pad fire).
+                  if (hop && missionEightDistance(tank, hop) > 1
+                    && (tank.strength >= 80
+                      || missionEightDistance(tank, padStruct) > 3)) {
+                    queueMissionEightRole(commands, `east-b-post-sam-pad-hop-${key}`,
+                      [tank], hop, MODIFIER_ALT, 1);
+                    continue;
+                  }
+                  // On hop cell or scrap: attack-move structure (engine free-near
+                  // chip + 120mm). Cadence 1 so free never idles.
+                  queueMissionEightRole(commands, `east-b-post-sam-pad-finish-${key}`,
+                    [tank], padStruct, 0, 1);
+                  continue;
+                }
                 // l410: BGGY on pad kills free@48,14 mid GUN chip — crush/kill
                 // nearest BGGY at d≤5 before continuing gun peel.
                 const nearBggy = hostiles.filter((h) => (
@@ -10113,41 +10156,6 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                   queueMissionEightRole(commands, `east-b-post-sam-inf-clear-${key}`,
                     [tank], nearInf, 0, 1);
                   continue;
-                }
-                // l413/l416: after corridor GUNs dead, force PROC then AFLD.
-                // l415 free@39,14 PROC dead but drifted y20 (path thrash) with
-                // AFLD@1000 — hard approach hop then dive. GUN@50,16 deferred.
-                if (!corridorGunsLive && tank.cellX >= 36 && tank.strength >= 5) {
-                  const padStruct = hostiles.filter((h) => (
-                    h.strength > 0 && h.cellX >= 40 && h.cellY <= 16
-                    && (h.typeName === "PROC" || h.typeName === "AFLD"
-                      || h.typeName === "NUKE" || h.typeName === "HAND"
-                      || h.typeName === "FACT")
-                  )).toSorted((a, b) => {
-                    const rank = (u) => (
-                      u.typeName === "PROC" ? 0
-                        : u.typeName === "AFLD" ? 1
-                          : u.typeName === "NUKE" ? 2
-                            : u.typeName === "HAND" ? 3
-                              : 4
-                    );
-                    return rank(a) - rank(b) || a.strength - b.strength
-                      || missionEightDistance(tank, a) - missionEightDistance(tank, b);
-                  })[0];
-                  if (padStruct) {
-                    if (padStruct.typeName === "AFLD"
-                      && missionEightDistance(tank, padStruct) > 6) {
-                      const hop = { cellX: 48, cellY: 12 };
-                      if (missionEightDistance(tank, hop) > 2) {
-                        queueMissionEightRole(commands, `east-b-post-sam-afld-hop-${key}`,
-                          [tank], hop, MODIFIER_ALT, 1);
-                        continue;
-                      }
-                    }
-                    queueMissionEightRole(commands, `east-b-post-sam-pad-finish-${key}`,
-                      [tank], padStruct, 0, 1);
-                    continue;
-                  }
                 }
                 // l372/l376: hard attack-move pad structures once free x≥36.
                 if (tank.cellX >= 36
