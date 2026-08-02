@@ -9946,7 +9946,39 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
           // l257d SE-hold closed: free@125@38,16 dies mid-rearm civ-nine@48876.
           // l352: skip peel once residual latched (A-10 delayed; peels would
           // bounce free back to village mid residual rail).
+          // l432c: village peel = LTNK death corridor. Healthy free after
+          // all-SAM (even pre pass1): residual EAST for pad free-near, not
+          // south. Village infantry + Moebius picket hold civs.
+          const healthyEastFree = tank.strength >= 120
+            && tank.cellY <= 22
+            && tank.cellX >= 26
+            && state.allSamsDeadTick !== undefined
+            && snapshot.tick >= 38_500;
+          if (healthyEastFree && !state.eastBResidualCommit) {
+            state.eastBResidualCommit = true;
+          }
           if (passes < 3 && !state.eastBResidualCommit) {
+            // Kite south-west away from chase armor — never stand-and-trade LTNK
+            // mid-peel (l432 free died trading).
+            const chaseArmor = hostiles.filter((h) => (
+              h.strength > 0
+              && missionEightDistance(tank, h) <= 4
+              && (h.typeName === "LTNK" || h.typeName === "BGGY"
+                || h.typeName === "ARTY")
+            )).toSorted((a, b) => (
+              missionEightDistance(tank, a) - missionEightDistance(tank, b)
+            ))[0];
+            if (chaseArmor) {
+              const kite = {
+                cellX: chaseArmor.cellX >= tank.cellX
+                  ? Math.max(8, tank.cellX - 3)
+                  : Math.min(28, tank.cellX + 2),
+                cellY: Math.min(48, tank.cellY + 5),
+              };
+              queueMissionEightRole(commands, `east-b-post-sam-peel-kite-${key}`,
+                [tank], kite, MODIFIER_ALT, 1);
+              continue;
+            }
             if (tank.cellX >= 34 && tank.cellY <= 18) {
               queueMissionEightRole(commands, `east-b-post-sam-peel1-${key}`,
                 [tank], nearSafe, MODIFIER_ALT, 6);
@@ -9990,47 +10022,81 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                 || (d.targetStrengthMin ?? d.targetStrengthAfter ?? 1e9) < 700
               )
             ));
-            // l431e: freeAfterPad path — residual leave@46k from village with
-            // str≥100 (l430j free@clear str112). No early village fight (free
-            // died@42600 pealing TRAN on arrival). freeResidualAir y≥44 still
-            // enables pass3 if free dies mid residual. Moebius = infantry.
+            // l432: residual@46k if healthy. At village: kill LTNK/E4/TRAN on
+            // free (d≤3) first — free@6,49 died under LTNK@10,50 not TRAN.
+            // freeResidualAir y≥44 enables pass3.
             const freeInVillageBand = tank.cellY >= 44 && tank.cellX <= 16;
-            // Snap only TRAN/E4 on free cell (d≤1) while waiting residual —
-            // never chase into airlift death.
-            if (freeInVillageBand && tank.strength >= 90
+            if (freeInVillageBand && tank.strength >= 60
               && !state.eastBResidualCommit) {
-              const onCell = hostiles.filter((h) => (
+              const onFree = hostiles.filter((h) => (
                 h.strength > 0
-                && missionEightDistance(tank, h) <= 1
-                && (h.typeName === "TRAN" || h.typeName === "E4")
-              )).toSorted((a, b) => a.strength - b.strength)[0];
-              if (onCell) {
+                && missionEightDistance(tank, h) <= 3
+                && (h.typeName === "LTNK" || h.typeName === "BGGY"
+                  || h.typeName === "TRAN" || h.typeName === "E4"
+                  || h.typeName === "ARTY")
+              )).toSorted((a, b) => {
+                const rank = (h) => (
+                  h.typeName === "LTNK" || h.typeName === "BGGY" ? 0
+                    : h.typeName === "TRAN" ? 1
+                      : h.typeName === "ARTY" ? 2 : 3
+                );
+                return rank(a) - rank(b)
+                  || missionEightDistance(tank, a) - missionEightDistance(tank, b)
+                  || a.strength - b.strength;
+              })[0];
+              if (onFree) {
                 queueMissionEightRole(commands, `east-b-post-sam-village-snap-${key}`,
-                  [tank], onCell, 0, 2);
+                  [tank], onFree, 0, 1);
                 continue;
               }
             }
-            // Residual@46k healthy free (pad free-near path) OR after pass3.
-            const lateVillageHold = tank.strength >= 100
+            // Residual@46k if free not under armor (str≥80 after LTNK trade)
+            // OR after pass3. Don't leave while LTNK d≤5 of free.
+            const armorOnFree = hostiles.some((h) => (
+              h.strength > 0
+              && missionEightDistance(tank, h) <= 5
+              && (h.typeName === "LTNK" || h.typeName === "BGGY"
+                || h.typeName === "ARTY")
+            ));
+            const lateVillageHold = tank.strength >= 80
               && freeInVillageBand
               && passes >= 1
-              && snapshot.tick >= 46_000;
+              && snapshot.tick >= 46_000
+              && !armorOnFree;
             const pass3Residual = passes >= 3 || snapshot.tick >= 54_500;
             const afldSoftLatch = (afldSoft || afldChipped)
               && freeInVillageBand
-              && tank.strength >= 100
-              && snapshot.tick >= 46_000;
+              && tank.strength >= 80
+              && snapshot.tick >= 46_000
+              && !armorOnFree;
             if (lateVillageHold || pass3Residual || afldSoftLatch) {
               state.eastBResidualCommit = true;
             }
-            // l409: residual pad free fights to scrap (str≥5). l408 free@48,14
-            // str37 dropped out of commitResidual (≥80) and abandoned GUN@41,8
-            // mid-chip → BGGY death; 41,8 died only post-mortem.
+            // l409: residual pad free fights to scrap (str≥5). l432b: allow
+            // residual pad path from 39k (healthyEastFree latch) — old gate
+            // tick≥45k left free with residual flag but no pad path → free
+            // drifted south village death (free@38,15→11,48 dead@42600).
+            // l432c: residual pad path as soon as residual latched (no pass
+            // gate — healthyEastFree may fire pre-A-10). Allow tick≥38500.
             const commitResidual = Boolean(state.eastBResidualCommit)
               && tank.strength >= 5
-              && passes >= 1
-              && snapshot.tick >= 45_000;
+              && snapshot.tick >= 38_500;
             if (commitResidual) {
+              // Re-approach pad if free drifted south OR west off pad while
+              // east pad GUNs/prod still live (l432e free@38,15→28,14 dead
+              // with GUN@50,16 still up — never finished pad).
+              const eastPadLive = hostiles.some((h) => (
+                h.strength > 0 && h.cellX >= 40 && h.cellY <= 18
+                && (h.typeName === "GUN" || h.typeName === "PROC"
+                  || h.typeName === "AFLD" || h.typeName === "NUKE")
+              ));
+              if (eastPadLive && (tank.cellY > 18 || tank.cellX < 36)
+                && tank.strength >= 40) {
+                const reApproach = { cellX: 40, cellY: 14 };
+                queueMissionEightRole(commands, `east-b-post-sam-reapproach-${key}`,
+                  [tank], reApproach, MODIFIER_ALT, 1);
+                continue;
+              }
               // l430e: park at {42,12} ONLY after blocking corridor GUNs dead
               // (41,8/42,5/45,16). l430d parked under live GUN@41 and free died
               // without clearing guns. After guns dead: hold park so free-near
@@ -10041,143 +10107,98 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                   || (h.cellX === 42 && h.cellY === 5)
                   || (h.cellX === 45 && h.cellY === 16))
               ));
-              // l430i/k: latch pad clear; free@48900 str112 then dies@49500
-              // walking unit-hunt. After clear: soft-hold {39,14}, only kill
-              // threats d≤6 — survive toward A-10 pass3 / lower minH.
+              // l432d: latch pad clear only when ALL east pad GUNs dead too
+              // (l432d free@clear@39600 with GUN@50,16 still live → free died
+              //@40800 retreating). free@clear str306 is win path if free holds.
               const eastPadProdNow = hostiles.some((h) => (
                 h.strength > 0 && h.cellX >= 40 && h.cellY <= 16
                 && (h.typeName === "PROC" || h.typeName === "AFLD"
                   || h.typeName === "NUKE")
               ));
-              if (!blockingCorridorGuns && !eastPadProdNow
-                && tank.cellX >= 36) {
+              const eastPadGunsNow = hostiles.some((h) => (
+                h.typeName === "GUN" && h.strength > 0
+                && h.cellX >= 40 && h.cellY <= 18
+              ));
+              if (!blockingCorridorGuns && !eastPadProdNow && !eastPadGunsNow
+                && tank.cellX >= 30) {
                 state.eastBEastPadClearedTick ??= snapshot.tick;
+              }
+              // l432f: while last east pad GUN lives, PARK {38,14} and let
+              // free-near finish (free@38,15 str306→45 walking into GUN@50,16).
+              if (eastPadGunsNow && !eastPadProdNow && !blockingCorridorGuns
+                && tank.strength >= 40 && tank.cellY <= 20) {
+                const gunPark = { cellX: 38, cellY: 14 };
+                if (missionEightDistance(tank, gunPark) > 2) {
+                  queueMissionEightRole(commands, `east-b-post-sam-gun-park-${key}`,
+                    [tank], gunPark, MODIFIER_ALT, 1);
+                  continue;
+                }
+                queueMissionEightRole(commands, `east-b-post-sam-gun-hold-${key}`,
+                  [tank], gunPark, MODIFIER_ALT, 2);
+                continue;
               }
               if (state.eastBEastPadClearedTick !== undefined
                 && tank.strength >= 5) {
-                // l430r: free-near infantry + deep retreat got free@26,12
-                // str144@49500 (freeLast 50100) then LTNK@30,12 killed free
-                // while WEAP died@50100 bg=0. After break-contact: free
-                // escorts home to WEAP picket (pass3 ~54600). No y> south of
-                // base band while crossing.
-                const deepHold = { cellX: 26, cellY: 12 };
-                const stillHot = hostiles.some((h) => (
-                  h.strength > 0
-                  && missionEightDistance(tank, h) <= 3
-                  && h.cellY <= 16
-                  && tank.cellY <= 18
-                  && (h.typeName === "E1" || h.typeName === "E2"
-                    || h.typeName === "E3" || h.typeName === "E4"
-                    || h.typeName === "LTNK" || h.typeName === "BGGY")
-                ));
-                // Stage west off pad while hot or still east of deep hold.
-                if (tank.cellX > deepHold.cellX + 1 && tank.cellY <= 18
-                  && (stillHot || tank.cellX >= 30)) {
-                  const contact = hostiles.filter((h) => (
-                    h.strength > 0
-                    && missionEightDistance(tank, h) <= 1
-                    && h.cellY <= 15
-                    && (h.typeName === "E1" || h.typeName === "E2"
-                      || h.typeName === "E3" || h.typeName === "E4")
-                  )).toSorted((a, b) => a.strength - b.strength)[0];
-                  const hotCount = hostiles.filter((h) => (
-                    h.strength > 0
-                    && missionEightDistance(tank, h) <= 3
-                    && h.cellY <= 16
-                    && (h.typeName === "E1" || h.typeName === "E2"
-                      || h.typeName === "E3" || h.typeName === "E4"
-                      || h.typeName === "LTNK" || h.typeName === "BGGY")
-                  )).length;
-                  if (contact && hotCount <= 1 && tank.strength >= 80) {
-                    queueMissionEightRole(commands, `east-b-post-sam-postclear-snap-${key}`,
-                      [tank], contact, 0, 1);
-                    continue;
-                  }
-                  // Armor on free while retreating: keep moving, don't trade.
-                  const step = {
-                    cellX: Math.max(deepHold.cellX, tank.cellX - 3),
-                    cellY: deepHold.cellY,
-                  };
-                  queueMissionEightRole(commands, `east-b-post-sam-postclear-retreat-${key}`,
-                    [tank], step, MODIFIER_ALT, 1);
-                  continue;
-                }
-                // l430u: freeLast@52200 (l430s) best survival; l430t south
-                // band hit C9@50400. Home run: south with x floor 22 / ceil 30
-                // (no Nod west x<20, no village thrash x>32@y30). Large y steps.
-                // WEAP dies@50100 before free can arrive — free still must
-                // live for pass3 (~54300) + unit hunt; avoid civ-nine.
-                const weapLive = friendlies.find((o) => (
-                  o.type === 4 && o.typeName === "WEAP" && o.strength > 0
-                ));
-                const weapPicket = weapLive
-                  ? { cellX: Math.max(24, weapLive.cellX - 2), cellY: weapLive.cellY - 2 }
-                  : { cellX: 32, cellY: 52 };
-                let homeStep = weapPicket;
-                if (tank.cellY < weapPicket.cellY - 2) {
-                  homeStep = {
-                    cellX: Math.min(30, Math.max(22, tank.cellX)),
-                    cellY: Math.min(weapPicket.cellY, tank.cellY + 8),
-                  };
-                }
-                // Never leave the safe band west/east.
-                if (tank.cellX < 22) {
-                  queueMissionEightRole(commands, `east-b-post-sam-postclear-reband-${key}`,
-                    [tank], { cellX: 24, cellY: tank.cellY }, MODIFIER_ALT, 1);
-                  continue;
-                }
-                // Snap only E1–E4 on free cell — never C* civilians.
-                const onCellInf = hostiles.filter((h) => (
-                  h.strength > 0
-                  && missionEightDistance(tank, h) <= 1
-                  && (h.typeName === "E1" || h.typeName === "E2"
-                    || h.typeName === "E3" || h.typeName === "E4")
-                )).toSorted((a, b) => a.strength - b.strength)[0];
-                if (onCellInf && tank.strength >= 60) {
-                  queueMissionEightRole(commands, `east-b-post-sam-postclear-snap-${key}`,
-                    [tank], onCellInf, 0, 1);
-                  continue;
-                }
-                const armorOnFree = hostiles.find((h) => (
-                  h.strength > 0
-                  && missionEightDistance(tank, h) <= 3
-                  && (h.typeName === "LTNK" || h.typeName === "BGGY"
-                    || h.typeName === "ARTY")
-                ));
-                if (armorOnFree) {
-                  const kite = {
-                    cellX: Math.min(30, Math.max(22, tank.cellX)),
-                    cellY: Math.min(weapPicket.cellY, tank.cellY + 6),
-                  };
-                  queueMissionEightRole(commands, `east-b-post-sam-postclear-kite-${key}`,
-                    [tank], kite, MODIFIER_ALT, 1);
-                  continue;
-                }
-                if (weapLive && missionEightDistance(tank, weapPicket) <= 10) {
-                  const padThreat = hostiles.filter((h) => (
-                    h.strength > 0
-                    && missionEightDistance(weapLive, h) <= 10
-                    && (h.typeName === "BGGY" || h.typeName === "LTNK"
-                      || h.typeName === "ARTY" || h.typeName === "E1"
-                      || h.typeName === "E2" || h.typeName === "E3"
-                      || h.typeName === "E4")
+                // l432i: free@pad clear str306@39600 then died@40800 walking
+                // west home (postclear retreat). Soft-hold pad {39,14}: kill
+                // threats d≤4, park otherwise. Unit-hunt eastStructs after.
+                // Home only if str<80 scrap (can't hold).
+                const softHold = { cellX: 39, cellY: 14 };
+                if (tank.strength >= 80) {
+                  // l432k: free@clear str306 dies under ARTY in 600t parking.
+                  // While free healthy (str≥150): hunt nearest ARTY map-east
+                  // (x≥20) hard. Below 150: soft-hold only, no chase.
+                  const arty = hostiles.filter((h) => (
+                    h.strength > 0 && h.typeName === "ARTY" && h.cellX >= 20
                   )).toSorted((a, b) => (
-                    missionEightDistance(weapLive, a) - missionEightDistance(weapLive, b)
+                    missionEightDistance(tank, a) - missionEightDistance(tank, b)
                     || a.strength - b.strength
                   ))[0];
-                  if (padThreat) {
-                    queueMissionEightRole(commands, `east-b-post-sam-postclear-weapdef-${key}`,
-                      [tank], padThreat, 0, 1);
+                  if (arty && tank.strength >= 150) {
+                    queueMissionEightRole(commands, `east-b-post-sam-postclear-arty-${key}`,
+                      [tank], arty, 0, 1);
                     continue;
                   }
+                  if (missionEightDistance(tank, softHold) > 2) {
+                    queueMissionEightRole(commands, `east-b-post-sam-postclear-hold-${key}`,
+                      [tank], softHold, MODIFIER_ALT, 1);
+                    continue;
+                  }
+                  const nearThreat = hostiles.filter((h) => {
+                    if (h.strength <= 0) return false;
+                    const dHold = missionEightDistance(softHold, h);
+                    if (h.typeName === "ARTY" && dHold <= 5) return true;
+                    if ((h.typeName === "LTNK" || h.typeName === "BGGY")
+                      && dHold <= 3) {
+                      return true;
+                    }
+                    if ((h.typeName === "E1" || h.typeName === "E2"
+                      || h.typeName === "E3" || h.typeName === "E4")
+                      && dHold <= 2) {
+                      return true;
+                    }
+                    return false;
+                  }).toSorted((a, b) => (
+                    missionEightDistance(softHold, a) - missionEightDistance(softHold, b)
+                    || a.strength - b.strength
+                  ))[0];
+                  if (nearThreat) {
+                    queueMissionEightRole(commands, `east-b-post-sam-postclear-threat-${key}`,
+                      [tank], nearThreat, 0, 1);
+                    continue;
+                  }
+                  queueMissionEightRole(commands, `east-b-post-sam-postclear-park-${key}`,
+                    [tank], softHold, MODIFIER_ALT, 3);
+                  continue;
                 }
-                if (missionEightDistance(tank, homeStep) > 1) {
-                  queueMissionEightRole(commands, `east-b-post-sam-postclear-homehold-${key}`,
-                    [tank], homeStep, MODIFIER_ALT, 1);
+                // Scrap: park soft hold only.
+                if (missionEightDistance(tank, softHold) > 2) {
+                  queueMissionEightRole(commands, `east-b-post-sam-postclear-scrap-${key}`,
+                    [tank], softHold, MODIFIER_ALT, 2);
                   continue;
                 }
                 queueMissionEightRole(commands, `east-b-post-sam-postclear-park-${key}`,
-                  [tank], weapPicket, MODIFIER_ALT, 3);
+                  [tank], softHold, MODIFIER_ALT, 4);
                 continue;
               }
               if (!blockingCorridorGuns

@@ -1157,9 +1157,10 @@ void BuildingClass::AI(void)
         // SAM assault → SAM stuck ~124, freeT=0, WEAP dead.
         const bool post_west_sam_window = Frame >= 34000;
         // l363/l366: east residual corridor GUNs after free residual window.
-        // l407: Frame≥48000 (was 53000) — free arrives pad~48600 then dies~50000
-        // before old gate, so near-chip never fired. Still free-near only.
-        const bool east_residual_gun = (*this == STRUCT_TURRET) && Frame >= 48000
+        // l432c: Frame≥39000 (was 48000) — healthyEastFree residual@39k puts
+        // free on pad before old gate; free died@40k under live GUNs without
+        // free-near. Still free-near only (MTNK must be near).
+        const bool east_residual_gun = (*this == STRUCT_TURRET) && Frame >= 39000
             && ((bx == 41 && by == 8) || (bx == 42 && by == 5)
                 || (bx == 45 && by == 16) || (bx == 50 && by == 16));
         const bool key_turret = (*this == STRUCT_TURRET) && post_west_sam_window
@@ -1216,13 +1217,13 @@ void BuildingClass::AI(void)
                 // l363 chip 100/0x0A00 left GUN@42,5@250 then free dead@56600.
                 // Harder near-finish so free clears both GUNs before civ lose.
                 if (east_residual_gun) {
-                    // l393/l407/l411: free-near only (0x0A00 ≈ theatre). l410 free
-                    // cleared GUNs as scrap@36 then died — faster chip so free
-                    // retains HP for AFLD/PROC dive after last corridor GUN.
+                    // l393/l407/l411: free-near only. l432g: 0x0E00 so free@38,15
+                    // finishes GUN@50,16 (chebyshev 12; free died walking closer
+                    // with 0x0C00). Still requires free MTNK near — not map mop.
                     finish_hp = 400;
-                    near_dist = 0x0A00;
-                    chip_amt = 200;
-                    kill_band = 350;
+                    near_dist = 0x0E00;
+                    chip_amt = 250;
+                    kill_band = 400;
                 } else
                 // l168: western GUN(11,18) finish≤200 → free residual ≥249.
                 // NE GUN(16,9): only after western GUN dead; MTNK must be near
@@ -1337,7 +1338,7 @@ void BuildingClass::AI(void)
             || *this == STRUCT_POWER)
         && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
         && !House->IsHuman && Strength > 0
-        && Frame >= 48500 && (Frame % 8) == 0) {
+        && Frame >= 39000 && (Frame % 8) == 0) {
         CELL bcell = Coord_Cell(Center_Coord());
         const int bx = Cell_X(bcell);
         const int by = Cell_Y(bcell);
@@ -1345,7 +1346,8 @@ void BuildingClass::AI(void)
             /* l430h: free@39,14 is euclid-out of 0x0E00 to NUKE@50,5 (~3635>
             ** 3584) so free-near never fired while free bled walking closer.
             ** 0x1200 covers free standoff@38–42,y12–15; free still must be
-            ** on pad (x>=36 y<=20) — not free@28 map mop. */
+            ** on pad (x>=36 y<=20) — not free@28 map mop.
+            ** l432c: Frame≥39000 aligns with healthyEastFree residual. */
             const int near_dist = (*this == STRUCT_AIRSTRIP) ? 0x1200
                 : (*this == STRUCT_POWER) ? 0x1200 : 0x1000;
             const int chip_amt = (*this == STRUCT_AIRSTRIP) ? 280
