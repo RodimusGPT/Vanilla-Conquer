@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — free clears east pad@49800 then dies (freeAfterPad=0); minHostiles~63; mop absent (l427 re-proof on-pad free-near only). |
+| Status | **RED** — freeAfterPad breakthrough (pad clear@48900 free str112); free dies ~600t later; minH~63. Mop absent. |
 | Branch | `browser-port` |
-| Commit | WIP l429 on-pad free-near + post-pad unit-hunt |
+| Commit | WIP l430j freeAfterPad + on-pad free-near |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `tiberiandawn/building.cpp` + `aircraft.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l429. Scratch: `m8-eastb-l429.*` + `skeptic-mop-absent-l427.txt` |
+| Last TRACE suite | l430j. Scratch: `m8-eastb-l430j.*` + `skeptic-mop-absent-l430.txt` |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 

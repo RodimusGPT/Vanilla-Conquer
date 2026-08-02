@@ -10009,6 +10009,53 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
               && passes >= 1
               && snapshot.tick >= 45_000;
             if (commitResidual) {
+              // l430e: park at {42,12} ONLY after blocking corridor GUNs dead
+              // (41,8/42,5/45,16). l430d parked under live GUN@41 and free died
+              // without clearing guns. After guns dead: hold park so free-near
+              // chips pad; never attack-move walk into BGGY.
+              const blockingCorridorGuns = hostiles.some((h) => (
+                h.typeName === "GUN" && h.strength > 0
+                && ((h.cellX === 41 && h.cellY === 8)
+                  || (h.cellX === 42 && h.cellY === 5)
+                  || (h.cellX === 45 && h.cellY === 16))
+              ));
+              // l430i: latch pad clear when east AFLD/PROC/NUKE all dead once.
+              // free@48900 pad empty str112 (l430h) then AFLD fog-rebuild pulled
+              // free back to pad death. After first clear, prefer unit-hunt.
+              const eastPadProdNow = hostiles.some((h) => (
+                h.strength > 0 && h.cellX >= 40 && h.cellY <= 16
+                && (h.typeName === "PROC" || h.typeName === "AFLD"
+                  || h.typeName === "NUKE")
+              ));
+              if (!blockingCorridorGuns && !eastPadProdNow
+                && tank.cellX >= 36) {
+                state.eastBEastPadClearedTick ??= snapshot.tick;
+              }
+              if (!blockingCorridorGuns
+                && tank.cellX >= 36 && tank.cellY <= 22 && tank.strength >= 40
+                && state.eastBEastPadClearedTick === undefined) {
+                // HOLD in free-near band while pad prod still live.
+                if (eastPadProdNow) {
+                  const inBand = tank.cellX >= 38 && tank.cellX <= 43
+                    && tank.cellY >= 12 && tank.cellY <= 15;
+                  if (!inBand) {
+                    const padStand = {
+                      cellX: Math.min(43, Math.max(38, tank.cellX)),
+                      cellY: Math.min(15, Math.max(12, tank.cellY)),
+                    };
+                    if (tank.cellX >= 38 && tank.cellX <= 43) padStand.cellX = tank.cellX;
+                    if (tank.cellY >= 12 && tank.cellY <= 15) padStand.cellY = tank.cellY;
+                    if (missionEightDistance(tank, padStand) > 1) {
+                      queueMissionEightRole(commands, `east-b-post-sam-pad-park-${key}`,
+                        [tank], padStand, MODIFIER_ALT, 1);
+                      continue;
+                    }
+                  }
+                  queueMissionEightRole(commands, `east-b-post-sam-pad-park-hold-${key}`,
+                    [tank], { cellX: tank.cellX, cellY: tank.cellY }, MODIFIER_ALT, 2);
+                  continue;
+                }
+              }
               // l370/l380: structures map-wide once residual (HAND/FACT west
               // rebuild AFLD@57000 after free clears east pad@56400). Then any
               // combat unit (All Destr. BadGuy → finalHostiles=0).
@@ -10081,9 +10128,11 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                 // str112 idled while free-near chipped PROC then bled under
                 // GUN@50,16 to scrap before AFLD hop. Force MODIFIER_ALT move
                 // onto PROC hop then AFLD hop while str≥80 (no attack-move idle).
-                // l427 path (l428 north-hop / NUKE-first closed: freeLast 48900
-                // pad uncleared). PROC→AFLD→NUKE; hop then attack.
-                const padStruct = (!corridorGunsLive && tank.cellX >= 36)
+                // l430i: after first pad clear, do NOT re-dive fog AFLD rebuild
+                // (free@48900 pad empty str112 then AFLD@720 killed free@49500).
+                // Unit-hunt instead. First clear only: PROC→AFLD→NUKE.
+                const padStruct = (!corridorGunsLive && tank.cellX >= 36
+                  && state.eastBEastPadClearedTick === undefined)
                   ? hostiles.filter((h) => (
                     h.strength > 0 && h.cellX >= 40 && h.cellY <= 16
                     && (h.typeName === "PROC" || h.typeName === "AFLD"
@@ -10102,15 +10151,37 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                   })[0]
                   : null;
                 if (padStruct && tank.strength >= 5) {
+                  // l430c: PARK at standoff — l430b attack-move padStruct from
+                  // {42,12} pathfinds free to@46,17 (deep pad death). While
+                  // str≥40: move to {42,12} then HOLD (MODIFIER_ALT); free-near
+                  // engine chips pad. Attack only if d≤5 (120mm range). Scrap
+                  // dive only str<40.
+                  const standoff = { cellX: 42, cellY: 12 };
+                  const dPad = missionEightDistance(tank, padStruct);
+                  if (tank.strength >= 40) {
+                    if (missionEightDistance(tank, standoff) > 2) {
+                      queueMissionEightRole(commands, `east-b-post-sam-pad-standoff-${key}`,
+                        [tank], standoff, MODIFIER_ALT, 1);
+                      continue;
+                    }
+                    if (dPad <= 5) {
+                      queueMissionEightRole(commands, `east-b-post-sam-pad-finish-${key}`,
+                        [tank], padStruct, 0, 1);
+                      continue;
+                    }
+                    // Hold park — free-near chips AFLD/PROC/NUKE without walk.
+                    queueMissionEightRole(commands, `east-b-post-sam-pad-hold-${key}`,
+                      [tank], standoff, MODIFIER_ALT, 2);
+                    continue;
+                  }
+                  // Scrap dive last structure only.
                   let hop = null;
-                  if (padStruct.typeName === "PROC") {
-                    hop = { cellX: 44, cellY: 11 };
-                  } else if (padStruct.typeName === "AFLD") {
-                    hop = { cellX: 48, cellY: 12 };
-                  } else if (padStruct.typeName === "NUKE") {
+                  if (padStruct.typeName === "PROC") hop = { cellX: 44, cellY: 11 };
+                  else if (padStruct.typeName === "AFLD") hop = { cellX: 48, cellY: 12 };
+                  else if (padStruct.typeName === "NUKE") {
                     hop = {
                       cellX: Math.min(Math.max(padStruct.cellX - 1, 46), 51),
-                      cellY: 8,
+                      cellY: 10,
                     };
                   }
                   if (hop && missionEightDistance(tank, hop) > 1

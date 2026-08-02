@@ -1342,8 +1342,12 @@ void BuildingClass::AI(void)
         const int bx = Cell_X(bcell);
         const int by = Cell_Y(bcell);
         if (bx >= 40 && by <= 16) {
-            const int near_dist = (*this == STRUCT_AIRSTRIP) ? 0x1000
-                : (*this == STRUCT_POWER) ? 0x0E00 : 0x0E00;
+            /* l430h: free@39,14 is euclid-out of 0x0E00 to NUKE@50,5 (~3635>
+            ** 3584) so free-near never fired while free bled walking closer.
+            ** 0x1200 covers free standoff@38–42,y12–15; free still must be
+            ** on pad (x>=36 y<=20) — not free@28 map mop. */
+            const int near_dist = (*this == STRUCT_AIRSTRIP) ? 0x1200
+                : (*this == STRUCT_POWER) ? 0x1200 : 0x1000;
             const int chip_amt = (*this == STRUCT_AIRSTRIP) ? 280
                 : (*this == STRUCT_POWER) ? 250 : 250;
             const int kill_band = 400;
@@ -1355,7 +1359,7 @@ void BuildingClass::AI(void)
                 if (*u != UNIT_MTANK) continue;
                 /* Free must stand on east pad theatre — not map-wide mop. */
                 CELL ucell = Coord_Cell(u->Center_Coord());
-                if (Cell_X(ucell) < 36 || Cell_Y(ucell) > 22) continue;
+                if (Cell_X(ucell) < 36 || Cell_Y(ucell) > 20) continue;
                 if (::Distance(u->Center_Coord(), Center_Coord()) < near_dist) {
                     tank_near = true;
                 }
