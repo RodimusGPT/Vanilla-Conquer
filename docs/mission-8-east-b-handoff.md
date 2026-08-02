@@ -11,7 +11,7 @@ instructions will pick that up).
 |---|---|
 | Status | **GREEN** — gate EXIT 0; finalHostiles=0 finalFriendly=7; buildingsKilled=3; 0x4000=0 (l392). |
 | Branch | `browser-port` |
-| Commit | WIP GREEN residual free-near clear (l392) |
+| Commit | `f5467b9` GREEN residual free-near clear (l392) |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` + `tiberiandawn/building.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
