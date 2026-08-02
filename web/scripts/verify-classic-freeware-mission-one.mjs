@@ -3501,6 +3501,9 @@ const missionEightState = {
   eastBSamFinishSellTick: undefined,
   eastBResidualPartnerSellTick: undefined,
   eastBResidualPartnerSellCount: 0,
+  eastBEastPadClearedTick: undefined,
+  eastBPadClearPartnerSellTick: undefined,
+  eastBPadClearPartnerSellCount: 0,
   // Post-western-SAM (v391): emergency NUKE sell when village armor is empty.
   eastBVillageEmergencySellTick: undefined,
   // Post-all-SAM WEAP sell to fund village E1 (l246).
@@ -5257,8 +5260,8 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       }
     }
     // Prefer MTNK partner whenever residual needs one (even if free on ridge).
-    // l421 freeT cap@2 post-west REGRESS — free thrash@42,33 never all-SAM
-    // (air=0, freeLast 44700). free#3 load-bearing for SE SAM clear. Restored.
+    // l421 freeT cap@2 / l424d mid-pad NUKE sell CLOSED — freeT/SAM regress or
+    // civ-nine@49384 with free#2 never bought (refund <800).
     if (eastBMtnkEntry && !eastBMtnkEntry.constructing && !eastBMtnkEntry.completed
       && !eastBMtnkEntry.onHold && !eastBMtnkEntry.busy
       && funds >= eastBMtnkEntry.cost
@@ -9794,9 +9797,11 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
         const afldLive = hostiles.some((h) => (
           h.typeName === "AFLD" && h.strength > 0 && h.cellX >= 40
         ));
-        // l423: after free died and east AFLD dead once, prioritize west HAND
-        // then FACT (stop AFLD rebuild) over re-bombing empty pad.
-        const eastAfldEverDead = residualAir && !afldLive;
+        // l423/l424: after east pad prod clear (or AFLD dead), prioritize west
+        // HAND/FACT (stop AFLD rebuild) — free dies@49800, pass3 rearm ~54600.
+        const eastAfldEverDead = residualAir && (
+          !afldLive || state.eastBEastPadClearedTick !== undefined
+        );
         const rank = (u) => {
           if (eastAfldEverDead) {
             if (u.typeName === "HAND") return 0;
@@ -9976,8 +9981,9 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                 || (d.targetStrengthMin ?? d.targetStrengthAfter ?? 1e9) < 700
               )
             ));
-            // l403: residual leave@46k pass≥1 str≥100 (E4 death wall ~51k).
-            // free@144 baits then dies~51k before old 48k/130 gate sticks.
+            // l403/l425: residual leave@46k pass≥1 str≥100 (E4 death wall ~51k).
+            // l425 delayed leave@50k pass≥2 REGRESS — e4Emergency still forced
+            // leave@46k; free died without full pad clear; Moebius lose.
             // Emergency leave when E4 swarm d≤6 after 45k (str still ≥90).
             const e4Village = hostiles.filter((h) => (
               h.typeName === "E4" && h.strength > 0
@@ -10094,6 +10100,9 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                   })[0]
                   : null;
                 if (padStruct && tank.strength >= 5) {
+                  // l424b: mid-pad BGGY divert CLOSED — free@str80 left NUKE/AFLD
+                  // for threats and died@49500 with pad uncleared (vs l419 full
+                  // clear). Press structures; local hunt only after pad empty.
                   let hop = null;
                   if (padStruct.typeName === "PROC") {
                     hop = { cellX: 44, cellY: 11 };
@@ -10121,6 +10130,86 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                   queueMissionEightRole(commands, `east-b-post-sam-pad-finish-${key}`,
                     [tank], padStruct, 0, 1);
                   continue;
+                }
+                // l424: EAST PAD CLEAR unit-hunt — l419 free@47,16 clears pad then
+                // dies while eastStructs still holds west HAND/HQ (map-wide) so
+                // unit-hunt never ran; free walked west into thrash. Once east
+                // pad (x≥40 y≤16 prod) is empty, kill local threats then units
+                // then deferred GUN@50,16 — do NOT chase west HAND as scrap.
+                const eastPadProdLive = hostiles.some((h) => (
+                  h.strength > 0 && h.cellX >= 40 && h.cellY <= 16
+                  && (h.typeName === "PROC" || h.typeName === "AFLD"
+                    || h.typeName === "NUKE" || h.typeName === "HAND"
+                    || h.typeName === "FACT")
+                ));
+                if (!eastPadProdLive && tank.cellX >= 36 && tank.strength >= 5) {
+                  state.eastBEastPadClearedTick ??= snapshot.tick;
+                  const localThreat = hostiles.filter((h) => (
+                    h.strength > 0
+                    && missionEightDistance(tank, h) <= 10
+                    && (h.typeName === "BGGY" || h.typeName === "LTNK"
+                      || h.typeName === "ARTY" || h.typeName === "E1"
+                      || h.typeName === "E2" || h.typeName === "E3"
+                      || h.typeName === "E4" || h.typeName === "GUN"
+                      || h.typeName === "JEEP" || h.typeName === "BIKE")
+                  )).toSorted((a, b) => {
+                    const rank = (u) => (
+                      u.typeName === "BGGY" || u.typeName === "LTNK" ? 0
+                        : u.typeName === "GUN" ? 1
+                          : u.typeName === "E4" ? 2
+                            : u.typeName === "ARTY" ? 3
+                              : 4
+                    );
+                    return rank(a) - rank(b)
+                      || missionEightDistance(tank, a) - missionEightDistance(tank, b)
+                      || a.strength - b.strength;
+                  })[0];
+                  if (localThreat) {
+                    queueMissionEightRole(commands, `east-b-post-sam-local-hunt-${key}`,
+                      [tank], localThreat, 0, 1);
+                    continue;
+                  }
+                  // Deferred GUN@50,16 after pad prod dead.
+                  const eastGun = hostiles.filter((h) => (
+                    h.typeName === "GUN" && h.strength > 0
+                    && h.cellX >= 38 && h.cellY <= 18
+                  )).toSorted((a, b) => (
+                    missionEightDistance(tank, a) - missionEightDistance(tank, b)
+                  ))[0];
+                  if (eastGun) {
+                    queueMissionEightRole(commands, `east-b-post-sam-east-gun-${key}`,
+                      [tank], eastGun, 0, 1);
+                    continue;
+                  }
+                  // Map-wide combat units (All Destr.) — not civs, not far west walk.
+                  const unitPrey = hostiles.filter((h) => (
+                    h.strength > 0
+                    && h.type !== 4
+                    && !["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10",
+                      "HARV", "MCV"].includes(h.typeName)
+                  )).toSorted((a, b) => (
+                    missionEightDistance(tank, a) - missionEightDistance(tank, b)
+                    || a.strength - b.strength
+                  ))[0];
+                  if (unitPrey) {
+                    queueMissionEightRole(commands, `east-b-post-sam-unit-hunt-${key}`,
+                      [tank], unitPrey, 0, 1);
+                    continue;
+                  }
+                  // Only after local clear: reverse to west HAND (stop AFLD rebuild)
+                  // if free still has HP for the walk.
+                  if (tank.strength >= 40) {
+                    const westHand = hostiles.find((h) => (
+                      h.typeName === "HAND" && h.strength > 0 && h.cellX <= 20
+                    )) ?? hostiles.find((h) => (
+                      h.typeName === "FACT" && h.strength > 0 && h.cellX <= 20
+                    ));
+                    if (westHand) {
+                      queueMissionEightRole(commands, `east-b-post-sam-west-prod-${key}`,
+                        [tank], westHand, 0, 1);
+                      continue;
+                    }
+                  }
                 }
                 // l410: BGGY on pad kills free@48,14 mid GUN chip — crush/kill
                 // nearest BGGY at d≤5 before continuing gun peel.
