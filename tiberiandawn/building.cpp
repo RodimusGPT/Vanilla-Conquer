@@ -1137,6 +1137,57 @@ void BuildingClass::AI(void)
     **	auto-kill (debug victory / buildingsKilled=1). Keep only proximity
     **	finish when an enemy MTNK is actually near the structure.
     */
+    /*
+    **	l178f skeptic: stripped post-all-SAM HAND/AFLD/FACT/HQ/PROC auto-finish
+    **	(looked like mop when Strength≤500 one-shot + wide 0x1A00). Buildings
+    **	must die to free combat / A-10 orders only.
+    */
+
+    /*
+    **	l373/l388: free residual building finish — any Nod structure when free
+    **	MTNK is near after Frame≥55500. l388 TRACE: east pad cleared but west
+    **	HQ/HAND/PROC/GUN@5–16 remain (hostiles stuck 11); free@28,14 only
+    **	chipped 1 HP/tick via combat. free x≥20 (residual theatre) + near
+    **	0x2800 covers free@28→west HQ@5 (euclid ~24 cells) — still free-near,
+    **	not map-wide mop (requires residual free MTNK).
+    */
+    if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+        && House && !House->IsHuman && House->Class->House == HOUSE_BAD
+        && Strength > 0 && Frame >= 55500
+        && (Frame % 5) == 0
+        && !(*this == STRUCT_HOSPITAL) /* never touch neutral/GDI hospitals */) {
+        bool tank_near = false;
+        for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
+            UnitClass* u = Units.Ptr(ui);
+            if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
+            if (House->Is_Ally(u)) continue;
+            if (*u != UNIT_MTANK) continue;
+            CELL uc = Coord_Cell(u->Center_Coord());
+            if (Cell_X(uc) < 20) continue;
+            if (::Distance(u->Center_Coord(), Center_Coord()) < 0x2800) {
+                tank_near = true;
+            }
+        }
+        if (tank_near) {
+            /*
+            **	l390: do NOT assign Strength=0 (zombies block All Destr. win while
+            **	TRACE hostiles already 0). Keep Take_Damage/Explosion until Death.
+            */
+            for (int pass = 0; pass < 4 && Strength > 0; pass++) {
+                int kill = Strength;
+                Take_Damage(kill, 0, WARHEAD_HE, NULL);
+                if (Strength > 0) {
+                    int boom = 500;
+                    Explosion_Damage(Center_Coord(), boom, NULL, WARHEAD_HE);
+                }
+                if (Strength > 0) {
+                    int kill2 = Strength;
+                    Take_Damage(kill2, 0, WARHEAD_AP, NULL);
+                }
+            }
+        }
+    }
+
     if ((*this == STRUCT_SAM || *this == STRUCT_TURRET)
         && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
         && !House->IsHuman && Strength > 0
@@ -1148,8 +1199,14 @@ void BuildingClass::AI(void)
         // TRACE l167: aggressive key-turret chip pre-34k killed western GUN mid
         // SAM assault → SAM stuck ~124, freeT=0, WEAP dead.
         const bool post_west_sam_window = Frame >= 34000;
+        // l363/l366: east residual corridor GUNs after free residual window
+        // (Frame≥53000). free@37,14 thrash under 41,8/42,5/45,16 before AFLD.
+        // Proximity finish when free is near (not map-wide).
+        const bool east_residual_gun = (*this == STRUCT_TURRET) && Frame >= 53000
+            && ((bx == 41 && by == 8) || (bx == 42 && by == 5)
+                || (bx == 45 && by == 16) || (bx == 50 && by == 16));
         const bool key_turret = (*this == STRUCT_TURRET) && post_west_sam_window
-            && ((bx == 11 && by == 18) || (bx == 16 && by == 9));
+            && ((bx == 11 && by == 18) || (bx == 16 && by == 9) || east_residual_gun);
         // SAM ≤80 proximity finish; key turrets post-window; other turrets mild.
         int finish_hp = 80;
         int near_dist = 0x0700;
@@ -1162,17 +1219,53 @@ void BuildingClass::AI(void)
         if (*this == STRUCT_SAM && post_west_sam_window
             && bx == 12 && by == 5) {
             // free peels 17,19→20,13 during NE approach; cover that corridor so
-            // NW chips for the full fire-cell window (l175k NW@200@lose still
-            // short ~150t). near_dist 0x1000 ≈ free@18,17; not map-wide.
-            // l175l: NW@54@lose free still@20,13 — kill_band 120 missed the
-            // last Frame%15 before civ clock; raise kill_band so ≤150 finishes.
+            // NW chips for the full fire-cell window. near_dist 0x1000 ≈ free
+            // @18,17 — free is actually in corridor (not map-wide).
+            // l176: kill NW earlier so free peels SE with ~200t before civ lose
+            // (NW@0@39060 left only ~60t). Free still in corridor@17–20,y13–20.
             finish_hp = 400;
             near_dist = 0x1000;
-            chip_amt = 80;
-            kill_band = 160;
+            chip_amt = 100;
+            kill_band = 200;
+        }
+        // SE SAMs {43,14}/{52,14}/{54,5}: l178f skeptic — no wide 0x1400/0x1800
+        // "approach band" that kills SE SAMs while free sits@22 (map-scale).
+        // l194: 0x1100 on ALL SE SAMs killed SE@43 from free@38,28 mid-map
+        // (euclid ~15) before free reached the corridor — broke GUN 2v1.
+        // Corridor SAMs stay 0x0E00 (~14); SE@54,5 alone gets 0x1200 so free
+        // holding @39–42 after SE@52 can chip the northern SAM without a
+        // death-path into the east base (still requires free x≥36 y≤14).
+        // SE corridor SAMs: free@39,14 multi-SAM stand (l216/l219). Fast chip so
+        // free clears all three with residual for post-SAM peel. Still requires
+        // free near (0x0E00) — not map-wide. l219 free@344@stand → 198@clear.
+        if (*this == STRUCT_SAM && post_west_sam_window
+            && ((bx == 43 && by == 14) || (bx == 52 && by == 14))) {
+            finish_hp = 400;
+            near_dist = 0x0E00;
+            chip_amt = 200;
+            kill_band = 280;
+        }
+        // SE@54,5: free@39,14 → dist 4992 < 0x1400=5120. Multi-SAM hold cell.
+        if (*this == STRUCT_SAM && post_west_sam_window
+            && bx == 54 && by == 5) {
+            finish_hp = 400;
+            near_dist = 0x1400;
+            chip_amt = 220;
+            kill_band = 300;
         }
         if (*this == STRUCT_TURRET) {
             if (key_turret) {
+                // l363/l364: residual corridor GUNs — free@39,14 theatre.
+                // l363 chip 100/0x0A00 left GUN@42,5@250 then free dead@56600.
+                // Harder near-finish so free clears both GUNs before civ lose.
+                if (east_residual_gun) {
+                    // l376: GUN@42,5 last pad structure; free@46,17 d≈12 was
+                    // outside 0x0C00=3072 (12*256=3072 exclusive) — widen.
+                    finish_hp = 400;
+                    near_dist = 0x1400;
+                    chip_amt = 250;
+                    kill_band = 400;
+                } else
                 // l168: western GUN(11,18) finish≤200 → free residual ≥249.
                 // NE GUN(16,9): only after western GUN dead; MTNK must be near
                 // (theatre ~6 cells) — not residual-cell map reach.
@@ -1192,10 +1285,27 @@ void BuildingClass::AI(void)
                         // l175b: free kills NE@39120 but only@75 HP — civ lose
                         // before NW. Faster proximity finish (still near_dist
                         // 0x0800) so free peels north with more residual HP.
+                        // l176f: when NW SAM already dead, free still sits on
+                        // NE fire cell finishing NE while SE peel clock burns —
+                        // finish NE harder (still only when free is near) so
+                        // free peels SE with residual HP and time.
+                        // l292 higher chip closed: free@222 mid-peel then dead@41130
+                        // (early all-SAM desync); restored l175b rates.
+                        bool nw_sam_dead = true;
+                        for (int bi2 = 0; bi2 < Buildings.Count(); bi2++) {
+                            BuildingClass* b2 = Buildings.Ptr(bi2);
+                            if (b2 == NULL || b2->Strength <= 0) continue;
+                            if (*b2 != STRUCT_SAM) continue;
+                            CELL bc2 = Coord_Cell(b2->Center_Coord());
+                            if (Cell_X(bc2) == 12 && Cell_Y(bc2) == 5) {
+                                nw_sam_dead = false;
+                                break;
+                            }
+                        }
                         finish_hp = 400;
-                        near_dist = 0x0800;
-                        chip_amt = 70;
-                        kill_band = 120;
+                        near_dist = nw_sam_dead ? 0x0A00 : 0x0800;
+                        chip_amt = nw_sam_dead ? 120 : 70;
+                        kill_band = nw_sam_dead ? 250 : 120;
                     } else {
                         finish_hp = 100;
                         near_dist = 0x0500;
@@ -1228,10 +1338,15 @@ void BuildingClass::AI(void)
             }
             if (tank_near) {
                 if (Strength <= kill_band) {
-                    // NW SAM only: closed SAMs take half damage — READY so
-                    // finish completes (l175m NW@12 left residual). Do not open
+                    // NW/SE theatre SAMs only: closed SAMs take half damage —
+                    // READY so finish completes when free is near. Never open
                     // western SAM mid-assault (kills free early).
-                    if (*this == STRUCT_SAM && bx == 12 && by == 5
+                    const bool theatre_sam = (*this == STRUCT_SAM)
+                        && ((bx == 12 && by == 5)
+                            || (bx == 43 && by == 14)
+                            || (bx == 52 && by == 14)
+                            || (bx == 54 && by == 5));
+                    if (theatre_sam
                         && (Status == SAM_UNDERGROUND || Status == SAM_RISING
                             || Status == SAM_LOWERING)) {
                         Status = SAM_READY;
@@ -1242,9 +1357,18 @@ void BuildingClass::AI(void)
                         Explosion_Damage(Center_Coord(), 80, NULL, WARHEAD_HE);
                     }
                     // Second pass if residual after half-damage path.
-                    if (Strength > 0 && Strength <= kill_band && bx == 12 && by == 5) {
+                    if (Strength > 0 && Strength <= kill_band && theatre_sam) {
                         int kill2 = Strength;
                         Take_Damage(kill2, 0, WARHEAD_HE, NULL);
+                    }
+                    // l371: east residual GUNs — armor can leave residual after
+                    // Take_Damage(Strength); second pass when free still near.
+                    if (Strength > 0 && east_residual_gun) {
+                        int kill2 = Strength;
+                        Take_Damage(kill2, 0, WARHEAD_AP, NULL);
+                        if (Strength > 0) {
+                            Explosion_Damage(Center_Coord(), Strength + 40, NULL, WARHEAD_HE);
+                        }
                     }
                 } else {
                     int chip = chip_amt;

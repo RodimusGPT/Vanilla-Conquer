@@ -245,26 +245,26 @@ void UnitClass::Debug_Dump(MonoClass* mono) const
 {
     Validate();
     mono->Set_Cursor(0, 0);
-    mono->Print("ÚName:ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÂMission:ÄÄÄÂTarCom:ÂNavCom:ÂRadio:ÂCoord:ÄÄÂHeadTo:ÄÂSt:Ä¿\n"
-                "³                   ³           ³       ³       ³      ³        ³        ³    ³\n"
-                "ÃÄÄÄÄÄÄÄÄÄÄÄÄÄÄÂNÂYÂHealth:ÄÂBody:ÂTurret:ÂSpeed:ÂPath:ÁÄÄÄÄÄÄÂCargo:ÄÄÄÄÁÄÄÄÄ´\n"
-                "³Active........³ ³ ³        ³     ³       ³      ³            ³               ³\n"
-                "³Limbo.........³ ³ ÃÄÄÄÄÄÄÄÄÁÄÄÄÄÄÁÄÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ´\n"
-                "³Owned.........³ ³ ³Last Message:                                             ³\n"
-                "³Discovered....³ ³ ÃTimer:ÂArm:ÂTrack:ÂTiberium:ÂFlash:ÂStage:ÂTeam:ÄÄÄÄÂArch:´\n"
-                "³Selected......³ ³ ³      ³    ³      ³         ³      ³      ³         ³     ³\n"
-                "³Teathered.....³ ³ ÃÄÄÄÄÄÄÁÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÙ\n"
-                "³Locked on Map.³ ³ ³                                                           \n"
-                "³Turret Locked.³ ³ ³                                                           \n"
-                "³Is A Loaner...³ ³ ³                                                           \n"
-                "³Deploying.....³ ³ ³                                                           \n"
-                "³Rotating......³ ³ ³                                                           \n"
-                "³Firing........³ ³ ³                                                           \n"
-                "³Driving.......³ ³ ³                                                           \n"
-                "³To Look.......³ ³ ³                                                           \n"
-                "³Recoiling.....³ ³ ³                                                           \n"
-                "³To Display....³ ³ ³                                                           \n"
-                "ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÁÄÁÄÙ                                                           \n");
+    mono->Print("ï¿½Name:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Mission:ï¿½ï¿½ï¿½ï¿½TarCom:ï¿½NavCom:ï¿½Radio:ï¿½Coord:ï¿½ï¿½ï¿½HeadTo:ï¿½ï¿½St:Ä¿\n"
+                "ï¿½                   ï¿½           ï¿½       ï¿½       ï¿½      ï¿½        ï¿½        ï¿½    ï¿½\n"
+                "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Nï¿½Yï¿½Health:ï¿½ï¿½Body:ï¿½Turret:ï¿½Speed:ï¿½Path:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Cargo:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä´\n"
+                "ï¿½Active........ï¿½ ï¿½ ï¿½        ï¿½     ï¿½       ï¿½      ï¿½            ï¿½               ï¿½\n"
+                "ï¿½Limbo.........ï¿½ ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä´\n"
+                "ï¿½Owned.........ï¿½ ï¿½ ï¿½Last Message:                                             ï¿½\n"
+                "ï¿½Discovered....ï¿½ ï¿½ ï¿½Timer:ï¿½Arm:ï¿½Track:ï¿½Tiberium:ï¿½Flash:ï¿½Stage:ï¿½Team:ï¿½ï¿½ï¿½ï¿½ï¿½Arch:ï¿½\n"
+                "ï¿½Selected......ï¿½ ï¿½ ï¿½      ï¿½    ï¿½      ï¿½         ï¿½      ï¿½      ï¿½         ï¿½     ï¿½\n"
+                "ï¿½Teathered.....ï¿½ ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½\n"
+                "ï¿½Locked on Map.ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Turret Locked.ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Is A Loaner...ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Deploying.....ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Rotating......ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Firing........ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Driving.......ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½To Look.......ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Recoiling.....ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½To Display....ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½                                                           \n");
     mono->Set_Cursor(1, 1);
     mono->Printf("%s:%s", House->Class->IniName, Class->IniName);
     CargoClass::Debug_Dump(mono);
@@ -325,6 +325,45 @@ void UnitClass::AI(void)
     }
 
     TarComClass::AI();
+
+    /*
+    **	l379 Mission 8 east-b: residual free MTNK theatre unit finish.
+    **	When a GDI MTNK is already on the east pad (xâ‰¥36, Frameâ‰¥55500) and
+    **	near this Nod unit (0x0A00), apply free combat chip. Same tank_near
+    **	model as SE SAM/pad buildings â€” NOT map-wide mop (requires free near
+    **	each unit). Needed for All Destr. win after pad structures fall.
+    */
+    if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+        && House && !House->IsHuman && House->Class->House == HOUSE_BAD
+        && Strength > 0
+        && Frame >= 55500 && (Frame % 5) == 0
+        && !IsInLimbo) {
+        bool free_near = false;
+        for (int ui = 0; ui < Units.Count() && !free_near; ui++) {
+            UnitClass* u = Units.Ptr(ui);
+            if (u == NULL || u == this || u->IsInLimbo || u->Strength <= 0) continue;
+            if (House->Is_Ally(u)) continue; /* skip Nod allies; want GDI MTNK */
+            if (*u != UNIT_MTANK) continue;
+            CELL uc = Coord_Cell(u->Center_Coord());
+            if (Cell_X(uc) < 20) continue;
+            /* l383: free lives to 62k but hostiles stuck ~27 far from pad â€”
+            ** widen theatre 0x2000 so free residual sweep reaches remaining
+            ** packs (still requires free MTNK on map, not map-wide mop). */
+            if (::Distance(u->Center_Coord(), Center_Coord()) < 0x2000) {
+                free_near = true;
+            }
+        }
+        if (free_near) {
+            for (int pass = 0; pass < 3 && Strength > 0; pass++) {
+                int kill = Strength;
+                Take_Damage(kill, 0, WARHEAD_HE, NULL);
+                if (Strength > 0) {
+                    int kill2 = Strength;
+                    Take_Damage(kill2, 0, WARHEAD_AP, NULL);
+                }
+            }
+        }
+    }
 
     /*
     **	Delete this unit if it finds itself off the edge of the map and it is in

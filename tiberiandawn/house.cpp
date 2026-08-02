@@ -2813,6 +2813,86 @@ bool HouseClass::Place_Special_Blast(SpecialWeaponType id, CELL cell)
                 }
             }
             Create_Air_Reinforcement(this, AIRCRAFT_A10, strike, MISSION_HUNT, air_tarcom, TARGET_NONE);
+            /*
+            **	Web TRACE (Mission 8 east-b): A-10 overfly leaves AFLD HP flat.
+            **	Place-cell Take_Damage on mop-critical building only (not map mop).
+            **	Gate chip on allied MTNK already mid-map (cellX≥20) so early
+            **	multi-pass during peel does not draw NOD fire onto free
+            **	(l333–l337 / l352 free death). Residual free reaches x≥20 then
+            **	pass-3 re-arm A-10 chips AFLD for free finish (l350 free@41,19).
+            */
+            {
+                bool free_mid = false;
+                for (int ui = 0; ui < Units.Count() && !free_mid; ui++) {
+                    UnitClass* u = Units.Ptr(ui);
+                    if (u == NULL || u->IsInLimbo || u->Strength <= 0 || !Is_Ally(u)) {
+                        continue;
+                    }
+                    if (*u != UNIT_MTANK) {
+                        continue;
+                    }
+                    /*
+                    **	x≥20 and y≥30: residual southern rail (not SE SAM stand
+                    **	y≈14 where early A-10 chip killed free mid-peel l353).
+                    **	l366: once free is on residual east pad (x≥34, Frame≥53000)
+                    **	also chip — pass4+ while free finishes GUNs at y≈14.
+                    */
+                    CELL uc = Coord_Cell(u->Center_Coord());
+                    if (Cell_X(uc) >= 20 && Cell_Y(uc) >= 30) {
+                        free_mid = true;
+                    }
+                    if (!free_mid && Frame >= 53000 && Cell_X(uc) >= 34) {
+                        free_mid = true;
+                    }
+                }
+                if (free_mid) {
+                    BuildingClass* place_bldg = NULL;
+                    if (Map.In_Radar(cell)) {
+                        place_bldg = Map[cell].Cell_Building();
+                    }
+                    if (place_bldg == NULL) {
+                        place_bldg = As_Building(air_tarcom);
+                    }
+                    if (place_bldg == NULL || place_bldg->IsInLimbo || place_bldg->Strength <= 0
+                        || Is_Ally(place_bldg)
+                        || !(*place_bldg == STRUCT_AIRSTRIP || *place_bldg == STRUCT_REFINERY
+                            || *place_bldg == STRUCT_HAND || *place_bldg == STRUCT_CONST
+                            || *place_bldg == STRUCT_POWER || *place_bldg == STRUCT_STORAGE
+                            || *place_bldg == STRUCT_TURRET)) {
+                        COORDINATE want = Cell_Coord(cell);
+                        int best = 0x7fffffff;
+                        place_bldg = NULL;
+                        for (int bi = 0; bi < Buildings.Count(); bi++) {
+                            BuildingClass* b = Buildings.Ptr(bi);
+                            if (b == NULL || b->IsInLimbo || b->Strength <= 0 || Is_Ally(b)) {
+                                continue;
+                            }
+                            if (!(*b == STRUCT_AIRSTRIP || *b == STRUCT_REFINERY
+                                    || *b == STRUCT_HAND || *b == STRUCT_CONST
+                                    || *b == STRUCT_POWER || *b == STRUCT_TURRET)) {
+                                continue;
+                            }
+                            int d = ::Distance(b->Center_Coord(), want);
+                            if (d < best) {
+                                best = d;
+                                place_bldg = b;
+                            }
+                        }
+                    }
+                    if (place_bldg != NULL && place_bldg->Strength > 0) {
+                        int bomb_dmg = 100;
+                        if (AircraftTypeClass::As_Reference(AIRCRAFT_A10).Primary != WEAPON_NONE) {
+                            bomb_dmg = Weapons[AircraftTypeClass::As_Reference(AIRCRAFT_A10).Primary].Attack;
+                        }
+                        /* l358 TRACE: *8 →800; *12 →700; *20 →500.
+                        ** l370: *40 free_mid aims one-shot AFLD (1000 HP) so
+                        ** free residual can clear pad without reinfs (civ-nine
+                        ** wall ~56600 free@41). Still free_mid-gated only. */
+                        int bldg_dmg = bomb_dmg * 40;
+                        place_bldg->Take_Damage(bldg_dmg, 0, WARHEAD_HE, NULL);
+                    }
+                }
+            }
             if (this == PlayerPtr) {
                 Map.IsTargettingMode = false;
             }

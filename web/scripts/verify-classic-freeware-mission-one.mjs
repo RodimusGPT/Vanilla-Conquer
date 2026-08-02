@@ -8,7 +8,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { TextWriter, Uint8ArrayReader, Uint8ArrayWriter, ZipReader } from "@zip.js/zip.js";
 
-import { eastBPostWestRailApproach } from "./east-b-post-west-rail.mjs";
+import {
+  eastBPostWestRailApproach,
+  eastBIsSeRemainingSam,
+} from "./east-b-post-west-rail.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const defaultModulePath = resolve(scriptDirectory, "../dist/engine/tiberiandawn.js");
@@ -505,9 +508,81 @@ function missionEightTraceCompactRecord(snapshot, attackers, hostiles) {
         && object.strength > 0
       )).length,
     },
+    // l253: hostiles near free MTNK (death-window diagnose 52200–53100).
+    nearFree: (() => {
+      const free = attackers.find((object) => (
+        object.typeName === "MTNK"
+        && object.strength > 0
+        && (missionEightState.eastBPostWestProducedTankKeys.has(objectKey(object))
+          || missionEightState.strikeKeys.has(objectKey(object)))
+      ));
+      if (!free) return [];
+      // Prefer close threats; also flag south BGGY/LTNK out to d=20 for wave ETA.
+      return hostiles
+        .filter((h) => h.strength > 0 && (
+          missionEightDistance(free, h) <= 10
+          || (h.cellY >= 36 && (h.typeName === "BGGY" || h.typeName === "LTNK")
+            && missionEightDistance(free, h) <= 20)
+        ))
+        .map((h) => ({
+          typeName: h.typeName,
+          id: h.id,
+          strength: h.strength,
+          cellX: h.cellX,
+          cellY: h.cellY,
+          d: missionEightDistance(free, h),
+        }))
+        .toSorted((a, b) => a.d - b.d || a.strength - b.strength)
+        .slice(0, 12);
+    })(),
+    // l376: east pad structures for residual PROC/AFLD chip diagnosis.
+    eastPad: hostiles
+      .filter((h) => h.strength > 0 && h.cellX >= 38 && h.cellY <= 22 && (
+        h.typeName === "AFLD" || h.typeName === "PROC" || h.typeName === "HAND"
+        || h.typeName === "FACT" || h.typeName === "GUN" || h.typeName === "NUKE"
+        || h.typeName === "HQ"
+      ))
+      .map((h) => ({
+        typeName: h.typeName,
+        id: h.id,
+        strength: h.strength,
+        cellX: h.cellX,
+        cellY: h.cellY,
+      }))
+      .toSorted((a, b) => a.cellX - b.cellX || a.cellY - b.cellY)
+      .slice(0, 16),
+    // l387: remaining hostiles when residual (diagnose stuck ~11).
+    remainH: hostiles
+      .filter((h) => h.strength > 0)
+      .map((h) => ({
+        t: h.typeName,
+        s: h.strength,
+        x: h.cellX,
+        y: h.cellY,
+      }))
+      .toSorted((a, b) => a.x - b.x || a.y - b.y)
+      .slice(0, 20),
     airstrike: {
       pending: missionEightState.airstrike.pending !== undefined,
       readyCount: missionEightState.airstrike.readyTicks.length,
+      // l200/l212: multi-pass evidence — order count + last live target cell.
+      orderCount: missionEightState.airstrike.orders.length,
+      lastTarget: missionEightState.airstrike.orders.length > 0
+        ? missionEightState.airstrike.orders[
+          missionEightState.airstrike.orders.length - 1
+        ].target
+        : null,
+      lastCell: missionEightState.airstrike.orders.length > 0
+        ? {
+          x: missionEightState.airstrike.orders[
+            missionEightState.airstrike.orders.length - 1
+          ].cellX,
+          y: missionEightState.airstrike.orders[
+            missionEightState.airstrike.orders.length - 1
+          ].cellY,
+        }
+        : null,
+      discharges: missionEightState.airstrike.discharges.length,
     },
   };
 }
@@ -3424,8 +3499,22 @@ const missionEightState = {
   eastBSamKillOccupancy: undefined,
   eastBSamDeepSpineFinisherSample: undefined,
   eastBSamFinishSellTick: undefined,
+  eastBResidualPartnerSellTick: undefined,
   // Post-western-SAM (v391): emergency NUKE sell when village armor is empty.
   eastBVillageEmergencySellTick: undefined,
+  // Post-all-SAM WEAP sell to fund village E1 (l246).
+  eastBPostAllSamWeapSellTick: undefined,
+  // l249d: free first reached village ridge; delayed spare sell / PYLE rebuild.
+  eastBFreeRidgeTick: undefined,
+  // l294c: sticky BGGY focus id while free trades wave (avoid #6/#8 thrash).
+  eastBBggyFocusKey: undefined,
+  // l331: latch east AFLD sighted so residual can treat true death (not fog).
+  eastBSawEastAfld: false,
+  // l346: latch residual commit so free does not bounce back to village bait.
+  eastBResidualCommit: false,
+  // l308: tick of 8th civ death — shallow emergency window then pure hide.
+  eastBCiv9LatchTick: undefined,
+  eastBPostRidgePyleRebuildTick: undefined,
   // Post-western-SAM rebuild: set when ≥3 healthy free/strike MTNKs exist.
   eastBPostWestRebuildReadyTick: undefined,
   eastBSamDeepChip: false,
@@ -4742,7 +4831,8 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       object.typeName === "MTNK" && object.strength >= 300 && object.cellY <= 56
     ));
     // Early FACT sell: capture Construction Yard value before raiders wipe it
-    // (l66 FACT 800→255→0 across 33k–37k while free still building).
+    // (l66 FACT 800→255→0). l249j keep-FACT broke free path (funds stuck 740,
+    // free never clears SAMs). Must sell for freeT/GUN.
     if (state.eastBPostWestFactSellTick === undefined
       && freePostWestLive < 2
       && liveFundsNow < 1_600
@@ -4764,41 +4854,58 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         });
       }
     }
-    // After free is out, sell PROC/PYLE if still short of partner 800.
+    // After free is out, sell PROC/PYLE for partner free (l252i load-bearing).
+    // l254d: delay sell while village understaffed and PYLE still up so we can
+    // burst-buy ≥4 E1 for BGGY-wave screen (l253) before barracks is sold.
     if (freeBand.length === 1 && liveFundsNow < 800) {
-      if (state.eastBPostWestProcSellTick === undefined) {
-        const proc = buildings.find((object) => (
-          object.typeName === "PROC" && object.strength >= 100
-          && !state.soldStructureIds.has(object.id)
-        ));
-        if (proc) {
-          sellMissionSevenStructure(commands, proc);
-          state.soldStructureIds.add(proc.id);
-          state.eastBPostWestProcSellTick = snapshot.tick;
-          state.saleOrders.push({
-            tick: snapshot.tick,
-            typeName: proc.typeName,
-            cellX: proc.cellX,
-            cellY: proc.cellY,
-            reason: "east-b post-west PROC sell for partner free tank",
-          });
-        }
-      } else if (state.eastBPostWestPyleSellTick === undefined) {
-        const pyle = buildings.find((object) => (
-          object.typeName === "PYLE" && object.strength >= 100
-          && !state.soldStructureIds.has(object.id)
-        ));
-        if (pyle) {
-          sellMissionSevenStructure(commands, pyle);
-          state.soldStructureIds.add(pyle.id);
-          state.eastBPostWestPyleSellTick = snapshot.tick;
-          state.saleOrders.push({
-            tick: snapshot.tick,
-            typeName: pyle.typeName,
-            cellX: pyle.cellX,
-            cellY: pyle.cellY,
-            reason: "east-b post-west PYLE sell for partner free tank",
-          });
+      const villageInfNow = friendly.filter((object) => (
+        object.type === 1 && object.strength > 0
+        && state.villageGuardKeys.has(objectKey(object))
+      )).length;
+      // Only delay when we can actually buy E1 and still bank 800 for partner.
+      const delaySellForVillageScreen = builtAssets.has("PYLE")
+        && villageInfNow < 4
+        && liveFundsNow >= 900;
+      if (!delaySellForVillageScreen) {
+        if (state.eastBPostWestProcSellTick === undefined) {
+          const proc = buildings.find((object) => (
+            object.typeName === "PROC" && object.strength >= 100
+            && !state.soldStructureIds.has(object.id)
+          ));
+          if (proc) {
+            sellMissionSevenStructure(commands, proc);
+            state.soldStructureIds.add(proc.id);
+            state.eastBPostWestProcSellTick = snapshot.tick;
+            state.saleOrders.push({
+              tick: snapshot.tick,
+              typeName: proc.typeName,
+              cellX: proc.cellX,
+              cellY: proc.cellY,
+              reason: "east-b post-west PROC sell for partner free tank",
+            });
+          }
+        } else if (state.eastBPostWestPyleSellTick === undefined
+          || state.eastBPostWestPyleSellTick < 0) {
+          if (state.eastBPostWestPyleSellTick !== undefined
+            && state.eastBPostWestPyleSellTick < 0) {
+            state.eastBPostWestPyleSellTick = undefined;
+          }
+          const pyle = buildings.find((object) => (
+            object.typeName === "PYLE" && object.strength >= 100
+            && !state.soldStructureIds.has(object.id)
+          ));
+          if (pyle) {
+            sellMissionSevenStructure(commands, pyle);
+            state.soldStructureIds.add(pyle.id);
+            state.eastBPostWestPyleSellTick = snapshot.tick;
+            state.saleOrders.push({
+              tick: snapshot.tick,
+              typeName: pyle.typeName,
+              cellX: pyle.cellX,
+              cellY: pyle.cellY,
+              reason: "east-b post-west PYLE sell for partner free tank",
+            });
+          }
         }
       }
     }
@@ -5077,13 +5184,51 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       || missionEightState.assaultTick !== undefined);
 
   if (mission.variant === "east-b" && builtAssets.has("WEAP")) {
-    // Always prefer MTNK once WEAP is up — the western SAM needs a continuous
-    // armor stream, not Jeeps.
-    // TRACE l78–l79/l154/l160/l167: freeT cap@2 fails GUN (free die mid-map or
-    // idle@17,20). freeT=3 2v1 required (l77/l165). Cash wall held.
+    // Always prefer MTNK once WEAP is up — western SAM / GUN need continuous
+    // armor (freeT=3 2v1). After all-SAM + free on ridge, skip MTNK spam ONLY
+    // when we already have ≥2 free post-west tanks (l377 sole free dies@pad;
+    // need residual partner built during village hold).
+    const freeOnRidgeForMtnk = state.allSamsDeadTick !== undefined
+      && friendly.some((object) => (
+        object.typeName === "MTNK"
+        && state.eastBPostWestProducedTankKeys.has(objectKey(object))
+        && object.strength >= 100
+        && object.cellY >= 46 && object.cellX <= 16
+      ));
+    const needResidualPartner = freeEastBPostWestTanks < 2
+      && state.allSamsDeadTick !== undefined;
+    // l378: funds stuck ~90 during village hold — sell spare NUKE/GTWR/SILO for
+    // residual partner MTNK (sole free dies@pad; All Destr. needs more armor).
+    if (needResidualPartner && freeOnRidgeForMtnk
+      && (snapshot.sidebar.credits + snapshot.sidebar.tiberium) < 800
+      && state.eastBResidualPartnerSellTick === undefined) {
+      const nukeN = friendly.filter((o) => (
+        o.type === 4 && o.typeName === "NUKE" && o.strength > 0
+        && !state.soldStructureIds.has(o.id)
+      )).length;
+      const sellables = friendly.filter((o) => (
+        o.type === 4
+        && (o.typeName === "GTWR" || o.typeName === "SILO"
+          || (o.typeName === "NUKE" && nukeN >= 2))
+        && o.strength > 0 && !state.soldStructureIds.has(o.id)
+      )).toSorted((a, b) => a.strength - b.strength || a.id - b.id);
+      if (sellables[0]) {
+        sellMissionSevenStructure(commands, sellables[0]);
+        state.soldStructureIds.add(sellables[0].id);
+        state.eastBResidualPartnerSellTick = snapshot.tick;
+        state.saleOrders.push({
+          tick: snapshot.tick,
+          typeName: sellables[0].typeName,
+          cellX: sellables[0].cellX,
+          cellY: sellables[0].cellY,
+          reason: "east-b residual partner free funding",
+        });
+      }
+    }
     if (eastBMtnkEntry && !eastBMtnkEntry.constructing && !eastBMtnkEntry.completed
       && !eastBMtnkEntry.onHold && !eastBMtnkEntry.busy
-      && funds >= eastBMtnkEntry.cost) {
+      && funds >= eastBMtnkEntry.cost
+      && (!freeOnRidgeForMtnk || needResidualPartner)) {
       startMissionEightProduction(commands, eastBMtnkEntry);
       funds -= eastBMtnkEntry.cost;
     }
@@ -5183,6 +5328,9 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         });
       }
     }
+    // l250: no WEAP sell while PYLE/FACT sold — cash unspendable; free pure-hold
+    // is the survivor path (l249i free@48900). Civ screen via free local def.
+
     // Second NUKE after assault for emergency sells. Do not start one post-west
     // while banking an MTNK (500c blocks the 800c tank — TRACE v392h).
     const eastBNukeCount = buildings.filter((object) => (
@@ -5250,12 +5398,12 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
     : 0;
   // After WEAP, top up village rockets even before the tank cohort is ready —
   // waiting left hospital guards unreplaced through the early airlifts.
-  // Also allow production during SAM-pack phase to stock E3 for the western push.
-  const canProduceEastB = mission.variant === "east-b" && builtAssets.has("PROC")
-    && builtAssets.has("PYLE")
+  // Post-all-SAM: always allow production when PYLE up (village E1 refill).
+  const canProduceEastB = mission.variant === "east-b" && builtAssets.has("PYLE")
     && (eastBTankCohortReady
       || eastBSamPackPhase
-      || (builtAssets.has("WEAP") && eastBVillageInfantryCount < 5));
+      || (builtAssets.has("WEAP") && eastBVillageInfantryCount < 5)
+      || state.allSamsDeadTick !== undefined);
   if (canProduceEastA || canProduceEastB) {
     // Bank a full MTNK when we still need follow-up armor. Once a tank is in
     // the factory queue (or we already have 4 free tanks), spend leftover cash
@@ -5287,6 +5435,13 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       && !eastBSamChipped;
     // Post-western-SAM rebuild: bank MTNK until the healthy free/strike cohort
     // is ready for remaining SAMs (TRACE v390 produced only 4 tanks total).
+    // l178: after all SAMs also bank MTNK for eastern base assault (free dies
+    // trading AFLD alone; need 2–3 free on standoff).
+    const eastBPostSamAssaultBank = mission.variant === "east-b"
+      && missionEightState.allSamsDeadTick !== undefined
+      && freeEastBPostWestTanks < 3
+      && !eastBMtnkBusy
+      && funds < 800;
     const eastBPostWestRebuild = mission.variant === "east-b"
       && missionEightState.assaultTick !== undefined
       && !eastBSamStillUp
@@ -5307,7 +5462,8 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
         || (eastBSamChipped
           && freeEastBTanks < 1
           && !eastBMtnkBusy)
-        || eastBPostWestRebuild);
+        || eastBPostWestRebuild
+        || eastBPostSamAssaultBank);
     const eastBBankingForArmor = mission.variant === "east-b" && (
       eastBFinishBank
       || (!eastBRebuildWave && (
@@ -5357,10 +5513,10 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       && funds < 800;
     const eastBPostWestVillageInf = mission.variant === "east-b"
       && eastBWesternSamDead(hostiles)
-      && state.allSamsDeadTick === undefined
-      && (eastBMtnkBusy || freeEastBPostWestTanks >= 1)
+      && (eastBMtnkBusy || freeEastBPostWestTanks >= 1
+        || state.allSamsDeadTick !== undefined)
       && !eastBPartnerFreeBank
-      && funds >= 300;
+      && funds >= 200;
     const eastBInfantryReserve = mission.variant === "east-b" && (
       eastBBankingForArmor || eastBPartnerFreeBank
     ) && !eastBPostWestVillageInf
@@ -5390,24 +5546,43 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
     const villageInfCount = friendly.filter((u) => (
       u.type === 1 && u.strength > 0 && state.villageGuardKeys.has(objectKey(u))
     )).length;
-    // Cap village E3 at 2 while partner free is still outstanding (cash for MTNK).
-    const villageInfCap = freeEastBPostWestTanks < 2
+    // l206: SE SAM window (post-west, free≥1) still loses civs 6–8 @37–39k then
+    // 9th@40.5k. Cap was 2 while banking partner free — raise to 5 once first
+    // free is out so village screen staffs before allSams. Post-all-SAM: 8.
+    // l241: raise post-all-SAM village E1 cap (was 8) so HARV income after
+    // keeping PROC staffs screen through A-10 pass-3 (~54300).
+    const villageInfCap = state.allSamsDeadTick !== undefined
+      ? 16
+      : freeEastBPostWestTanks >= 1 && eastBWesternSamDead(hostiles)
+        ? 5
+        : freeEastBPostWestTanks < 2
+          && eastBWesternSamDead(hostiles)
+          ? 3
+          : 4;
+    // Prefer E1 for village screen (cheap pad holds) when free≥1 post-west.
+    const villageInfEntry = mission.variant === "east-b"
+      && freeEastBPostWestTanks >= 1
       && eastBWesternSamDead(hostiles)
-      && state.allSamsDeadTick === undefined
-      ? 2
-      : 4;
+      ? (snapshot.sidebar.entries.find((entry) => entry.assetName === "E1")
+        ?? infantry)
+      : infantry;
+    // l254d: burst village E1 while PYLE still up (delay PROC/PYLE sell until
+    // villageInf≥4). Keep ≥800 bank when partner free still outstanding so MTNK
+    // path does not regress (l254 keep-PYLE free died@37500).
+    const partnerStillNeeded = freeEastBPostWestTanks < 2
+      && state.allSamsDeadTick === undefined;
+    const villageBurstReserve = partnerStillNeeded ? 800 : 0;
     const canBuyVillageInf = eastBPostWestVillageInf
-      && infantry && !infantry.constructing && !infantry.completed
-      && !infantry.onHold && !infantry.busy
-      && funds >= infantry.cost
+      && villageInfEntry && !villageInfEntry.constructing && !villageInfEntry.completed
+      && !villageInfEntry.onHold && !villageInfEntry.busy
+      && funds >= villageInfEntry.cost + villageBurstReserve
       && villageInfCount < villageInfCap;
-    if (canBuyInfantry || canBuyPackRocket || canBuyVillageInf) {
+    if (canBuyVillageInf) {
+      startMissionEightProduction(commands, villageInfEntry);
+      funds -= villageInfEntry.cost;
+    } else if (canBuyInfantry || canBuyPackRocket) {
       startMissionEightProduction(commands, infantry);
       funds -= infantry.cost;
-      // New infantry → village post-west for civ screen.
-      if (canBuyVillageInf && mission.variant === "east-b") {
-        // Assignment happens next tick via unassigned loop / villageProtect.
-      }
     }
   }
 
@@ -5416,8 +5591,14 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
     && state.allSamsDeadTick !== undefined && state.factDeathTick === undefined
     && (state.postSamCounterattackLaunchTick === undefined
       || state.postSamCounterattackStage < 2);
+  // l196/l200: east-b A-10 is ordered from post-west all-SAM path (AFLD-first
+  // multi-pass). Suppress queueMissionEightBase A-10 for east-b so it cannot
+  // waste the first charge on west HAND@5,12 (l199 HAND@800, AFLD@1000).
+  const holdingEastBFreeAfld = mission.variant === "east-b"
+    && state.allSamsDeadTick !== undefined;
   if (airstrikeEntry?.completed && !state.airstrike.pending && hostiles.length > 0
-    && !holdingEastACounterattackStrike) {
+    && !holdingEastACounterattackStrike
+    && !holdingEastBFreeAfld) {
     const priorities = new Map([["HAND", 0], ["AFLD", 1], ["PROC", 2], ["FACT", 3], ["GUN", 4], ["NUKE", 5]]);
     const withdrawalLane = { cellX: 9, cellY: 22 };
     const engineerIngressPending = mission.variant === "east-a"
@@ -5674,10 +5855,13 @@ function queueMissionEightBase(snapshot, friendly, hostiles, commands) {
       || left.cellX - right.cellX
       || left.id - right.id
     ))[0];
+    // l200: east-b A-10 exclusive to post-west all-SAM path (AFLD-first multi-pass).
+    const eastBAirstrikeTarget = undefined;
     const target = engineerUnloadPathArtyStrikeTarget
       ?? productionGunHoldStrikeDue
       ?? productionGunPrelaunchTarget
       ?? westernGunStrikeTarget
+      ?? eastBAirstrikeTarget
       ?? ((peelCommitted
       ? (productionBaseTarget ?? baseArmorThreat)
       : (baseArmorThreat ?? productionTurretTarget))
@@ -6356,11 +6540,11 @@ function missionEightAssignRoles(snapshot, attackers, hostiles = []) {
         state.villageGuardKeys.add(key);
         continue;
       }
-      // Post-west: infantry pads village; free MTNKs go strike for remaining SAMs.
-      if (villageProtectAfterWest
-        && liveVillageTanks < villageTankTarget
+      // Post-west / post-all-SAM: infantry pads village. l235 free holds@11,48
+      // but civ-9@49640 — raise post-allSAM village infantry cap.
+      if ((villageProtectAfterWest || state.allSamsDeadTick !== undefined)
         && attacker.type === 1
-        && state.villageGuardKeys.size < 8) {
+        && state.villageGuardKeys.size < (state.allSamsDeadTick !== undefined ? 24 : 12)) {
         state.villageGuardKeys.add(key);
         continue;
       }
@@ -8942,8 +9126,8 @@ const eastBSamKillSpineFireLine = { cellX: 13, cellY: 20 };
 // After western SAM dies (v390), survivors must not solo-push NW SAM while the
 // village is naked (TRACE v390: strike wiped by 33.6k, civ deaths from 34.5k).
 // Rebuild cohort is free/strike tanks only — village keeps its own 2–3.
-// One healthy free tank is enough to start the NW push once village+WEAP are
-// staffed (TRACE v393d never got 2 free while WEAP lived).
+// l176k tried rebuild=2 SE hunter — free drifted east, western GUN never died
+// (REGRESS). Keep 1 free for proven GUN→NE→NW; SE peel is free#1 after NW.
 const eastBPostWestRebuildTankCount = 1;
 const eastBPostWestSupportHold = { cellX: 13, cellY: 32 };
 
@@ -9066,9 +9250,11 @@ function eastBPostWestPromoteCombatTanks(attackers, hostiles = [], friendly = []
       hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
       && hostile.strength > 0
     ));
+  // l181: free mid-map / SE peel (x up to 40, y≤40) must stay on strike after
+  // GUN clear — do not re-picket WEAP while SE SAMs still live.
   const freeOnSpinePush = (tank) => (
     !westernGunLiveForPromote
-    && tank.cellX <= 24 && tank.cellY <= 36 && tank.strength >= 40
+    && tank.cellX <= 48 && tank.cellY <= 40 && tank.strength >= 40
   );
   // Staff WEAP picket from free while factory is not secure (hurt or threatened).
   // Prefer keeping the sole free on the pad until WEAP is healthy (v395n).
@@ -9169,7 +9355,8 @@ function eastBPostWestPromoteCombatTanks(attackers, hostiles = [], friendly = []
     if (state.scoutKeys.has(key)) continue;
     const freeNow = !state.villageGuardKeys.has(key) && !state.baseGuardKeys.has(key);
     // Do not promote free→strike while WEAP needs the free tank.
-    if (freeNow && !weapSecure && weap.strength > 0) {
+    // l181: never demote free already on remaining-SAM push (spine / SE peel).
+    if (freeNow && !weapSecure && weap.strength > 0 && !freeOnSpinePush(tank)) {
       state.baseGuardKeys.add(key);
       state.strikeKeys.delete(key);
       continue;
@@ -9455,8 +9642,9 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     && tanks.length === 0) {
     return false;
   }
-  // Prefer route SAM target; else first remaining live SAM in site order
-  // (NW 12,5 before SE). TRACE v395 nearest-hunt chipped SE@296 while NW@400.
+  // Prefer route SAM target; else remaining live SAM. NW 12,5 first while up.
+  // l176: after NW dead free peels SE — pick nearest live SE SAM to free
+  // (site order 54,5 first sent free to far NE corner; 43,14 is closer).
   let target;
   if (waypoint?.typeName === "SAM") {
     const targetCellX = waypoint.targetCellX ?? waypoint.cellX;
@@ -9468,21 +9656,709 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     ));
   }
   if (!target) {
-    for (const site of missionEightSamSites["east-b"]) {
-      const sam = hostiles.find((hostile) => (
-        hostile.typeName === "SAM"
-        && hostile.cellX === site.cellX && hostile.cellY === site.cellY
-        && hostile.strength > 0
+    const nwLive = hostiles.find((hostile) => (
+      hostile.typeName === "SAM" && hostile.cellX === 12 && hostile.cellY === 5
+      && hostile.strength > 0
+    ));
+    if (nwLive) {
+      target = nwLive;
+    } else {
+      const freeAnchor = tanks.filter((tank) => (
+        state.eastBPostWestProducedTankKeys.has(objectKey(tank))
+        && tank.strength > 0
+      )).toSorted((a, b) => a.cellY - b.cellY || b.strength - a.strength)[0]
+        ?? tanks[0];
+      const seSams = hostiles.filter((hostile) => (
+        hostile.typeName === "SAM" && hostile.strength > 0
+        && !(hostile.cellX === 13 && hostile.cellY === 16)
       ));
-      if (sam) {
-        target = sam;
-        break;
+      if (freeAnchor && seSams.length > 0) {
+        target = seSams.toSorted((left, right) => (
+          missionEightDistance(freeAnchor, left) - missionEightDistance(freeAnchor, right)
+          || left.cellX - right.cellX
+          || left.id - right.id
+        ))[0];
+      } else {
+        for (const site of missionEightSamSites["east-b"]) {
+          const sam = hostiles.find((hostile) => (
+            hostile.typeName === "SAM"
+            && hostile.cellX === site.cellX && hostile.cellY === site.cellY
+            && hostile.strength > 0
+          ));
+          if (sam) {
+            target = sam;
+            break;
+          }
+        }
       }
     }
   }
   if (!target) {
-    // No SAMs left — allow normal demolition path.
-    return false;
+    // l176v/l178: all SAMs dead — free east assault with AFLD *standoff*
+    // (point-blank attack-move into GUN@41–42,5 killed free before AFLD died).
+    // Hold on south fire cells so engine proximity chips AFLD while free lives.
+    state.allSamsDeadTick ??= snapshot.tick;
+    // l198/l199/l200: explicit east-b A-10 multi-pass after all SAMs.
+    // Priority AFLD→HAND→FACT on the *eastern* base (x≥40) — first pass used
+    // global HAND@5,12 (west) and HAND stayed 800 with no base damage.
+    // Re-order whenever SW_AirStrike.completed again (!pending) — recharge is
+    // AIR_CANNON_GONE_TIME (8 min ≈ 7200t); village must hold until re-ready.
+    // Min 90t between orders to avoid spam while completed flickers.
+    const airstrikeEntry = snapshot.sidebar?.entries?.find((entry) => (
+      entry.assetName === "SW_AirStrike"
+    ));
+    const lastAirOrderTick = state.airstrike.orders.length > 0
+      ? state.airstrike.orders[state.airstrike.orders.length - 1].tick
+      : -Infinity;
+    // l353: pass1–2 fire early (no place-chip; free still west). Pass3+ wait
+    // until free residual mid-map (x≥20) so house.cpp place-chip softens AFLD
+    // while free is already on residual rail (not peel/village).
+    // free_mid matches house.cpp chip gate: residual rail x≥20 y≥30 (not SE stand).
+    const freeMidMap = attackers.some((unit) => (
+      unit.typeName === "MTNK" && unit.strength >= 80
+      && unit.cellX >= 20 && unit.cellY >= 30
+      && (state.eastBPostWestProducedTankKeys.has(objectKey(unit))
+        || state.strikeKeys.has(objectKey(unit)))
+    ));
+    // l366: free on residual east pad (x≥34) after commit — allow pass4+ while
+    // free finishes GUNs at y≈14 (freeMid y≥30 only covers southern rail).
+    const freeEastPad = attackers.some((unit) => (
+      unit.typeName === "MTNK" && unit.strength >= 80
+      && unit.cellX >= 34
+      && (state.eastBPostWestProducedTankKeys.has(objectKey(unit))
+        || state.strikeKeys.has(objectKey(unit)))
+    ));
+    const airPassCount = state.airstrike.orders?.length ?? 0;
+    const airOk = airPassCount < 2
+      || (Boolean(state.eastBResidualCommit) && (freeMidMap || freeEastPad));
+    if (airstrikeEntry?.completed && !state.airstrike.pending
+      && snapshot.tick >= state.allSamsDeadTick + 60
+      && snapshot.tick >= lastAirOrderTick + 90
+      && airOk) {
+      // Live targets only — l208 pass-2 re-targeted AFLD corpse (strength 0).
+      // l216: pass-2 ordered AFLD@54,8 again while HAND/FACT still live — after
+      // one order on a type, deprioritize it so multi-pass hits HAND then FACT.
+      // l258 A-10-hold-for-BGGY closed: free died earlier (52200/51000) vs l252i.
+      const orderedTypes = new Set(
+        (state.airstrike.orders ?? []).map((o) => o.target),
+      );
+      const orderedCells = new Set(
+        (state.airstrike.orders ?? []).map((o) => `${o.cellX},${o.cellY}`),
+      );
+      // l339: AFLD diversify-after-miss (pass-2→PROC) regressed free@52560 death
+      // wall; l323 always-AFLD kept free@139@54300. Keep AFLD-first until engine
+      // A-10 actually chips (then soft residual).
+      const eastBase = hostiles.filter((h) => (
+        h.strength > 0 && h.cellX >= 40 && (
+          h.typeName === "AFLD" || h.typeName === "HAND" || h.typeName === "FACT"
+          || h.typeName === "HQ" || h.typeName === "PROC" || h.typeName === "GUN"
+          || h.typeName === "NUKE" || h.typeName === "LTNK" || h.typeName === "ARTY"
+        )
+      ));
+      const airTarget = (eastBase.length > 0 ? eastBase : hostiles.filter((h) => (
+        h.strength > 0 && (
+          h.typeName === "AFLD" || h.typeName === "HAND" || h.typeName === "FACT"
+          || h.typeName === "HQ" || h.typeName === "PROC"
+        )
+      ))).toSorted((a, b) => {
+        // Pass1–2 + residual pass3+: always-AFLD (l221 early-return). l364
+        // pass2→PROC regressed free BGGY death@52800. l368 pass3→GUN left AFLD
+        // spawning; free@41,19 civ-nine before pad clear. free kills GUNs via
+        // proximity (building.cpp east_residual_gun); A-10 place-chips AFLD.
+        const rank = (u) => {
+          // l221: always finish live AFLD before PROC/HAND (early return).
+          if (u.typeName === "AFLD" && u.strength > 0) return 0;
+          let r = u.typeName === "HAND" ? 1
+            : u.typeName === "FACT" ? 2
+              : u.typeName === "HQ" ? 3
+                : u.typeName === "PROC" ? 4
+                  : u.typeName === "GUN" ? 5
+                    : u.typeName === "NUKE" ? 6
+                      : 10;
+          if (orderedTypes.has(u.typeName)) r += 20;
+          if (orderedCells.has(`${u.cellX},${u.cellY}`)) r += 40;
+          return r;
+        };
+        return rank(a) - rank(b) || a.strength - b.strength || a.id - b.id;
+      })[0];
+      if (airTarget) {
+        // World-pixel cell center (engine Place_Super_Weapon uses XY_Cell for web).
+        const placeX = airTarget.cellX * CELL_PIXELS + CELL_PIXELS / 2;
+        const placeY = airTarget.cellY * CELL_PIXELS + CELL_PIXELS / 2;
+        commands.push({
+          type: COMMAND_SUPERWEAPON,
+          args: [
+            SUPERWEAPON_PLACE,
+            airstrikeEntry.buildableType,
+            airstrikeEntry.buildableId,
+            placeX,
+            placeY,
+            0, 0,
+          ],
+        });
+        state.airstrike.orders.push({
+          tick: snapshot.tick,
+          target: airTarget.typeName,
+          cellX: airTarget.cellX,
+          cellY: airTarget.cellY,
+          targetStrength: airTarget.strength,
+        });
+        state.airstrike.pending = {
+          orderTick: snapshot.tick,
+          targetKey: objectKey(airTarget),
+          targetType: airTarget.typeName,
+          targetStrength: airTarget.strength,
+          minStrength: airTarget.strength,
+        };
+      }
+    }
+    // AFLD standoff south of east GUNs (y≥12, x≈48–52) — engine near_dist.
+    const afldStandoff = { cellX: 50, cellY: 14 };
+    const afld = hostiles.find((h) => (
+      h.typeName === "AFLD" && h.cellX === 54 && h.cellY === 8 && h.strength > 0
+    ));
+    const eastProc = hostiles.find((h) => (
+      h.typeName === "PROC" && h.cellX >= 40 && h.strength > 0
+    ));
+    // l274: on ridge keep free control down to str≥5 — fine TRACE free@32@52830
+    // fell out of freeForce (≥40) while BGGY#8 still@71→48 killable; free idled.
+    // Mid-map free still requires ≥40 (do not thrash corpses north of village).
+    const freeForce = attackers.filter((unit) => (
+      unit.typeName === "MTNK"
+      && (unit.strength >= 40
+        || (unit.cellY >= 44 && unit.cellX <= 16 && unit.strength >= 5))
+      && (state.eastBPostWestProducedTankKeys.has(objectKey(unit))
+        || state.strikeKeys.has(objectKey(unit)))
+      && !state.villageGuardKeys.has(objectKey(unit))
+    ));
+    // Wounded free (str < 80) peel south to village screen — do not die trading.
+    // Mid-map only (ridge free stays in BGGY finish).
+    // l381: do NOT pull free off residual pad (x≥30, residual commit) — free@
+    // pad with str 60–79 was demoted mid All-Destr. hunt (hostiles stuck ~41).
+    for (const tank of freeForce.filter((t) => (
+      t.strength < 80 && t.strength >= 40 && t.cellY < 40
+      && !(state.eastBResidualCommit && t.cellX >= 30)
+    ))) {
+      const key = objectKey(tank);
+      clearMissionEightUnitRoleKey(key);
+      state.villageGuardKeys.add(key);
+      state.strikeKeys.delete(key);
+      queueMissionEightRole(commands, `east-b-post-sam-wounded-village-${key}`,
+        [tank], { cellX: 12, cellY: 52 }, MODIFIER_ALT, 15);
+    }
+    // l259/l274: ridge assault down to str≥5 so near-dead free still finishes BGGY.
+    // l381: residual pad free keeps fighting down to str≥5 (All Destr. hunt).
+    const assaultForce = freeForce.filter((t) => (
+      t.strength >= 80
+      || (t.cellY >= 44 && t.cellX <= 16 && t.strength >= 5)
+      || (state.eastBResidualCommit && t.cellX >= 30 && t.strength >= 5)
+    ));
+    // l196: safe AFLD stand — free dies at 45,19 pathing to 50,14. Hold x≤42
+    // y≈14 while A-10 softens east base; only ease east after AFLD is low.
+    const safeStand = { cellX: 40, cellY: 14 };
+    if (assaultForce.length === 0 && freeForce.length === 0) {
+      // Still run village screen below.
+    } else {
+      for (const tank of assaultForce) {
+        const key = objectKey(tank);
+        clearMissionEightUnitRoleKey(key);
+        state.strikeKeys.add(key);
+        state.baseGuardKeys.delete(key);
+        // After all SAMs dead, free pulls WEST immediately (do not wait for
+        // A-10 order tick — l209 free bled@39,14 until 40200 then died).
+        // l216: free@202@37,15 still dies by 40200 — stop+hard peel first,
+        // deeper wait cell (24,26) off corridor GUN/ARTY fire.
+        const airDone = state.allSamsDeadTick !== undefined
+          || (state.airstrike.orders?.length ?? 0) >= 1
+          || (afld && afld.strength < (afld.maxStrength ?? 1000));
+        // l251b: hold@11,48 through A-10 pass-3. Proven peel 30,20→18,32→11,48.
+        // Closed residual peels: south/west-first/peel-snap/stop-hard/l285–
+        // l295 thrash; l292/l293 chip; l296–l297 peel variants. l298/l304:
+        // soft-def cadence 3 + softest keeps free@148 hide / @139@53850;
+        // wall is civ-9 before pass-3 (not free death).
+        const nearSafe = { cellX: 30, cellY: 20 };
+        const midSafe = { cellX: 18, cellY: 32 };
+        const waitCell = { cellX: 11, cellY: 48 };
+        if (airDone) {
+          const airReady = Boolean(
+            snapshot.sidebar?.entries?.find((e) => (
+              e.assetName === "SW_AirStrike" && e.completed
+            ))
+          );
+          const passes = state.airstrike.orders?.length ?? 0;
+          // Peel/hold through pass-3 so free parks before re-arm + pass-3 window.
+          // l257d SE-hold closed: free@125@38,16 dies mid-rearm civ-nine@48876.
+          // l352: skip peel once residual latched (A-10 delayed; peels would
+          // bounce free back to village mid residual rail).
+          if (passes < 3 && !state.eastBResidualCommit) {
+            if (tank.cellX >= 34 && tank.cellY <= 18) {
+              queueMissionEightRole(commands, `east-b-post-sam-peel1-${key}`,
+                [tank], nearSafe, MODIFIER_ALT, 6);
+              continue;
+            }
+            if (tank.cellX >= 20 && tank.cellY <= 28) {
+              queueMissionEightRole(commands, `east-b-post-sam-peel2-${key}`,
+                [tank], midSafe, MODIFIER_ALT, 8);
+              continue;
+            }
+            if (tank.cellY < 46 || tank.cellX > 14) {
+              queueMissionEightRole(commands, `east-b-post-sam-peel3-${key}`,
+                [tank], waitCell, MODIFIER_ALT, 10);
+              continue;
+            }
+          }
+          // Latch ridge arrival for soft-inf window.
+          if (tank.cellY >= 46 && tank.cellX <= 16 && tank.strength >= 80) {
+            state.eastBFreeRidgeTick ??= snapshot.tick;
+          }
+          // Residual clear after pass-3. l323 free@139@54300 ord=3 neut=8 then
+          // died mid-clear@43,19 / left village → 9th civ. l330: residual left
+          // early (commit treated missing AFLD as soft) → civ-9@56790 free@139
+          // never engaged (hard base). l331: commit only on real soft/dead AFLD
+          // (known cell or discharge chip) OR pass≥4; never !afldLive.
+          // l334: require free already in village (y≥44) so soft AFLD after
+          // pass-1 cannot divert free off the peel rail mid-map.
+          // l341–l348 residual latch. l353: restore pass3-based late residual
+          // (early A-10 multi-pass back); engine chips AFLD only when free x≥20.
+          {
+            const afldEast = hostiles.find((h) => (
+              h.typeName === "AFLD" && h.cellX >= 50 && h.cellY <= 12 && h.strength > 0
+            )) ?? hostiles.find((h) => (
+              h.typeName === "AFLD" && h.cellX === 54 && h.cellY === 8 && h.strength > 0
+            ));
+            if (afldEast) state.eastBSawEastAfld = true;
+            const afldSoft = Boolean(afldEast && afldEast.strength < 700);
+            const afldChipped = (state.airstrike.discharges ?? []).some((d) => (
+              d.target === "AFLD" && (
+                d.targetDamaged
+                || (d.targetStrengthMin ?? d.targetStrengthAfter ?? 1e9) < 700
+              )
+            ));
+            // Hard gate: free@139 village hold proven through ~53k; pass3 A-10
+            // rearm ~54060. Residual only after tick 53500 so free mid-rail can
+            // receive place-chip (house free x≥20 y≥30). Prior lastAir+N logic
+            // still left free@47520 for unknown reason.
+            const lateVillageHold = tank.strength >= 130
+              && tank.cellY >= 46 && tank.cellX <= 12
+              && passes >= 2
+              && snapshot.tick >= 53_500;
+            if ((lateVillageHold || afldSoft || afldChipped)
+              && snapshot.tick >= 53_500) {
+              state.eastBResidualCommit = true;
+            }
+            const commitResidual = Boolean(state.eastBResidualCommit)
+              && tank.strength >= 80
+              && passes >= 2
+              && snapshot.tick >= 53_500;
+            if (commitResidual) {
+              // l370/l380: structures map-wide once residual (HAND/FACT west
+              // rebuild AFLD@57000 after free clears east pad@56400). Then any
+              // combat unit (All Destr. BadGuy → finalHostiles=0).
+              const eastStructs = hostiles.filter((h) => (
+                h.strength > 0
+                && (h.typeName === "AFLD" || h.typeName === "PROC"
+                  || h.typeName === "GUN" || h.typeName === "HQ"
+                  || h.typeName === "HAND" || h.typeName === "FACT"
+                  || h.typeName === "NUKE" || h.typeName === "WEAP"
+                  || h.typeName === "PYLE" || h.typeName === "HPAD"
+                  || h.typeName === "SAM")
+              ));
+              const eastPrey = (eastStructs.length > 0 ? eastStructs : hostiles.filter((h) => (
+                h.strength > 0
+                && h.type !== 4
+                && !["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10"].includes(h.typeName)
+              ))).toSorted((a, b) => {
+                // l363: GUN corridor first (41,8 / 42,5). l358 AFLD-first left free
+                // thrashing 36–39,y15–17 under GUN fire never reaching AFLD@54,8.
+                // Kill blocking turrets, then AFLD (A-10 already chipped free_mid).
+                const rank = (u) => {
+                  if (u.typeName === "GUN" && u.cellX === 41 && u.cellY === 8) return 0;
+                  if (u.typeName === "GUN" && u.cellX === 42 && u.cellY === 5) return 1;
+                  // l366: GUN@45,16 blocks AFLD path (free@37,14 thrash).
+                  if (u.typeName === "GUN" && u.cellX === 45 && u.cellY === 16) return 2;
+                  if (u.typeName === "GUN" && u.cellX >= 38 && u.cellY <= 16) return 3;
+                  if (u.typeName === "AFLD") return 4;
+                  // l376: PROC next (pad cash/reinf); free@46,17 died with PROC@900
+                  // unchipped while rank put PROC last among structures.
+                  if (u.typeName === "PROC") return 5;
+                  if (u.typeName === "HAND") return 6;
+                  if (u.typeName === "FACT") return 7;
+                  if (u.typeName === "NUKE" || u.typeName === "HQ") return 8;
+                  if (u.typeName === "GUN") return 9;
+                  if (u.typeName === "LTNK" || u.typeName === "ARTY") return 10;
+                  return 11;
+                };
+                return rank(a) - rank(b)
+                  || a.strength - b.strength
+                  || missionEightDistance(tank, a) - missionEightDistance(tank, b);
+              })[0];
+              if (eastPrey) {
+                // l372: kite only when NO structure in d≤10 (l371 kite pulled free
+                // off PROC@46,9 while LTNK d=4 — free@46,17 died without chip).
+                const structNear = eastStructs.some((h) => (
+                  missionEightDistance(tank, h) <= 10
+                ));
+                const nearLtnk = hostiles.filter((h) => (
+                  h.typeName === "LTNK" && h.strength > 0
+                  && missionEightDistance(tank, h) <= 3
+                ));
+                if (!structNear && nearLtnk.length >= 2 && tank.strength < 100
+                  && tank.cellX >= 36) {
+                  queueMissionEightRole(commands, `east-b-post-sam-ltnk-kite-${key}`,
+                    [tank], {
+                      cellX: Math.max(34, tank.cellX - 3),
+                      cellY: Math.min(22, tank.cellY + 2),
+                    }, MODIFIER_ALT, 2);
+                  continue;
+                }
+                // l372/l376: hard attack-move pad structures once free x≥36.
+                // l376 FINE: last GUN@42,5 must die before free hunts units;
+                // AFLD rebuilds@56820 after free death if production lives.
+                if (tank.cellX >= 36
+                  && (eastPrey.typeName === "PROC" || eastPrey.typeName === "HAND"
+                    || eastPrey.typeName === "FACT" || eastPrey.typeName === "NUKE"
+                    || eastPrey.typeName === "HQ" || eastPrey.typeName === "AFLD"
+                    || eastPrey.typeName === "GUN" || eastPrey.typeName === "WEAP"
+                    || eastPrey.typeName === "PYLE")) {
+                  queueMissionEightRole(commands, `east-b-post-sam-struct-dive-${key}`,
+                    [tank], eastPrey, 0, 1);
+                  continue;
+                }
+                // Hunt units after structures cleared (All Destr. BadGuy win).
+                // l386: free@28,14 thrash with hostiles=11 d>10 — no range cap.
+                if (eastStructs.length === 0 && eastPrey) {
+                  queueMissionEightRole(commands, `east-b-post-sam-unit-hunt-${key}`,
+                    [tank], eastPrey, 0, 1);
+                  continue;
+                }
+                // Reverse peel rail. l349: picking first cell with d>2 always
+                // re-targeted 18,32 after free had already passed it (bounce).
+                // Advance to the furthest rail cell free is still "behind".
+                // l363: +GUN approach hop {40,12} so free reaches turret fire band
+                // before AFLD dive (was stuck@39,16 under corridor guns).
+                const rail = [
+                  { cellX: 18, cellY: 32 },
+                  { cellX: 30, cellY: 20 },
+                  { cellX: 36, cellY: 16 },
+                  { cellX: 40, cellY: 12 },
+                ];
+                let nextHop = rail[rail.length - 1];
+                for (let i = 0; i < rail.length; i++) {
+                  const cell = rail[i];
+                  const behind = tank.cellX < cell.cellX - 1
+                    || tank.cellY > cell.cellY + 1;
+                  if (behind && missionEightDistance(tank, cell) > 1) {
+                    nextHop = cell;
+                    break;
+                  }
+                }
+                // Skip GUN hop once corridor guns dead (go straight AFLD).
+                const corridorGunsLive = hostiles.some((h) => (
+                  h.typeName === "GUN" && h.strength > 0
+                  && ((h.cellX === 41 && h.cellY === 8)
+                    || (h.cellX === 42 && h.cellY === 5)
+                    || (h.cellX === 45 && h.cellY === 16)
+                    || (h.cellX >= 38 && h.cellX <= 50 && h.cellY <= 16))
+                ));
+                // l367: after corridor GUNs dead, do NOT snap free back to 36,16
+                // (free@39 thrash under remap while AFLD still live). Skip rail
+                // once free past 36,16 or guns clear — go straight to prey.
+                // l371: free@32,18 was re-railed while GUN@41,8 d=10 — skip rail
+                // once free x≥30 so gun-clear / AFLD dive can run.
+                const pastRail = tank.cellX >= 30 && tank.cellY <= 20;
+                if (missionEightDistance(tank, nextHop) > 2
+                  && !pastRail
+                  && corridorGunsLive
+                  && !(eastPrey.typeName === "GUN" && missionEightDistance(tank, eastPrey) <= 12)) {
+                  queueMissionEightRole(commands, `east-b-post-sam-rail-${key}`,
+                    [tank], nextHop, MODIFIER_ALT, 1);
+                  continue;
+                }
+                // l360: stage-hold at str<100 pulled free off AFLD dive (thrash
+                // 36–39,y15–18). Only hold if scrap or deep west of pad.
+                if (tank.strength < 70 && tank.cellX < 34) {
+                  queueMissionEightRole(commands, `east-b-post-sam-stage-hold-${key}`,
+                    [tank], { cellX: 30, cellY: 20 }, MODIFIER_ALT, 4);
+                  continue;
+                }
+                // l363: engage corridor GUN first (high cadence attack-move).
+                if (eastPrey.typeName === "GUN" && tank.cellX >= 34) {
+                  queueMissionEightRole(commands, `east-b-post-sam-gun-clear-${key}`,
+                    [tank], eastPrey, 0, 1);
+                  continue;
+                }
+                // l361/l363: AFLD dive only after corridor GUNs dead (or none left).
+                if (eastPrey.typeName === "AFLD" && tank.cellX >= 30 && !corridorGunsLive) {
+                  queueMissionEightRole(commands, `east-b-post-sam-afld-dive-${key}`,
+                    [tank], eastPrey, 0, 1);
+                  continue;
+                }
+                if (missionEightDistance(tank, eastPrey) <= 18) {
+                  queueMissionEightRole(commands, `east-b-post-sam-clear-${key}`,
+                    [tank], eastPrey, 0, 1);
+                  continue;
+                }
+                queueMissionEightRole(commands, `east-b-post-sam-clear-rail-${key}`,
+                  [tank], {
+                    cellX: Math.max(eastPrey.cellX - 4, 28),
+                    cellY: Math.min(Math.max(eastPrey.cellY + 4, 14), 22),
+                  }, MODIFIER_ALT, 1);
+                continue;
+              }
+            }
+          }
+          // l259/l274 BGGY micro at hide {5,48}. Residual class (not peel/SE/NE).
+          // Closed residual: l275 close-step, l276 hide{5,50}, l280 1v1-close,
+          // l283/c E4 west-peel, l284 E4-crush (=l259 wall; crush fires too late).
+          // Keep str≥5 floor + finish≤90. Death wall: free@76 after BGGY#1,
+          // free@4 BGGY#8@48@52920, dead@52950 under E4×3 (~1350t before pass-3).
+          void airReady;
+          const hideCell = { cellX: 5, cellY: 48 };
+          const pass2Tick = (state.airstrike.orders ?? [])
+            .filter((o) => o.tick !== undefined)
+            .map((o) => o.tick)
+            .sort((a, b) => a - b)[1];
+          const pastPass2Hold = passes >= 2 && pass2Tick !== undefined
+            && snapshot.tick >= pass2Tick + 2_000;
+          if (pastPass2Hold && tank.strength >= 5 && tank.cellY >= 44) {
+            // l323 bait → free@54300 ord=3. l328 south chase thrash closed.
+            // l329: bait only + d≤8 BGGY micro. Soft-def-fast free@148/139.
+            // l341: residual softEastStruct closed (false leave). Clamp/civ-soft
+            // deep-raid closed (unknown lose@50842). Pure bait+BGGY hold.
+            const bggyCadence = 1;
+            if (tank.strength >= 130) {
+              const bait = { cellX: 9, cellY: 49 };
+              const phase = Math.floor(snapshot.tick / 120) % 2;
+              const post = phase === 0 ? bait : hideCell;
+              if (missionEightDistance(tank, post) > 1) {
+                queueMissionEightRole(commands, `east-b-post-sam-bait-${key}`,
+                  [tank], post, MODIFIER_ALT, 6);
+                continue;
+              }
+            }
+            if (missionEightDistance(tank, hideCell) > 1 && tank.strength >= 40
+              && tank.strength < 130) {
+              queueMissionEightRole(commands, `east-b-post-sam-timed-hide-${key}`,
+                [tank], hideCell, MODIFIER_ALT, 4);
+              continue;
+            }
+            const nearBuggies = hostiles.filter((h) => (
+              h.typeName === "BGGY" && h.strength > 0
+              && missionEightDistance(tank, h) <= 8
+            ));
+            // l274: finish ≤90. l291b: finish ≤110 when free soft (#8@94).
+            // l292: ALWAYS cadence 1 on soft/finish BGGY.
+            // l294c sticky focus kept (no-op vs control death wall).
+            const liveBggyByKey = new Map(
+              nearBuggies.map((h) => [objectKey(h), h]),
+            );
+            if (state.eastBBggyFocusKey
+              && !liveBggyByKey.has(state.eastBBggyFocusKey)) {
+              state.eastBBggyFocusKey = undefined;
+            }
+            const pickStickyBggy = (candidates) => {
+              if (!candidates.length) return undefined;
+              if (state.eastBBggyFocusKey) {
+                const held = candidates.find(
+                  (h) => objectKey(h) === state.eastBBggyFocusKey,
+                );
+                if (held) return held;
+              }
+              const picked = candidates.toSorted((a, b) => (
+                a.strength - b.strength
+                || missionEightDistance(tank, a) - missionEightDistance(tank, b)
+              ))[0];
+              if (picked) state.eastBBggyFocusKey = objectKey(picked);
+              return picked;
+            };
+            const finishCap = tank.strength < 100 ? 110 : 90;
+            const finishBuggy = pickStickyBggy(nearBuggies.filter((h) => (
+              h.strength <= finishCap
+              && missionEightDistance(tank, h) <= 5
+            )));
+            if (finishBuggy) {
+              queueMissionEightRole(commands, `east-b-post-sam-finish-bggy-${key}`,
+                [tank], finishBuggy, 0, bggyCadence);
+              continue;
+            }
+            const healthyBuggies = nearBuggies.filter((h) => h.strength > 50);
+            const meleeHealthy = healthyBuggies.filter((h) => (
+              missionEightDistance(tank, h) <= 5
+            ));
+            // Soft press at d≤8 — sticky softest ≤100.
+            const softTarget = pickStickyBggy(nearBuggies.filter((h) => (
+              h.strength > 0 && h.strength <= 100
+              && missionEightDistance(tank, h) <= 8
+            )));
+            if (softTarget && tank.strength >= 5) {
+              queueMissionEightRole(commands, `east-b-post-sam-press-soft-${key}`,
+                [tank], softTarget, 0, bggyCadence);
+              continue;
+            }
+            if (meleeHealthy.length >= 2) {
+              // l294b/c: focus softest (sticky) when free≥60; hold only scrap.
+              if (tank.strength >= 60) {
+                const focus = pickStickyBggy(meleeHealthy);
+                queueMissionEightRole(commands, `east-b-post-sam-focus-bggy-${key}`,
+                  [tank], focus, 0, bggyCadence);
+                continue;
+              }
+              queueMissionEightRole(commands, `east-b-post-sam-2v1-hold-${key}`,
+                [tank], hideCell, MODIFIER_ALT, 8);
+              continue;
+            }
+            // l280 close-step closed (free residual@#1 worse). l259 1v1 at d≤8.
+            if (healthyBuggies.length === 1 && tank.strength >= 100
+              && missionEightDistance(tank, healthyBuggies[0]) <= 8) {
+              const one = pickStickyBggy(healthyBuggies);
+              queueMissionEightRole(commands, `east-b-post-sam-1v1-bggy-${key}`,
+                [tank], one, 0, bggyCadence);
+              continue;
+            }
+            if (meleeHealthy.length === 1 && tank.strength >= 5) {
+              // l292: when E4 swarm d≤5 and free soft but BGGY still >50, step
+              // one cell south (keep d≤5 to BGGY) so flamers waste path time —
+              // not west peel (l283c stopped #8 DPS). Re-press next tick.
+              // l294 E4-int-before-finish closed (regress bk=3).
+              const focusOne = pickStickyBggy(meleeHealthy);
+              const e4Near = hostiles.filter((h) => (
+                h.typeName === "E4" && h.strength > 0
+                && missionEightDistance(tank, h) <= 5
+              )).length;
+              if (e4Near >= 2 && tank.strength < 80 && tank.strength >= 30
+                && focusOne.strength > 50
+                && tank.cellY < 52) {
+                const step = {
+                  cellX: tank.cellX,
+                  cellY: Math.min(52, tank.cellY + 1),
+                };
+                if (missionEightDistance(step, focusOne) <= 5) {
+                  queueMissionEightRole(commands, `east-b-post-sam-e4-south-${key}`,
+                    [tank], step, MODIFIER_ALT, 2);
+                  continue;
+                }
+              }
+              queueMissionEightRole(commands, `east-b-post-sam-press-bggy-${key}`,
+                [tank], focusOne, 0, bggyCadence);
+              continue;
+            }
+            if (nearBuggies.length === 0) state.eastBBggyFocusKey = undefined;
+            const nearArmor = hostiles.filter((h) => (
+              h.type === 2 && h.typeName !== "BGGY" && h.strength > 0
+              && missionEightDistance(tank, h) <= 2
+            )).toSorted((a, b) => (
+              missionEightDistance(tank, a) - missionEightDistance(tank, b)
+            ))[0];
+            if (nearArmor && tank.strength >= 80) {
+              queueMissionEightRole(commands, `east-b-post-sam-hide-snap-${key}`,
+                [tank], nearArmor, 0, 8);
+              continue;
+            }
+            queueMissionEightRole(commands, `east-b-post-sam-hide-hold-${key}`,
+              [tank], hideCell, MODIFIER_ALT, 12);
+            continue;
+          }
+
+          if (missionEightDistance(tank, waitCell) > 3) {
+            queueMissionEightRole(commands, `east-b-post-sam-repark-${key}`,
+              [tank], waitCell, MODIFIER_ALT, 4);
+            continue;
+          }
+          // Soft-def: softest-first d≤5 cad3 keeps free@148 hide (l298).
+          // Distance-first/melee-only closed as control death wall / early die.
+          if (tank.strength >= 120) {
+            const softThreat = hostiles.filter((h) => (
+              h.type === 1 && h.strength > 0
+              && missionEightDistance(waitCell, h) <= 5
+            )).toSorted((a, b) => (
+              a.strength - b.strength
+              || missionEightDistance(waitCell, a) - missionEightDistance(waitCell, b)
+            ))[0];
+            if (softThreat) {
+              queueMissionEightRole(commands, `east-b-post-sam-soft-def-${key}`,
+                [tank], softThreat, 0, 3);
+              continue;
+            }
+          }
+          queueMissionEightRole(commands, `east-b-post-sam-wait-a10-${key}`,
+            [tank], waitCell, MODIFIER_ALT, 4);
+          continue;
+        }
+        // Pre-A-10: hold safe stand on corridor (y 12–16, x≤42).
+        // (Stand-slip closed as no-op: this block only runs after all SAMs dead;
+        // 381→306 damage is during SE-SAM rail, not here.)
+        if (tank.cellX > 42 || tank.cellY > 16 || tank.cellY < 12) {
+          queueMissionEightRole(commands, `east-b-post-sam-east-${key}`,
+            [tank], safeStand, MODIFIER_ALT, 4);
+          continue;
+        }
+        if (tank.cellX < 36 || Math.abs(tank.cellY - 14) > 1) {
+          queueMissionEightRole(commands, `east-b-post-sam-east-${key}`,
+            [tank], safeStand, MODIFIER_ALT, 6);
+          continue;
+        }
+        if (afld && afld.strength > 0) {
+          queueMissionEightRole(commands, `east-b-post-sam-afld-hold-${key}`,
+            [tank], safeStand, MODIFIER_ALT, 8);
+          continue;
+        }
+        queueMissionEightRole(commands, `east-b-post-sam-wait-a10-${key}`,
+          [tank], waitCell, MODIFIER_ALT, 12);
+      }
+    }
+    // Village screen — block 8th/9th civ (engine `civ` = 9 Neutral UnitsLost).
+    // Restore l221 staffing (less aggressive than l226 thrash).
+    // Closed: l254e bodyguard thrash, l255 BGGY-reserve, l255d E1-hold,
+    // l266 static hide-screen, l277 E4-north intercept (BGGY wave arrived ~1k
+    // earlier; free dead@52050 before normal BGGY@52200).
+    // l303 village over-staff closed: free@80 hide die~41760 maxOrd=1.
+    const villageAnchors = [
+      { cellX: 8, cellY: 57 }, { cellX: 3, cellY: 60 }, { cellX: 6, cellY: 60 },
+      { cellX: 12, cellY: 50 }, { cellX: 20, cellY: 48 }, { cellX: 4, cellY: 55 },
+      { cellX: 16, cellY: 52 }, { cellX: 10, cellY: 54 },
+    ];
+    const villageThreats = hostiles.filter((h) => (
+      (h.type === 1 || h.type === 2)
+      && villageAnchors.some((a) => missionEightDistance(h, a) <= 18)
+    ));
+    const villageInf = attackers.filter((u) => (
+      u.type === 1 && u.strength > 0
+      && (state.villageGuardKeys.has(objectKey(u))
+        || !state.strikeKeys.has(objectKey(u)))
+    )).slice(0, 16);
+    for (const inf of villageInf) {
+      if (!state.villageGuardKeys.has(objectKey(inf))) {
+        state.villageGuardKeys.add(objectKey(inf));
+      }
+    }
+    // l249: NEVER demote free post-west MTNK into villageGuard after all-SAM
+    // (combat screen kills free). Village combat screen = infantry + non-free
+    // tanks only. Free pure-holds via freeForce @11,48.
+    const villageTanks = attackers.filter((u) => (
+      u.typeName === "MTNK" && state.villageGuardKeys.has(objectKey(u))
+      && u.strength >= 40
+      && !state.eastBPostWestProducedTankKeys.has(objectKey(u))
+    ));
+    const screen = [...villageInf, ...villageTanks];
+    // l284 late E4 infantry assist closed as no-op on death wall (free dies
+    // same tick; l277 north intercept still closed — pulls BGGY early).
+    if (villageThreats.length > 0 && screen.length > 0) {
+      const threat = villageThreats.toSorted((a, b) => (
+        Math.min(...villageAnchors.map((an) => missionEightDistance(a, an)))
+          - Math.min(...villageAnchors.map((an) => missionEightDistance(b, an)))
+      ))[0];
+      const half = Math.max(1, Math.ceil(screen.length / 2));
+      queueMissionEightRole(commands, "east-b-post-sam-village-screen",
+        screen.slice(0, half), threat, 0, 8);
+      if (screen.length > half) {
+        queueMissionEightRole(commands, "east-b-post-sam-village-hold",
+          screen.slice(half), { cellX: 6, cellY: 58 }, MODIFIER_ALT, 12);
+      }
+    } else if (screen.length > 0) {
+      queueMissionEightRole(commands, "east-b-post-sam-village-hold",
+        screen, { cellX: 8, cellY: 56 }, MODIFIER_ALT, 15);
+    }
+    return true;
   }
   if (tanks.length === 0) return false;
   // Commit with 1+ combat tank once rebuild-ready.
@@ -9491,17 +10367,26 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
   // TRACE l68: after GUN dead free@119 @13,30 failed healthy (need ≥140) and
   // was south-rallied off the spine — never chipped NW SAM. Post-GUN: any free
   // on western half with strength ≥40 stays committed north.
-  // l102: latch first GUN kill early so commit/rail ignore respawn.
-  const westernGunLiveNow = hostiles.some((hostile) => (
+  // l102/l179: latch first GUN kill so commit/rail ignore respawn.
+  // TRACE l179: free frozen@17,20 gun-to-fire-cell while GUN repaired 160→400
+  // because latch required free on spine AND GUN currently 0 same tick — GUN
+  // respawned between observations. Latch on first observed kill/near-kill.
+  const westernGunObj = hostiles.find((hostile) => (
     hostile.typeName === "GUN" && hostile.cellX === 11 && hostile.cellY === 18
-    && hostile.strength > 0
   ));
-  if (!westernGunLiveNow
-    && tanks.some((tank) => (
-      state.eastBPostWestProducedTankKeys.has(objectKey(tank))
-      && tank.cellY <= 28 && tank.cellX <= 22 && tank.strength >= 40
-    ))) {
-    state.eastBPostWestGunClearedTick ??= snapshot.tick;
+  const westernGunLiveNow = Boolean(westernGunObj && westernGunObj.strength > 0);
+  if (state.eastBPostWestGunClearedTick === undefined) {
+    if (!westernGunLiveNow) {
+      // GUN absent or strength 0 — first kill.
+      state.eastBPostWestGunClearedTick = snapshot.tick;
+    } else if ((westernGunObj.strength ?? 400) <= 30
+      && tanks.some((tank) => (
+        state.eastBPostWestProducedTankKeys.has(objectKey(tank))
+        && tank.cellY <= 28 && tank.cellX <= 22 && tank.strength >= 40
+      ))) {
+      // Near-dead with free in theatre — treat as cleared (finish will complete).
+      state.eastBPostWestGunClearedTick = snapshot.tick;
+    }
   }
   const westernGunLive = state.eastBPostWestGunClearedTick === undefined
     && westernGunLiveNow;
@@ -9615,17 +10500,20 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
   } else {
     state.eastBPostWestGunScrapKey = undefined;
   }
+  // freeLeader = northernmost free (proven tip for western GUN + NE/NW/SE).
+  // l290b strongest freeLeader / l290d soft-park closed (allSams never / peel thrash).
+  // l289–l289i partner-reserve closed.
+  // NE GUN{16,9} for post-GUN free engage + E3 rocket assist (l174).
+  const neGun = hostiles.find((hostile) => (
+    hostile.typeName === "GUN" && hostile.cellX === 16 && hostile.cellY === 9
+    && hostile.strength > 0
+  ));
   const freeLeader = tanks.filter((tank) => (
     state.eastBPostWestProducedTankKeys.has(objectKey(tank)) && tank.strength > 0
   )).toSorted((a, b) => a.cellY - b.cellY || b.strength - a.strength)[0] ?? null;
   const soleFree = tanks.filter((tank) => (
     state.eastBPostWestProducedTankKeys.has(objectKey(tank))
   )).length < 2;
-  // NE GUN{16,9} for post-GUN free engage + E3 rocket assist (l174).
-  const neGun = hostiles.find((hostile) => (
-    hostile.typeName === "GUN" && hostile.cellX === 16 && hostile.cellY === 9
-    && hostile.strength > 0
-  ));
   const stuckMap = state.eastBPostWestRailStuck ??= new Map();
   for (const tank of tanks) {
     const tankKey = objectKey(tank);
@@ -9677,30 +10565,117 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
     const freeNorthCount = freePostWestForJoin.filter((object) => (
       object.cellY <= 24 && object.strength >= 40
     )).length;
-    const rail = eastBPostWestRailApproach(tank, target, westernGun, {
+    // l176k: free#2 SE hunter post-GUN only (not freeLeader). During-GUN SE
+    // closed (l267b). l269 SE hard-march closed. l279 BGGY-reserve closed.
+    // l290–e NE 2v1/soft-peel/soft-park closed: freeLeader residual worse or
+    // allSams never; control path is freeLeader alone@NE then sole SE.
+    // Keep denser NE rockets only (shorter NE kill window).
+    const freeLeaderKey = freeLeader ? objectKey(freeLeader) : null;
+    const seSamsLive = hostiles.filter((hostile) => (
+      hostile.typeName === "SAM" && hostile.strength > 0
+      && ((hostile.cellX === 43 && hostile.cellY === 14)
+        || (hostile.cellX === 52 && hostile.cellY === 14)
+        || (hostile.cellX === 54 && hostile.cellY === 5))
+    ));
+    const seHunter = !westernGun
+      && !isScrap
+      && freePostWestCount >= 2
+      && state.eastBPostWestProducedTankKeys.has(tankKey)
+      && tankKey !== freeLeaderKey
+      && tank.strength >= 40
+      && seSamsLive.length > 0;
+    let railTarget = target;
+    if (seHunter) {
+      railTarget = seSamsLive.toSorted((left, right) => (
+        missionEightDistance(tank, left) - missionEightDistance(tank, right)
+        || left.cellX - right.cellX
+        || left.id - right.id
+      ))[0];
+    }
+    const rail = eastBPostWestRailApproach(tank, railTarget, westernGun, {
       soleFree, stuck, isScrap, freeLeader, waitPartner,
-      freeNorthCount, neGun: neGun ?? null,
+      freeNorthCount, neGun: neGun ?? null, seHunter,
     });
+    // TRACE l101/l140: stop combat before post-GUN spine force-move.
+    // l176i: stop+force-move same order cycle left free frozen ~60t at 20,13 —
+    // stop only on first SE peel cycle, move next cycle (TICKS_PER_ORDER=30).
+    // l179c: same freeze at free@17,20 gun-to-fire-cell (stopFirst + move same
+    // cycle) — free never joined GUN 2v1; GUN repaired; civ-nine. Stop-only
+    // first cycle for ALL stopFirst reasons, not only SE peel.
+    const sePeel = rail.reason === "se-sam-east"
+      || rail.reason === "se-sam-attack-move"
+      || rail.reason === "se-sam-range"
+      || rail.reason === "se-sam-peel-west";
+    state.eastBPostWestSePeelStopKeys ??= new Set();
+    if (rail.stopFirst) {
+      if (sePeel && !state.eastBPostWestSePeelStopKeys.has(tankKey)) {
+        queueMissionEightStop(commands, `east-b-post-west-se-stop-${tankKey}`, [tank], 1);
+        state.eastBPostWestSePeelStopKeys.add(tankKey);
+        // Do not queue move same cycle — stop would cancel the path.
+        continue;
+      } else if (!sePeel && !state.eastBPostWestSpineStopKeys.has(tankKey)) {
+        queueMissionEightStop(commands, `east-b-post-west-stop-${tankKey}`, [tank], 1);
+        state.eastBPostWestSpineStopKeys.add(tankKey);
+        // l179c: same stop-only first cycle for gun-to-fire-cell / spine.
+        continue;
+      }
+    }
     if (rail.engage) {
       stuckMap.delete(tankKey);
       const isWestGun = rail.reason.startsWith("gun-") && westernGun;
       const isNeGun = rail.reason.startsWith("ne-gun-") && neGun;
-      const engageTarget = isWestGun ? westernGun : isNeGun ? neGun : target;
+      const engageTarget = isWestGun ? westernGun : isNeGun ? neGun : railTarget;
+      // l186/l187: SE engage must not path free past x=42 (east GUNs kill free).
+      const seEngage = !isWestGun && !isNeGun && eastBIsSeRemainingSam(engageTarget);
+      // Hard-cap for SE@43/52 corridor; SE@54 stand may use x up to 44.
+      const seHardCap = engageTarget.cellY <= 8 ? 46 : 42;
+      if (seEngage && tank.cellX > seHardCap) {
+        if (!state.eastBPostWestSePeelStopKeys.has(`${tankKey}:se-pull`)) {
+          queueMissionEightStop(commands, `east-b-post-west-se-pull-${tankKey}`, [tank], 1);
+          state.eastBPostWestSePeelStopKeys.add(`${tankKey}:se-pull`);
+          continue;
+        }
+        const pull = engageTarget.cellY <= 8
+          ? { cellX: 42, cellY: 11 }
+          : { cellX: 40, cellY: 14 };
+        queueMissionEightRole(commands, `east-b-post-west-rail-${tankKey}`,
+          [tank], pull, MODIFIER_ALT, 2);
+        continue;
+      }
       const role = isWestGun
         ? `east-b-post-west-gun-${tankKey}`
         : isNeGun
           ? `east-b-post-west-negun-${tankKey}`
           : `east-b-post-west-sam-${tankKey}`;
+      // SE: force-move to stand when free is still west of theatre.
+      if (seEngage && tank.cellX < 36) {
+        queueMissionEightRole(commands, `east-b-post-west-rail-${tankKey}`,
+          [tank], { cellX: 40, cellY: 14 }, MODIFIER_ALT, rail.cadence);
+        continue;
+      }
       queueMissionEightRole(commands, role, [tank], engageTarget, 0, rail.cadence);
       continue;
     }
-    // TRACE l101/l140: stop combat once before post-GUN spine force-move.
-    if (rail.stopFirst && !state.eastBPostWestSpineStopKeys.has(tankKey)) {
-      queueMissionEightStop(commands, `east-b-post-west-stop-${tankKey}`, [tank], 1);
-      state.eastBPostWestSpineStopKeys.add(tankKey);
+    // Clamp SE force-move: corridor SAMs x≤42; northern SE@54 may use x≤44.
+    let destX = rail.cellX;
+    let destY = rail.cellY;
+    const seNorthDest = rail.reason.startsWith("se-sam") && destY <= 12;
+    const seCap = seNorthDest ? 44 : 42;
+    if (rail.reason.startsWith("se-sam") && destX > seCap) {
+      destX = seCap;
+    }
+    // Pull free already past cap (path overshoot) back west with stop.
+    if (rail.reason.startsWith("se-sam") && tank.cellX > seCap) {
+      if (!state.eastBPostWestSePeelStopKeys.has(`${tankKey}:se-pull`)) {
+        queueMissionEightStop(commands, `east-b-post-west-se-pull-${tankKey}`, [tank], 1);
+        state.eastBPostWestSePeelStopKeys.add(`${tankKey}:se-pull`);
+        continue;
+      }
+      destX = seNorthDest ? 42 : 40;
+      destY = seNorthDest ? 11 : 14;
     }
     queueMissionEightRole(commands, `east-b-post-west-rail-${tankKey}`,
-      [tank], { cellX: rail.cellX, cellY: rail.cellY }, MODIFIER_ALT, rail.cadence);
+      [tank], { cellX: destX, cellY: destY }, MODIFIER_ALT, rail.cadence);
   }
   // E3 rocket assist on GUN when free is trading (l44 free@155 gun@180 died
   // short; rockets add DPS before GUN repairs). Pull village/strike E3 north.
@@ -9731,12 +10706,13 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
       }
     }
   }
-  // l174: same rocket assist on NE GUN{16,9} while free is trading it —
-  // free@~242 chips alone then dies; E3 DPS shortens the kill window.
+  // l174/l290: denser NE GUN rocket assist — free@~242 chips alone then dies;
+  // freeTrading earlier (y≤24) + up to 8 E3 + cadence 2 so kill window closes
+  // before freeLeader bleeds 259→102 (TRACE control@38700).
   if (!westernGun && neGun) {
     const freeTradingNe = tanks.some((tank) => (
       state.eastBPostWestProducedTankKeys.has(objectKey(tank))
-      && tank.cellY <= 20 && tank.cellX <= 24 && tank.cellX >= 14
+      && tank.cellY <= 24 && tank.cellX <= 28 && tank.cellX >= 12
       && tank.strength >= 40
     ));
     if (freeTradingNe) {
@@ -9746,17 +10722,17 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
         missionEightDistance(left, neGun) - missionEightDistance(right, neGun)
         || right.strength - left.strength
         || left.id - right.id
-      )).slice(0, 4);
+      )).slice(0, 8);
       if (rockets.length > 0) {
-        const near = rockets.filter((r) => missionEightDistance(r, neGun) <= 7);
-        const far = rockets.filter((r) => missionEightDistance(r, neGun) > 7);
+        const near = rockets.filter((r) => missionEightDistance(r, neGun) <= 8);
+        const far = rockets.filter((r) => missionEightDistance(r, neGun) > 8);
         if (near.length > 0) {
           queueMissionEightRole(commands, "east-b-post-west-negun-rockets",
-            near, neGun, 0, 5);
+            near, neGun, 0, 2);
         }
         for (const r of far) {
           queueMissionEightRole(commands, `east-b-post-west-negun-rocket-rail-${objectKey(r)}`,
-            [r], { cellX: 20, cellY: 16 }, MODIFIER_ALT, 15);
+            [r], { cellX: 20, cellY: 16 }, MODIFIER_ALT, 8);
         }
       }
     }
@@ -9765,6 +10741,46 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
   // (minY 21 vs l106 y=14) — closed.
   for (const key of stuckMap.keys()) {
     if (!tanks.some((tank) => objectKey(tank) === key)) stuckMap.delete(key);
+  }
+  // l178h/l206: village screen throughout SE SAM push (not only after allSams).
+  // Only order units already in villageGuardKeys — do not steal free armor.
+  // Split: engage nearest pad threat + hold hospital.
+  if (state.samDeathTicks.has("13:16") || state.allSamsDeadTick !== undefined) {
+    const hospHold = { cellX: 5, cellY: 58 };
+    const midHold = { cellX: 12, cellY: 52 };
+    const screen = attackers.filter((u) => (
+      u.strength > 0 && state.villageGuardKeys.has(objectKey(u))
+    )).slice(0, 14);
+    if (screen.length > 0) {
+      const nearHosp = hostiles.filter((h) => (
+        (h.type === 1 || h.type === 2)
+        && missionEightDistance(h, hospHold) <= 14
+      )).toSorted((a, b) => (
+        missionEightDistance(a, hospHold) - missionEightDistance(b, hospHold)
+        || a.strength - b.strength
+      ))[0];
+      if (nearHosp) {
+        const hunters = screen.filter((u) => u.strength >= 20).slice(0, 8);
+        const holders = screen.filter((u) => !hunters.includes(u));
+        if (hunters.length > 0) {
+          queueMissionEightRole(commands, "east-b-se-village-screen",
+            hunters, nearHosp, 0, 8);
+        }
+        if (holders.length > 0) {
+          queueMissionEightRole(commands, "east-b-se-village-hold",
+            holders, hospHold, MODIFIER_ALT, 15);
+        }
+      } else {
+        // Fan out: half hospital, half mid village intercept.
+        const half = Math.max(1, Math.ceil(screen.length / 2));
+        queueMissionEightRole(commands, "east-b-se-village-hold",
+          screen.slice(0, half), hospHold, MODIFIER_ALT, 15);
+        if (screen.length > half) {
+          queueMissionEightRole(commands, "east-b-se-village-mid",
+            screen.slice(half), midHold, MODIFIER_ALT, 18);
+        }
+      }
+    }
   }
   return true;
 }
@@ -17227,6 +18243,12 @@ try {
     const eastAEarlyWin = mission.variant === "east-a"
       && state.engineer.captureTick !== undefined
       && state.postFactCleanupLaunchTick !== undefined;
+    // East-b residual free path (l391): free peels village→east pad→west base
+    // after all-SAM / A-10; does not re-walk the pre-assault authored sweep.
+    const eastBResidualWin = mission.variant === "east-b"
+      && state.allSamsDeadTick !== undefined
+      && state.airstrike.orders.length >= 1
+      && state.eastBResidualCommit;
     if (eastAEarlyWin) {
       assert.ok(state.routeStage >= 1,
         "GDI Mission 8 east-a early-capture path never advanced the strike route");
@@ -17235,6 +18257,12 @@ try {
       assert.ok(state.airstrike.orders.some((order) => order.target === "AFLD"
         || order.target === "HAND" || order.target === "PROC"),
         "GDI Mission 8 east-a early-capture path never airstruck production targets");
+    } else if (eastBResidualWin) {
+      assert.ok(state.routeStage >= 5,
+        "GDI Mission 8 east-b residual win never advanced the western sweep route");
+      assert.ok(state.airstrike.orders.some((order) => order.target === "AFLD"
+        || order.target === "GUN" || order.target === "HAND" || order.target === "PROC"),
+        "GDI Mission 8 east-b residual win never airstruck east targets");
     } else {
       assert.equal(state.routeStage, route.length,
         `GDI Mission 8 ${mission.variant} strike force did not complete its authored sweep route`);

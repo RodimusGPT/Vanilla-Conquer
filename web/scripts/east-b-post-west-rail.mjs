@@ -38,6 +38,22 @@ export const EAST_B_NE_GUN_FIRE_CELLS = [
   { cellX: 21, cellY: 13 },
 ];
 
+/** Approach cells west of SE SAM cluster {43,14}/{52,14}/{54,5}.
+ * TRACE l175: free holds@20,13 after NW dead — never peels east; 3 SE SAMs
+ * stay 400. Force-move east on y≈13–16 corridor then engage. */
+export const EAST_B_SE_SAM_APPROACH = { cellX: 40, cellY: 14 };
+
+/** True when post-west target is a remaining SE SAM (NW already dead). */
+export function eastBIsSeRemainingSam(target) {
+  if (!target) return false;
+  const x = target.cellX;
+  const y = target.cellY;
+  return (x === 43 && y === 14)
+    || (x === 52 && y === 14)
+    || (x === 54 && y === 5)
+    || (x >= 40 && y <= 18 && y >= 4);
+}
+
 export function eastBChebyshev(a, b) {
   return Math.max(Math.abs(a.cellX - b.cellX), Math.abs(a.cellY - b.cellY));
 }
@@ -60,7 +76,7 @@ export function eastBGunBestFireCell(tank, cells = EAST_B_GUN_FIRE_CELLS) {
  * @param {object} tank - {cellX, cellY, strength?}
  * @param {object} target - remaining SAM (usually NW 12,5)
  * @param {object|null} westernGun - {cellX, cellY, strength} or null/dead
- * @param {{soleFree?: boolean, stuck?: boolean, isScrap?: boolean, freeLeader?: object|null, waitPartner?: boolean, waitPartnerPostGun?: boolean, neGun?: {cellX:number,cellY:number,strength:number}|null, freeNorthCount?: number}} opts
+ * @param {{soleFree?: boolean, stuck?: boolean, isScrap?: boolean, freeLeader?: object|null, waitPartner?: boolean, waitPartnerPostGun?: boolean, neGun?: {cellX:number,cellY:number,strength:number}|null, freeNorthCount?: number, ltnkFaceStand?: boolean}} opts
  */
 export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
   const soleFree = opts.soleFree !== false;
@@ -71,10 +87,13 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
   const waitPartnerPostGun = Boolean(opts.waitPartnerPostGun);
   const hp = tank.strength ?? 400;
   const dist = eastBChebyshev(tank, target);
-  if (dist <= 4 && !isScrap) {
+  // l186: do NOT early-return SE at dist≤4 — SE standoff hard-cap (x≤44) must
+  // pull free west first or free dies in SE base (l183–l185). SE handled below.
+  if (dist <= 4 && !isScrap && !eastBIsSeRemainingSam(target)) {
     return {
       cellX: target.cellX, cellY: target.cellY,
-      engage: true, cadence: 4, reason: "sam-range",
+      engage: true, cadence: 4,
+      reason: "sam-range",
     };
   }
 
@@ -126,6 +145,7 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
     // repaired. Stay on GUN until dead or free <40 (or gun still healthy >250).
     // freeT=3 2v1 (l77) kills GUN — keep proven engage band; freeT=2 bank
     // closed (l78–l79 free#2 stuck @17,20).
+    // l267b SE-hunter-during-GUN closed: free#2 left 2v1 → GUN thrash/repair.
     const gunNearDead = westernGun.strength <= 220;
     if (soleFree && gunDist <= 5 && hp < 40) {
       return {
@@ -161,6 +181,41 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
         engage: true, cadence: 1, reason: "gun-standoff-fire",
       };
     }
+    // l180 TRACE: free#5 idle@17,20 (gunDist 6) for entire kill window while
+    // free#1 alone chips GUN 400→150 then bleeds; force-move to 15,21 path-stalls
+    // on the 17,20 sink (l78 free#2 idle@17,20). When GUN is already damaged
+    // (partner trading), attack-join from theatre — free#1 tanks; free#5 only
+    // needs a few shots to finish. Do NOT wait for fire-cell park.
+    if (gunDist >= 5 && gunDist <= 8 && westernGun.strength <= 320 && hp >= 100
+      && tank.cellX >= 13 && tank.cellX <= 22 && tank.cellY >= 16 && tank.cellY <= 26) {
+      return {
+        cellX: westernGun.cellX, cellY: westernGun.cellY,
+        engage: true, cadence: 1, reason: "gun-standoff-fire",
+      };
+    }
+    // Known path sink 16–18,x19–21: force-move SOUTH first (14,23 / 18,24) then
+    // into SE fire band. Direct 17,20→15,21 never completes (l179c/l180).
+    if (gunDist >= 5 && gunDist <= 8 && tank.cellX >= 16 && tank.cellX <= 18
+      && tank.cellY >= 19 && tank.cellY <= 21 && hp >= 80) {
+      return {
+        cellX: 14, cellY: 23,
+        engage: false, cadence: 1, reason: "gun-unstick-south",
+        stopFirst: true,
+      };
+    }
+    // Theatre join: step to SE fire cell 15,21 / 14,22 (gunDist 4).
+    // stopFirst = stop-only first cycle at caller (same-cycle stop+move freezes).
+    if (gunDist >= 6 && gunDist <= 7 && tank.cellX >= 14 && tank.cellX <= 20
+      && tank.cellY >= 17 && tank.cellY <= 24 && hp >= 80) {
+      const join = tank.cellY >= 21
+        ? { cellX: 14, cellY: 22 }
+        : { cellX: 15, cellY: 21 };
+      return {
+        cellX: join.cellX, cellY: join.cellY,
+        engage: false, cadence: 1, reason: "gun-to-fire-cell",
+        stopFirst: true,
+      };
+    }
     // Too close: back up to outer fire cell. TRACE l45 free walked 17,22→13,23
     // under GUN and bled faster; prefer dist 4–5 while healthy.
     if (gunDist <= 2 || (gunDist <= 3 && hp >= 200 && westernGun.strength > 200)) {
@@ -171,10 +226,18 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
       };
     }
     // Approach SE fire cell — never order the GUN cell as a move target.
+    // Prefer a cell that is actually in MTNK range (gunDist 3–4), not merely
+    // the geometrically closest listed cell (16,20 is gunDist 5 from GUN).
     if (tank.cellY <= 26 && tank.cellX <= 30) {
+      const inRangeFire = EAST_B_GUN_FIRE_CELLS
+        .map((cell) => ({ cell, gd: eastBChebyshev(cell, westernGun), td: eastBChebyshev(tank, cell) }))
+        .filter((row) => row.gd >= 3 && row.gd <= 4)
+        .toSorted((a, b) => a.td - b.td || a.gd - b.gd)[0];
+      const dest = inRangeFire?.cell ?? fireCell;
       return {
-        cellX: fireCell.cellX, cellY: fireCell.cellY,
-        engage: false, cadence: 5, reason: "gun-to-fire-cell",
+        cellX: dest.cellX, cellY: dest.cellY,
+        engage: false, cadence: 2, reason: "gun-to-fire-cell",
+        stopFirst: gunDist >= 6,
       };
     }
   }
@@ -184,7 +247,8 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
   // (10,21→11,20 death). l101: spine force-move + stopFirst. l104 free@128
   // @14,22 still bleeds under Nod west fire. l105: peel east to x=18 first
   // (escape west-base LOS) then north on x=18 to y=12, then cut west to SAM.
-  if (!gunLive && tank.cellX <= 28 && tank.cellY <= 40) {
+  // l176: allow free x up to SE SAM band (was ≤28 — free never left hold cell).
+  if (!gunLive && tank.cellX <= 56 && tank.cellY <= 40) {
     // TRACE l168–l173: residual ≥249; free peels after GUN but dies trading NE
     // GUN / thrash. l174 fine: free@19,16 nd=7 attack-ordered out of MTNK range
     // pathfind thrash@18,17; NE GUN never entered chip near_dist (stayed 400).
@@ -194,7 +258,57 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
     const neGun = opts.neGun && opts.neGun.strength > 0 ? opts.neGun : null;
     const freeNorth = opts.freeNorthCount ?? 0;
     void freeNorth;
-    if (neGun && hp >= 100 && tank.cellY <= 26 && tank.cellX <= 26) {
+    // l176k: free#2 SE hunter marches east corridor while free#1 finishes NE/NW.
+    // l269 hard-march-to-{40,14} closed (free overshot x=44 into east GUNs).
+    // Keep y≤22 seHunter on SE (not only y>22) so free does not pile onto NW.
+    const seHunter = Boolean(opts.seHunter);
+    if (seHunter && hp >= 40) {
+      const seDist = eastBIsSeRemainingSam(target)
+        ? eastBChebyshev(tank, target)
+        : eastBChebyshev(tank, EAST_B_SE_SAM_APPROACH);
+      if (seDist <= 5 && eastBIsSeRemainingSam(target) && tank.cellX <= 42) {
+        return {
+          cellX: target.cellX, cellY: target.cellY,
+          engage: true, cadence: 2, reason: "se-sam-range",
+        };
+      }
+      // Pull back if past SE stand (east GUN fire).
+      if (tank.cellX > 42) {
+        return {
+          cellX: 40, cellY: 14,
+          engage: false, cadence: 2, reason: "se-sam-peel-west",
+        };
+      }
+      if (tank.cellX >= 34 && tank.cellY <= 20 && eastBIsSeRemainingSam(target)) {
+        return {
+          cellX: Math.min(Math.max(target.cellX - 4, 36), 42),
+          cellY: Math.max(Math.min(target.cellY, 16), 12),
+          engage: seDist <= 6 && tank.cellX <= 42,
+          cadence: 3,
+          reason: seDist <= 6 ? "se-sam-range" : "se-sam-east",
+          stopFirst: false,
+        };
+      }
+      // Step east then north toward SE approach (no single-hop overshoot).
+      return {
+        cellX: Math.min(Math.max(tank.cellX < 34 ? tank.cellX + 6 : tank.cellX, 36), 40),
+        cellY: tank.cellX < 34
+          ? Math.min(Math.max(tank.cellY, 20), 28)
+          : Math.max(Math.min(tank.cellY - 4, 16), 14),
+        engage: false,
+        cadence: 4,
+        reason: "se-sam-east",
+        stopFirst: false,
+      };
+    }
+    // l179: hold NW fire cell until NW is dead (peelSeEarly removed — free
+    // left NW@400 and never finished under tight SE 0x0A00). SE peel only when
+    // target is SE SAM (NW already retargeted away) or seHunter free#2.
+    // l272 skip-NE-while-NW closed: free stuck on last SE SAM, maxOrd=0.
+    const seSamTarget = eastBIsSeRemainingSam(target) || seHunter;
+    void opts.nwSamLive;
+    if (neGun && !seSamTarget && !seHunter && hp >= 100
+      && tank.cellY <= 26 && tank.cellX <= 26) {
       const nd = eastBChebyshev(tank, neGun);
       const neFire = eastBGunBestFireCell(tank, EAST_B_NE_GUN_FIRE_CELLS);
       const atNeFire = eastBChebyshev(tank, neFire) <= 1;
@@ -242,19 +356,204 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
         stopFirst: true,
       };
     }
-    // l175g: after NE dead free@20,13 is in NW proximity-chip theatre
-    // (near_dist 0x0C00). Hold fire cell while healthy enough so engine chips
-    // NW; free@99 that peels north dies before NW without chip time.
-    if (!neGun && hp >= 40 && tank.cellY <= 20 && tank.cellX >= 14 && tank.cellX <= 26) {
+    // l175g/l179: after NE dead free@20,13 is in NW proximity-chip theatre.
+    // Hold fire cell while NW is the live target. SE peel ONLY when target is
+    // SE SAM (NW dead) — never peel while NW still the live target.
+    // strength omitted in unit tests → treat as live (400).
+    const nwIsTarget = target
+      && target.cellX === 12 && target.cellY === 5
+      && (target.strength ?? 400) > 0;
+    // l181 TRACE: after NE+NW dead free#5@19,15 should SE-hop, but free later
+    // falls to 23,32 and spine-far-north (y>22 excluded SE peel). SE remaining
+    // target: peel from anywhere mid-map (y≤40), not only NE fire theatre.
+    // l214/l215: free@30,16 dies outside SE chip (need x≈36–39 for 0x0E00);
+    // standX=34 + cadence 8 hop thrash aborted approach. Restore l212 stand
+    // (target.x-4 ≈39) with direct force-move + high cadence (path completes).
+    if (seSamTarget && hp < 40 && tank.cellY <= 40 && tank.cellX >= 26) {
+      // Critically wounded on SE corridor — flee west, never spine-north thrash.
+      return {
+        cellX: 24,
+        cellY: 22,
+        engage: false,
+        cadence: 4,
+        reason: "se-sam-peel-west",
+        stopFirst: true,
+      };
+    }
+    if (seSamTarget && hp >= 40 && tank.cellY <= 40) {
+      const seDist = eastBChebyshev(tank, target);
+      // l212 TRACE: free@39,14 chips SE@43 + SE@52 + SE@54 in one hold window
+      // (0x0E00 / 0x1400). Per-target standX (SE@52→40) pulled free off the
+      // multi-SAM cell and into GUN fire (l215 free@38,17 died SE52@283).
+      // Fixed multi-SAM stand for all SE corridor work.
+      const northSe = target.cellY <= 8;
+      const standX = 39;
+      const standY = northSe ? 12 : 14;
+      const atStand = Math.abs(tank.cellX - standX) <= 1
+        && Math.abs(tank.cellY - standY) <= 1;
+      const samStr = target.strength ?? 400;
+      // Peel WEST only when SAM is in kill_band (≤100) so free starts west
+      // while engine finishes — NOT at sam≤200 (l218 left SE@52@33). Critical
+      // residual peel if free is about to die (hp<120) on corridor.
+      // l291 early LTNK-face peel closed: free dead@51000 pre-BGGY, maxOrd=2.
+      const sePeelWest = tank.cellX >= 36 && tank.cellY <= 20 && hp >= 40 && (
+        samStr <= 100
+        || (hp < 120 && tank.cellX >= 37)
+      );
+      if (sePeelWest) {
+        return {
+          cellX: 28,
+          cellY: 22,
+          engage: false,
+          cadence: 4,
+          reason: "se-sam-peel-west",
+          stopFirst: true,
+        };
+      }
+      // Overshoot past 40 (east-base GUN@41–45) — pull back to multi-SAM stand.
+      if (tank.cellX >= 41 && tank.cellY <= 18 && hp >= 40) {
+        return {
+          cellX: standX,
+          cellY: standY,
+          engage: false,
+          cadence: 15,
+          reason: "se-sam-east",
+          stopFirst: false,
+        };
+      }
+      // Drift south of corridor (y≥16) under fire — snap back to stand y=14.
+      if (tank.cellX >= 34 && tank.cellY >= 16 && tank.cellY <= 20 && hp >= 100) {
+        return {
+          cellX: standX,
+          cellY: standY,
+          engage: false,
+          cadence: 20,
+          reason: "se-sam-east",
+          stopFirst: false,
+        };
+      }
+      // SE@54 only: if free already on multi-SAM stand, hold (0x1400 covers
+      // free@39,14→54,5). Climb north only if free is south and SE@54 is sole.
+      if (northSe && tank.cellX >= 36 && tank.cellY > 14 && hp >= 40) {
+        return {
+          cellX: standX,
+          cellY: standY,
+          engage: false,
+          cadence: 25,
+          reason: "se-sam-east",
+          stopFirst: false,
+        };
+      }
+      // Hold multi-SAM stand — engine chips all SE SAMs; no weapon dive.
+      if (atStand || (tank.cellX >= 38 && tank.cellX <= 40
+        && tank.cellY >= 13 && tank.cellY <= 15 && seDist <= 16)) {
+        return {
+          cellX: standX,
+          cellY: standY,
+          engage: false,
+          cadence: 50,
+          reason: "se-sam-east",
+          stopFirst: false,
+        };
+      }
+      // Mid-corridor / stuck: direct force-move to 39,14 (high cadence = no thrash).
+      if (seDist <= 20 || tank.cellX >= 24 || stuck) {
+        return {
+          cellX: standX,
+          cellY: standY,
+          engage: false,
+          cadence: stuck ? 10 : 30,
+          reason: "se-sam-east",
+          stopFirst: tank.cellX < 28,
+        };
+      }
+      // South of corridor: north-east toward stand.
+      if (tank.cellY > 16) {
+        return {
+          cellX: Math.min(Math.max(tank.cellX + 8, 32), standX),
+          cellY: Math.max(tank.cellY - 8, standY),
+          engage: false,
+          cadence: 25,
+          reason: "se-sam-east",
+          stopFirst: false,
+        };
+      }
+      // Far west: direct to multi-SAM stand.
+      return {
+        cellX: standX,
+        cellY: standY,
+        engage: false,
+        cadence: 30,
+        reason: "se-sam-east",
+        stopFirst: true,
+      };
+    }
+    if ((seSamTarget || !neGun) && hp >= 40
+      && tank.cellY <= 22 && tank.cellX >= 14) {
       const inNeFireTheatre = tank.cellX >= 18 && tank.cellX <= 22
         && tank.cellY >= 11 && tank.cellY <= 15;
-      if (inNeFireTheatre && hp >= 80) {
+      // Hold NW chip for full residual — engine near_dist 0x1000 finishes NW
+      // only while free stays in corridor (l179 free left early → NW@400).
+      if (nwIsTarget && !seSamTarget && inNeFireTheatre && hp >= 40) {
         return {
           cellX: 20,
           cellY: 13,
           engage: false,
           cadence: 2,
           reason: "sam-hold-nw-chip",
+          stopFirst: true,
+        };
+      }
+      // Also hold when free is a bit south of fire cell but NW still live —
+      // walk north to fire cell rather than peel SE.
+      if (nwIsTarget && !seSamTarget && tank.cellX >= 16 && tank.cellX <= 24
+        && tank.cellY >= 11 && tank.cellY <= 22 && hp >= 40) {
+        return {
+          cellX: 20,
+          cellY: 13,
+          engage: false,
+          cadence: 2,
+          reason: "sam-hold-nw-chip",
+          stopFirst: true,
+        };
+      }
+      // SE remaining SAMs only (NW dead / target retargeted). Force-move ALT
+      // hop east; attack-move when within MTNK range or past x=32.
+      if (seSamTarget || !nwIsTarget) {
+        const seDist = seSamTarget
+          ? eastBChebyshev(tank, target)
+          : eastBChebyshev(tank, EAST_B_SE_SAM_APPROACH);
+        if (seSamTarget && seDist <= 5) {
+          return {
+            cellX: target.cellX,
+            cellY: target.cellY,
+            engage: true,
+            cadence: 2,
+            reason: "se-sam-range",
+            stopFirst: true,
+          };
+        }
+        // Attack-move SE SAM when free is in engine chip range (~10 cells) or
+        // past x=32 / stuck.
+        if (seSamTarget && (tank.cellX >= 32 || seDist <= 10 || stuck)) {
+          return {
+            cellX: target.cellX,
+            cellY: target.cellY,
+            engage: true,
+            cadence: stuck ? 8 : 12,
+            reason: "se-sam-attack-move",
+            stopFirst: false,
+          };
+        }
+        // Hop +8 on y≈13–15 corridor toward SE approach (x≥33 for SE@43).
+        const hopX = Math.min(tank.cellX + 8, EAST_B_SE_SAM_APPROACH.cellX);
+        const hopY = Math.min(Math.max(tank.cellY, 13), 15);
+        return {
+          cellX: hopX,
+          cellY: hopY,
+          engage: false,
+          cadence: 15,
+          reason: "se-sam-east",
           stopFirst: true,
         };
       }

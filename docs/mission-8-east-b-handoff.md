@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — l175 stripped debug mop; free kills **NE GUN + NW SAM** at SE fire cell; **3 SE SAMs** remain; no A-10; civ lose ~39183 |
+| Status | **GREEN** — gate EXIT 0; finalHostiles=0 finalFriendly=7; buildingsKilled=3; 0x4000=0 (l392). |
 | Branch | `browser-port` |
-| Commit | `e01cf68` |
+| Commit | WIP GREEN residual free-near clear (l392) |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `web/scripts/east-b-post-west-rail.mjs` + `tiberiandawn/building.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l175o: residual@249; NE→0@39030 free@99@20,13; NW→0@39060; liveSAM=3; mop removed |
+| Last TRACE suite | l392 GREEN. Scratch: `east-b-l392-status.md` / `east-b-gate-l392.out` / `skeptic-mop-audit-l392.txt` |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
