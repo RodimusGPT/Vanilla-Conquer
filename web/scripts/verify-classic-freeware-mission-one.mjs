@@ -9749,11 +9749,12 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
       ? state.airstrike.orders[state.airstrike.orders.length - 1].tick
       : -Infinity;
     // l353/l393/l423: pass1–2 early. Pass3+ after residual commit even if free
-    // scrap dies (l419 free clears east pad@49800 then dies; AFLD rebuilds@52500
-    // while pass3 blocked without freeResidualAir). Honest multi-pass A-10.
+    // scrap dies. l431: village-hold free (x≤16 y≥44) also enables pass3+
+    // (l430v3 free@6,49 blocked pass3 by cellX>=20 gate → maxAir=2 forever).
     const freeResidualAir = attackers.some((unit) => (
       unit.typeName === "MTNK" && unit.strength >= 5
-      && unit.cellX >= 20
+      && (unit.cellX >= 20
+        || (unit.cellY >= 44 && unit.cellX <= 18))
       && (state.eastBPostWestProducedTankKeys.has(objectKey(unit))
         || state.strikeKeys.has(objectKey(unit)))
     ));
@@ -9989,55 +9990,37 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                 || (d.targetStrengthMin ?? d.targetStrengthAfter ?? 1e9) < 700
               )
             ));
-            // l430v-restore: free peels village TRAN/E4/E1 (y≤54) until clear,
-            // then residual. l430v got maxAir=3 WEAP~54k nDeaths=8; later
-            // variants either died@43k chasing y=59 or bled scrap mid residual.
-            const freeInVillageBand = tank.cellY >= 44 && tank.cellY <= 54
-              && tank.cellX <= 16;
-            if (tank.cellY > 54 && tank.cellX <= 18
+            // l431e: freeAfterPad path — residual leave@46k from village with
+            // str≥100 (l430j free@clear str112). No early village fight (free
+            // died@42600 pealing TRAN on arrival). freeResidualAir y≥44 still
+            // enables pass3 if free dies mid residual. Moebius = infantry.
+            const freeInVillageBand = tank.cellY >= 44 && tank.cellX <= 16;
+            // Snap only TRAN/E4 on free cell (d≤1) while waiting residual —
+            // never chase into airlift death.
+            if (freeInVillageBand && tank.strength >= 90
               && !state.eastBResidualCommit) {
-              queueMissionEightRole(commands, `east-b-post-sam-village-reband-${key}`,
-                [tank], { cellX: 11, cellY: 48 }, MODIFIER_ALT, 1);
-              continue;
+              const onCell = hostiles.filter((h) => (
+                h.strength > 0
+                && missionEightDistance(tank, h) <= 1
+                && (h.typeName === "TRAN" || h.typeName === "E4")
+              )).toSorted((a, b) => a.strength - b.strength)[0];
+              if (onCell) {
+                queueMissionEightRole(commands, `east-b-post-sam-village-snap-${key}`,
+                  [tank], onCell, 0, 2);
+                continue;
+              }
             }
-            // No y-upper on airlift filter — TRAN often lands y=55–58. Free
-            // still reband if free itself drifts y>54 (pathfind death).
-            const villageAirlift = hostiles.filter((h) => (
-              h.strength > 0
-              && h.cellY >= 46 && h.cellX <= 20
-              && (h.typeName === "TRAN" || h.typeName === "E4"
-                || h.typeName === "E1" || h.typeName === "E3")
-            ));
-            if (freeInVillageBand && villageAirlift.length > 0
-              && tank.strength >= 50
-              && !state.eastBResidualCommit) {
-              const prey = villageAirlift.toSorted((a, b) => {
-                const rank = (h) => (
-                  h.typeName === "TRAN" ? 0
-                    : h.typeName === "E4" ? 1
-                      : h.typeName === "E3" ? 2 : 3
-                );
-                return rank(a) - rank(b)
-                  || missionEightDistance(tank, a) - missionEightDistance(tank, b)
-                  || a.strength - b.strength;
-              })[0];
-              // Engage TRAN even if y>54; only reband after kill if free drifts.
-              queueMissionEightRole(commands, `east-b-post-sam-village-airlift-${key}`,
-                [tank], prey, 0, 1);
-              continue;
-            }
+            // Residual@46k healthy free (pad free-near path) OR after pass3.
             const lateVillageHold = tank.strength >= 100
               && freeInVillageBand
               && passes >= 1
-              && snapshot.tick >= 46_000
-              && villageAirlift.length === 0;
-            // pass3 residual: free still village-holds until pass≥3 so vg/WEAP
-            // live (l430v). Soft AFLD alone must not yank free pre-pass3.
+              && snapshot.tick >= 46_000;
             const pass3Residual = passes >= 3 || snapshot.tick >= 54_500;
-            const canLatch = villageAirlift.length === 0
-              || !freeInVillageBand
-              || tank.cellX >= 20;
-            if (canLatch && (pass3Residual || lateVillageHold)) {
+            const afldSoftLatch = (afldSoft || afldChipped)
+              && freeInVillageBand
+              && tank.strength >= 100
+              && snapshot.tick >= 46_000;
+            if (lateVillageHold || pass3Residual || afldSoftLatch) {
               state.eastBResidualCommit = true;
             }
             // l409: residual pad free fights to scrap (str≥5). l408 free@48,14
@@ -12793,9 +12776,45 @@ function queueMissionEightForces(snapshot, friendly, hostiles, attackers, comman
     const infantryTarget = infantryThreat && nearVillage(infantryThreat, 16)
       ? infantryThreat
       : (snapshot.tick < 20_000 ? interceptPoint : infantryFallback);
+    // l431: post-all-SAM keep ≥2 village E1 on Moebius/HOSP picket (los3 wall
+    // after free residual/dies). Remaining infantry hunt village threats.
+    const moebiusPicketCell = { cellX: 6, cellY: 58 };
+    const postAllSamVillage = state.allSamsDeadTick !== undefined;
+    const sortedInf = villageInfantry.toSorted((a, b) => (
+      a.id - b.id
+    ));
+    const moebiusPickets = postAllSamVillage
+      ? sortedInf.slice(0, Math.min(2, sortedInf.length))
+      : [];
+    const freeVillageInf = postAllSamVillage
+      ? sortedInf.slice(moebiusPickets.length)
+      : villageInfantry;
+    if (moebiusPickets.length > 0) {
+      const moeThreat = hostiles.filter((h) => (
+        h.strength > 0
+        && missionEightDistance(moebiusPicketCell, h) <= 8
+        && (h.typeName === "E1" || h.typeName === "E3" || h.typeName === "E4"
+          || h.typeName === "BGGY" || h.typeName === "LTNK" || h.typeName === "TRAN")
+      )).toSorted((a, b) => (
+        missionEightDistance(moebiusPicketCell, a) - missionEightDistance(moebiusPicketCell, b)
+        || a.strength - b.strength
+      ))[0];
+      if (moeThreat) {
+        queueMissionEightRole(commands, "east-b-moebius-picket-atk", moebiusPickets,
+          moeThreat, 0, 15);
+      } else {
+        const needMove = moebiusPickets.filter((u) => (
+          missionEightDistance(u, moebiusPicketCell) > 2
+        ));
+        if (needMove.length > 0) {
+          queueMissionEightRole(commands, "east-b-moebius-picket-hold", needMove,
+            moebiusPicketCell, MODIFIER_ALT, 20);
+        }
+      }
+    }
     const commandedVillageInfantry = (infantryThreat || snapshot.tick < 20_000)
-      ? villageInfantry
-      : villageInfantry.filter((guard) => (
+      ? freeVillageInf
+      : freeVillageInf.filter((guard) => (
         missionEightDistance(guard, infantryFallback) > 2
       ));
     if (commandedVillageInfantry.length > 0) {

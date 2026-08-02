@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **RED** — unit/inf mop stripped (skeptic); village TRAN peel; pass3 once (l430v maxAir=3); still civ/Moebius lose. |
+| Status | **RED** — mop absent (executable scan); freeResidualAir village enables pass3; Moebius infantry picket; free early village death still blocks. |
 | Branch | `browser-port` |
-| Commit | WIP l430v3 mop-strip + village airlift peel |
+| Commit | WIP l431 mop-proof + freeResidualAir + Moebius picket |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `tiberiandawn/{building,infantry,unit}.cpp` |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l430v3. Scratch: `m8-eastb-l430v3.*` + `skeptic-mop-absent-l430v.txt` |
+| Last TRACE suite | l431e. Scratch: `skeptic-mop-absent-l431.txt` + `m8-eastb-l431*.err` |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
