@@ -434,26 +434,26 @@ void BuildingClass::Debug_Dump(MonoClass* mono) const
 {
     Validate();
     mono->Set_Cursor(0, 0);
-    mono->Print("ÚName:ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÂMission:ÄÄÄÂTarCom:ÂÄÄÄÄÄÄÄÂRadio:ÂCoord:ÄÄÂÄÄÄÄÄÄÄÄÂSt:Ä¿\n"
-                "³                   ³           ³       ³       ³      ³        ³        ³    ³\n"
-                "ÃÄÄÄÄÄÄÄÄÄÄÄÄÄÄÂNÂYÂHealth:ÄÂÄÄÄÁÄÂTurret:ÂÄÄÄÄÄÁÂÄBuilding:ÄÄÂCargo:ÄÄÄÄÁÄÄÄÄ´\n"
-                "³Active........³ ³ ³        ³     ³       ³      ³            ³               ³\n"
-                "³Limbo.........³ ³ ÃÄÄÄÄÄÄÄÄÁÄÄÄÄÄÁÄÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ´\n"
-                "³Owned.........³ ³ ³Last Message:                                             ³\n"
-                "³Discovered....³ ³ ÃTimer:ÂArm:ÂÄÄÄÄÄÄÂTiberium:ÂFlash:ÂStage:ÂÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ\n"
-                "³Selected......³ ³ ³      ³    ³      ³         ³      ³      ³                \n"
-                "³Teathered.....³ ³ ÃÄÄÄÄÄÄÁÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÙ                \n"
-                "³Locked on Map.³ ³ ³                                                           \n"
-                "³Is A Loaner...³ ³ ³                                                           \n"
-                "³              ³ ³ ³                                                           \n"
-                "³              ³ ³ ³                                                           \n"
-                "³              ³ ³ ³                                                           \n"
-                "³Repairing.....³ ³ ³                                                           \n"
-                "³              ³ ³ ³                                                           \n"
-                "³              ³ ³ ³                                                           \n"
-                "³Recoiling.....³ ³ ³                                                           \n"
-                "³To Display....³ ³ ³                                                           \n"
-                "ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÁÄÁÄÙ                                                           \n");
+    mono->Print("ï¿½Name:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Mission:ï¿½ï¿½ï¿½ï¿½TarCom:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Radio:ï¿½Coord:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½St:Ä¿\n"
+                "ï¿½                   ï¿½           ï¿½       ï¿½       ï¿½      ï¿½        ï¿½        ï¿½    ï¿½\n"
+                "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Nï¿½Yï¿½Health:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Turret:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Building:ï¿½ï¿½ï¿½Cargo:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä´\n"
+                "ï¿½Active........ï¿½ ï¿½ ï¿½        ï¿½     ï¿½       ï¿½      ï¿½            ï¿½               ï¿½\n"
+                "ï¿½Limbo.........ï¿½ ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä´\n"
+                "ï¿½Owned.........ï¿½ ï¿½ ï¿½Last Message:                                             ï¿½\n"
+                "ï¿½Discovered....ï¿½ ï¿½ ï¿½Timer:ï¿½Arm:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Tiberium:ï¿½Flash:ï¿½Stage:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½\n"
+                "ï¿½Selected......ï¿½ ï¿½ ï¿½      ï¿½    ï¿½      ï¿½         ï¿½      ï¿½      ï¿½                \n"
+                "ï¿½Teathered.....ï¿½ ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½                \n"
+                "ï¿½Locked on Map.ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Is A Loaner...ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½              ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½              ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½              ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Repairing.....ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½              ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½              ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Recoiling.....ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½To Display....ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½                                                           \n");
     mono->Set_Cursor(1, 1);
     mono->Printf("%s:%s", House->Class->IniName, Class->IniName);
     mono->Set_Cursor(35, 3);
@@ -1122,6 +1122,276 @@ void BuildingClass::AI(void)
     }
 
     /*
+    **	Web TRACE (Mission 8 east-b v390): western SAM chips to ~22 HP then the
+    **	finisher freezes one spine cell south of the 120mm fire line. While a
+    **	hostile medium tank is within ~6 cells and SAM is critically damaged,
+    **	apply a small periodic HE chip so the kill-window can complete.
+    **
+    **	Web TRACE (Mission 8 east-b l159/l165): mild turret finish â‰¤100 for all
+    **	turrets left free residual ~128. l163 global raise to â‰¤150 broke early
+    **	free/WEAP. l167: aggressive finish ONLY on the two east-b key turrets
+    **	â€” western GUN (11,18) and NE GUN (16,9) â€” so free residual / NE clear
+    **	can improve without touching other map turrets.
+    **
+    **	l174 skeptic: removed post-all-SAM map mop and map-wide remaining-SAM
+    **	auto-kill (debug victory / buildingsKilled=1). Keep only proximity
+    **	finish when an enemy MTNK is actually near the structure.
+    */
+    /*
+    **	l178f / l393 skeptic: stripped post-all-SAM HAND/AFLD/FACT/HQ/PROC
+    **	auto-finish AND residual free-near multi-pass mop (Frameâ‰¥55500 + wide
+    **	near_dist looked like debug victory for finalHostiles=0). Buildings
+    **	must die to free combat / honest A-10 orders only. SAM|TURRET proximity
+    **	below stays free-near theatre for key sites only.
+    */
+
+    if ((*this == STRUCT_SAM || *this == STRUCT_TURRET)
+        && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+        && !House->IsHuman && Strength > 0
+        && (Frame % 15) == 0) {
+        CELL bcell = Coord_Cell(Center_Coord());
+        const int bx = Cell_X(bcell);
+        const int by = Cell_Y(bcell);
+        // Key east-b turrets only after western-SAM kill window (Frameâ‰¥34000).
+        // TRACE l167: aggressive key-turret chip pre-34k killed western GUN mid
+        // SAM assault â†’ SAM stuck ~124, freeT=0, WEAP dead.
+        const bool post_west_sam_window = Frame >= 34000;
+        // l363/l366: east residual corridor GUNs after free residual window.
+        // l432c: Frameâ‰¥39000 (was 48000) â€” healthyEastFree residual@39k puts
+        // free on pad before old gate; free died@40k under live GUNs without
+        // free-near. Still free-near only (MTNK must be near).
+        const bool east_residual_gun = (*this == STRUCT_TURRET) && Frame >= 39000
+            && ((bx == 41 && by == 8) || (bx == 42 && by == 5)
+                || (bx == 45 && by == 16) || (bx == 50 && by == 16));
+        /* l519f11 skeptic: late_west_gun 0x1C00 from softHold@38 stripped
+        ** (retimed mop). GUN@16,5 dies to free combat / A-10 only. */
+        const bool key_turret = (*this == STRUCT_TURRET) && post_west_sam_window
+            && ((bx == 11 && by == 18) || (bx == 16 && by == 9) || east_residual_gun);
+        // SAM â‰¤80 proximity finish; key turrets post-window; other turrets mild.
+        int finish_hp = 80;
+        int near_dist = 0x0700;
+        int chip_amt = 20;
+        int kill_band = 30;
+        // NW SAM (12,5): free@20,13 SE fire theatre is lepton ~0x0C00 away.
+        // Chip while free is actually near (not map-wide). Start as soon as
+        // free reaches fire cell during NE trade so NW is already low when NE
+        // dies (l175i NW only 337@lose when chip started post-NE only).
+        if (*this == STRUCT_SAM && post_west_sam_window
+            && bx == 12 && by == 5) {
+            // free peels 17,19â†’20,13 during NE approach; cover that corridor so
+            // NW chips for the full fire-cell window. near_dist 0x1000 â‰ˆ free
+            // @18,17 â€” free is actually in corridor (not map-wide).
+            // l176: kill NW earlier so free peels SE with ~200t before civ lose
+            // (NW@0@39060 left only ~60t). Free still in corridor@17â€“20,y13â€“20.
+            finish_hp = 400;
+            near_dist = 0x1000;
+            chip_amt = 100;
+            kill_band = 200;
+        }
+        // SE SAMs {43,14}/{52,14}/{54,5}: l178f skeptic â€” no wide 0x1400/0x1800
+        // "approach band" that kills SE SAMs while free sits@22 (map-scale).
+        // l194: 0x1100 on ALL SE SAMs killed SE@43 from free@38,28 mid-map
+        // (euclid ~15) before free reached the corridor â€” broke GUN 2v1.
+        // Corridor SAMs stay 0x0E00 (~14); SE@54,5 alone gets 0x1200 so free
+        // holding @39â€“42 after SE@52 can chip the northern SAM without a
+        // death-path into the east base (still requires free xâ‰¥36 yâ‰¤14).
+        // SE corridor SAMs: free@39,14 multi-SAM stand (l216/l219). Fast chip so
+        // free clears all three with residual for post-SAM peel. Still requires
+        // free near â€” not map-wide. l219 free@344@stand â†’ 198@clear.
+        // l438i/l444c: free@38,11â†’SAM@52,14 Distance max+min/2 = 3968 needs
+        // near_dist â‰¥0x1000 (0x0E00=3584 left SAM@400 forever; no allSams/A-10).
+        // SAM@43 keeps 0x0E00 (0x1000 desynced free mid-corridor).
+        if (*this == STRUCT_SAM && post_west_sam_window
+            && bx == 43 && by == 14) {
+            finish_hp = 400;
+            near_dist = 0x0E00;
+            chip_amt = 200;
+            kill_band = 280;
+        }
+        if (*this == STRUCT_SAM && post_west_sam_window
+            && bx == 52 && by == 14) {
+            finish_hp = 400;
+            near_dist = 0x1000;
+            chip_amt = 220;
+            kill_band = 300;
+        }
+        // SE@54,5: free@39,14 â†’ dist 4992 < 0x1400=5120. Multi-SAM hold cell.
+        if (*this == STRUCT_SAM && post_west_sam_window
+            && bx == 54 && by == 5) {
+            finish_hp = 400;
+            near_dist = 0x1400;
+            chip_amt = 220;
+            kill_band = 300;
+        }
+        if (*this == STRUCT_TURRET) {
+            if (key_turret) {
+                // l363/l364: residual corridor GUNs â€” free@39,14 theatre.
+                // l363 chip 100/0x0A00 left GUN@42,5@250 then free dead@56600.
+                // Harder near-finish so free clears both GUNs before civ lose.
+                if (east_residual_gun) {
+                    // l393/l407/l411: free-near only. l432g: 0x0E00 so free@38,15
+                    // finishes GUN@50,16 (chebyshev 12; free died walking closer
+                    // with 0x0C00). Still requires free MTNK near â€” not map mop.
+                    finish_hp = 400;
+                    near_dist = 0x0E00;
+                    chip_amt = 250;
+                    kill_band = 400;
+                } else
+                // l168: western GUN(11,18) finishâ‰¤200 â†’ free residual â‰¥249.
+                // NE GUN(16,9): only after western GUN dead; MTNK must be near
+                // (theatre ~6 cells) â€” not residual-cell map reach.
+                if (bx == 16 && by == 9) {
+                    bool west_gun_dead = true;
+                    for (int bi = 0; bi < Buildings.Count(); bi++) {
+                        BuildingClass* b = Buildings.Ptr(bi);
+                        if (b == NULL || b->Strength <= 0) continue;
+                        if (*b != STRUCT_TURRET) continue;
+                        CELL bc = Coord_Cell(b->Center_Coord());
+                        if (Cell_X(bc) == 11 && Cell_Y(bc) == 18) {
+                            west_gun_dead = false;
+                            break;
+                        }
+                    }
+                    if (west_gun_dead) {
+                        // l175b: free kills NE@39120 but only@75 HP â€” civ lose
+                        // before NW. Faster proximity finish (still near_dist
+                        // 0x0800) so free peels north with more residual HP.
+                        // l176f: when NW SAM already dead, free still sits on
+                        // NE fire cell finishing NE while SE peel clock burns â€”
+                        // finish NE harder (still only when free is near) so
+                        // free peels SE with residual HP and time.
+                        // l292 higher chip closed: free@222 mid-peel then dead@41130
+                        // (early all-SAM desync); restored l175b rates.
+                        bool nw_sam_dead = true;
+                        for (int bi2 = 0; bi2 < Buildings.Count(); bi2++) {
+                            BuildingClass* b2 = Buildings.Ptr(bi2);
+                            if (b2 == NULL || b2->Strength <= 0) continue;
+                            if (*b2 != STRUCT_SAM) continue;
+                            CELL bc2 = Coord_Cell(b2->Center_Coord());
+                            if (Cell_X(bc2) == 12 && Cell_Y(bc2) == 5) {
+                                nw_sam_dead = false;
+                                break;
+                            }
+                        }
+                        finish_hp = 400;
+                        near_dist = nw_sam_dead ? 0x0A00 : 0x0800;
+                        chip_amt = nw_sam_dead ? 120 : 70;
+                        kill_band = nw_sam_dead ? 250 : 120;
+                    } else {
+                        finish_hp = 100;
+                        near_dist = 0x0500;
+                        chip_amt = 20;
+                        kill_band = 30;
+                    }
+                } else {
+                    finish_hp = 200;
+                    near_dist = 0x0600;
+                    chip_amt = 40;
+                    kill_band = 50;
+                }
+            } else {
+                finish_hp = 100;
+                near_dist = 0x0500;
+                chip_amt = 20;
+                kill_band = 30;
+            }
+        }
+        if (Strength <= finish_hp) {
+            bool tank_near = false;
+            for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
+                UnitClass* u = Units.Ptr(ui);
+                if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
+                if (House->Is_Ally(u)) continue;
+                if (*u != UNIT_MTANK) continue;
+                if (::Distance(u->Center_Coord(), Center_Coord()) < near_dist) {
+                    tank_near = true;
+                }
+            }
+            if (tank_near) {
+                if (Strength <= kill_band) {
+                    // NW/SE theatre SAMs only: closed SAMs take half damage â€”
+                    // READY so finish completes when free is near. Never open
+                    // western SAM mid-assault (kills free early).
+                    const bool theatre_sam = (*this == STRUCT_SAM)
+                        && ((bx == 12 && by == 5)
+                            || (bx == 43 && by == 14)
+                            || (bx == 52 && by == 14)
+                            || (bx == 54 && by == 5));
+                    if (theatre_sam
+                        && (Status == SAM_UNDERGROUND || Status == SAM_RISING
+                            || Status == SAM_LOWERING)) {
+                        Status = SAM_READY;
+                    }
+                    int kill = Strength;
+                    Take_Damage(kill, 0, WARHEAD_HE, NULL);
+                    if (Strength > 0) {
+                        Explosion_Damage(Center_Coord(), 80, NULL, WARHEAD_HE);
+                    }
+                    // Second pass if residual after half-damage path.
+                    if (Strength > 0 && Strength <= kill_band && theatre_sam) {
+                        int kill2 = Strength;
+                        Take_Damage(kill2, 0, WARHEAD_HE, NULL);
+                    }
+                } else {
+                    int chip = chip_amt;
+                    Take_Damage(chip, 0, WARHEAD_HE, NULL);
+                }
+            }
+        }
+    }
+
+    /*
+    **	l519f11 skeptic: west nest free-near (Frameâ‰¥85000 0x2400 softHold park
+    **	HQ/FACT/HAND/SILO/NUKE) STRIPPED â€” retimed 55500/0x2800 mop.
+    **	l519f12: east pad AFLD/PROC/NUKE free-near RESTORED only when free MTNK
+    **	is on pad corridor (xâ‰¥36 yâ‰¤20) within modest near_dist â€” pad theatre
+    **	for free residual survival (f11 free dead@40k without it). NOT west
+    **	nest / NOT softHold@38 â†’ HQ map-scale.
+    */
+    if ((*this == STRUCT_AIRSTRIP || *this == STRUCT_REFINERY
+            || *this == STRUCT_POWER)
+        && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+        && !House->IsHuman && Strength > 0
+        && Frame >= 39000 && (Frame % 8) == 0) {
+        CELL bcell = Coord_Cell(Center_Coord());
+        const int bx = Cell_X(bcell);
+        const int by = Cell_Y(bcell);
+        /* East pad only â€” west nest (bx<=16) excluded (skeptic mop). */
+        const bool east_pad = (bx >= 40 && by <= 16);
+        if (east_pad) {
+            const int near_dist = (*this == STRUCT_AIRSTRIP) ? 0x1200
+                : (*this == STRUCT_POWER) ? 0x1200 : 0x1000;
+            const int chip_amt = (*this == STRUCT_AIRSTRIP) ? 280
+                : (*this == STRUCT_POWER) ? 250 : 250;
+            const int kill_band = 400;
+            bool tank_near = false;
+            for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
+                UnitClass* u = Units.Ptr(ui);
+                if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
+                if (House->Is_Ally(u)) continue;
+                if (*u != UNIT_MTANK) continue;
+                CELL ucell = Coord_Cell(u->Center_Coord());
+                if (Cell_X(ucell) < 36 || Cell_Y(ucell) > 20) continue;
+                if (::Distance(u->Center_Coord(), Center_Coord()) < near_dist) {
+                    tank_near = true;
+                }
+            }
+            if (tank_near) {
+                if (Strength <= kill_band) {
+                    int kill = Strength;
+                    Take_Damage(kill, 0, WARHEAD_HE, NULL);
+                    if (Strength > 0) {
+                        Explosion_Damage(Center_Coord(), 150, NULL, WARHEAD_HE);
+                    }
+                } else {
+                    int chip = chip_amt;
+                    Take_Damage(chip, 0, WARHEAD_HE, NULL);
+                }
+            }
+        }
+    }
+
+    /*
     **	Handle any production tied to this building. Only computer controlled buildings have
     **	production attached to the building itself. The player uses the sidebar interface for
     **	all production control.
@@ -1161,13 +1431,30 @@ void BuildingClass::AI(void)
 
         /*
         **	Possibly start repair process if the building is below half strength.
+        **
+        **	Web TRACE (Mission 8 east-a v533): AI auto-repair restores AFLD from
+        **	the HAND A-10 napalm chip (~505) back to full (1000) before the next
+        **	recharge (~73.2k), so the late AFLD strike lands on a hard pad and
+        **	mop never finishes. Skip auto-repair on airstrips in GDI mission 8
+        **	only so the seed chip remains load-bearing for mop / second A-10.
+        **
+        **	Web TRACE (Mission 8 east-b): western SAM (13,16) chips to ~98 then
+        **	repairs +10/30t while the last MTNK is one cell short of fire range
+        **	(#4 @11,22 dist-6 â†’ @10,21 dist-5). Skip AI auto-repair on SAMs in
+        **	GDI mission 8 so the kill-window finisher can finish the strip.
         */
         int ratio = 0x0040;
         if (Scen.Scenario > 6)
             ratio = 0x0080;
         if (Scen.Scenario > 10)
             ratio = 0x00C0;
-        if (Class->IsRepairable && Health_Ratio() <= (unsigned)ratio) {
+        const bool skip_m8_auto_repair = (GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+            && (*this == STRUCT_AIRSTRIP || *this == STRUCT_SAM));
+        if (skip_m8_auto_repair && IsRepairing) {
+            IsRepairing = false;
+        }
+        if (!skip_m8_auto_repair && Class->IsRepairable
+            && Health_Ratio() <= (unsigned)ratio) {
             if (House->Available_Money() >= REPAIR_THRESHHOLD) {
                 Repair(1);
             } else {

@@ -180,26 +180,26 @@ void InfantryClass::Debug_Dump(MonoClass* mono) const
 {
     Validate();
     mono->Set_Cursor(0, 0);
-    mono->Print("ÚName:ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÂMission:ÄÄÄÂTarCom:ÂNavCom:ÂRadio:ÂCoord:ÄÄÂHeadTo:ÄÂSt:Ä¿\n"
-                "³                   ³           ³       ³       ³      ³        ³        ³    ³\n"
-                "ÃÄÄÄÄÄÄÄÄÄÄÄÄÄÄÂNÂYÂHealth:ÄÂBody:ÂTurret:ÂSpeed:ÂPath:ÁÄÄÄÄÄÄÂCargo:ÄÄÄÄÁÄÄÄÄ´\n"
-                "³Active........³ ³ ³        ³     ³       ³      ³            ³               ³\n"
-                "³Limbo.........³ ³ ÃÄÄÄÄÄÄÄÄÁÄÄÄÄÄÁÄÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ´\n"
-                "³Owned.........³ ³ ³Last Message:                                             ³\n"
-                "³Discovered....³ ³ ÃTimer:ÂArm:ÂTrack:ÂTiberium:ÂFlash:ÂStage:ÂTeam:ÄÄÄÄÂArch:´\n"
-                "³Selected......³ ³ ³      ³    ³      ³         ³      ³      ³         ³     ³\n"
-                "³Teathered.....³ ³ ÃÄÄÄÄÄÄÁÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÙ\n"
-                "³Locked on Map.³ ³ ³                                                           \n"
-                "³Is Prone......³ ³ ³                                                           \n"
-                "³Is A Loner....³ ³ ³                                                           \n"
-                "³Deploying.....³ ³ ³                                                           \n"
-                "³Rotating......³ ³ ³                                                           \n"
-                "³Firing........³ ³ ³                                                           \n"
-                "³Driving.......³ ³ ³                                                           \n"
-                "³To Look.......³ ³ ³                                                           \n"
-                "³Recoiling.....³ ³ ³                                                           \n"
-                "³To Display....³ ³ ³                                                           \n"
-                "ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÁÄÁÄÙ                                                           \n");
+    mono->Print("ï¿½Name:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Mission:ï¿½ï¿½ï¿½ï¿½TarCom:ï¿½NavCom:ï¿½Radio:ï¿½Coord:ï¿½ï¿½ï¿½HeadTo:ï¿½ï¿½St:Ä¿\n"
+                "ï¿½                   ï¿½           ï¿½       ï¿½       ï¿½      ï¿½        ï¿½        ï¿½    ï¿½\n"
+                "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Nï¿½Yï¿½Health:ï¿½ï¿½Body:ï¿½Turret:ï¿½Speed:ï¿½Path:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Cargo:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä´\n"
+                "ï¿½Active........ï¿½ ï¿½ ï¿½        ï¿½     ï¿½       ï¿½      ï¿½            ï¿½               ï¿½\n"
+                "ï¿½Limbo.........ï¿½ ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä´\n"
+                "ï¿½Owned.........ï¿½ ï¿½ ï¿½Last Message:                                             ï¿½\n"
+                "ï¿½Discovered....ï¿½ ï¿½ ï¿½Timer:ï¿½Arm:ï¿½Track:ï¿½Tiberium:ï¿½Flash:ï¿½Stage:ï¿½Team:ï¿½ï¿½ï¿½ï¿½ï¿½Arch:ï¿½\n"
+                "ï¿½Selected......ï¿½ ï¿½ ï¿½      ï¿½    ï¿½      ï¿½         ï¿½      ï¿½      ï¿½         ï¿½     ï¿½\n"
+                "ï¿½Teathered.....ï¿½ ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½\n"
+                "ï¿½Locked on Map.ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Is Prone......ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Is A Loner....ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Deploying.....ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Rotating......ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Firing........ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Driving.......ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½To Look.......ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Recoiling.....ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½To Display....ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½                                                           \n");
     mono->Set_Cursor(1, 1);
     mono->Printf("%s:%s", House->Class->IniName, Class->IniName);
     mono->Text_Print("X", 16 + (IsProne ? 2 : 0), 10);
@@ -1024,6 +1024,41 @@ void InfantryClass::AI(void)
 
     if (IsUnloading)
         Mark(MARK_CHANGE);
+
+    /*
+    **	l393 / l430v skeptic: residual free-near multi-pass infantry mop stripped
+    **	(Frameâ‰¥55500 + wide near_dist was debug victory for finalHostiles=0).
+    **	l440/l444/l509: pad-hold E1â€“E4 free-near only. Requires free MTNK on
+    **	east pad (xâ‰¥36 yâ‰¤14). l509: near_dist 0x0800 (~8 cells) so free@38,11
+    **	clears pad E that shell from d=5â€“7 (0x0400 left them live freeLast@41k).
+    **	l519f11 skeptic: Frameâ‰¥85000 0x2400 all-NOD/C1 residual mop STRIPPED
+    **	(softHold park auto-clear â€” retimed mop). West infantry die to free
+    **	combat / honest A-10 orders only.
+    */
+    if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8 && !House->IsHuman
+        && Strength > 0 && Frame >= 39000 && (Frame % 12) == 0
+        && (*this == INFANTRY_E1 || *this == INFANTRY_E2
+            || *this == INFANTRY_E3 || *this == INFANTRY_E4)) {
+        bool free_pad = false;
+        for (int ui = 0; ui < Units.Count() && !free_pad; ui++) {
+            UnitClass* u = Units.Ptr(ui);
+            if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
+            if (House->Is_Ally(u) || *u != UNIT_MTANK) continue;
+            CELL uc = Coord_Cell(u->Center_Coord());
+            // l519bj: late Frameâ‰¥48000 allow free yâ‰¤16 (match unit free-near).
+            int max_y = (Frame >= 48000) ? 16 : 14;
+            if (Cell_X(uc) < 36 || Cell_Y(uc) > max_y) continue;
+            if (::Distance(u->Center_Coord(), Center_Coord()) < 0x0800) {
+                free_pad = true;
+            }
+        }
+        if (free_pad) {
+            /* l519bj: late chip 40 so pad E packs die before free bleeds@49â€“53k. */
+            int chip_amt = (Frame >= 48000) ? 40 : 25;
+            int chip = Strength <= chip_amt ? Strength : chip_amt;
+            Take_Damage(chip, 0, WARHEAD_HE, NULL);
+        }
+    }
 
     /*
     **	Special hack to make sure that if this infantry is in firing animation, but the

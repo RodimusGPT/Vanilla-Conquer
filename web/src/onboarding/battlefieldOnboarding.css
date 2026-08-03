@@ -1,0 +1,434 @@
+.battlefield-controls-launcher,
+.battlefield-tutorial-coach,
+.battlefield-welcome-dialog,
+.battlefield-controls-dialog {
+  border: 1px solid rgba(229, 189, 97, .48);
+  background: rgba(11, 16, 13, .96);
+  box-shadow: 0 16px 52px rgba(0, 0, 0, .62);
+  color: #dce5de;
+  backdrop-filter: blur(12px);
+}
+
+.battlefield-controls-launcher {
+  position: fixed;
+  z-index: 12;
+  top: max(108px, calc(env(safe-area-inset-top) + 108px));
+  left: max(12px, env(safe-area-inset-left));
+  min-width: 76px;
+  min-height: 44px;
+  padding: 0 12px;
+  color: #e5bd61;
+  font: 600 11px Barlow Condensed, sans-serif;
+  letter-spacing: .065em;
+  text-transform: uppercase;
+  cursor: pointer;
+  backdrop-filter: none;
+}
+
+.battlefield-controls-launcher:hover,
+.battlefield-controls-launcher:focus-visible {
+  border-color: rgba(229, 189, 97, .8);
+  background: rgba(29, 31, 22, .98);
+  color: #fff0be;
+}
+
+.battlefield-tutorial-layer {
+  position: fixed;
+  z-index: 18;
+  inset: 0;
+  pointer-events: none;
+}
+
+.battlefield-tutorial-target {
+  position: fixed;
+  z-index: 0;
+  border: 2px solid #f0c969;
+  border-radius: 4px;
+  box-shadow: 0 0 0 5px rgba(229, 189, 97, .18), 0 0 24px rgba(229, 189, 97, .68);
+  pointer-events: none;
+  animation: battlefield-tutorial-pulse 1.4s ease-in-out infinite alternate;
+}
+
+@keyframes battlefield-tutorial-pulse {
+  from { box-shadow: 0 0 0 3px rgba(229, 189, 97, .13), 0 0 14px rgba(229, 189, 97, .4); }
+  to { box-shadow: 0 0 0 7px rgba(229, 189, 97, .22), 0 0 28px rgba(229, 189, 97, .72); }
+}
+
+.battlefield-tutorial-coach {
+  position: fixed;
+  z-index: 1;
+  top: max(128px, calc(env(safe-area-inset-top) + 128px));
+  left: max(12px, env(safe-area-inset-left));
+  width: min(360px, calc(100vw - 24px));
+  max-height: calc(100dvh - 140px - env(safe-area-inset-top));
+  overflow: auto;
+  padding: 14px;
+  pointer-events: auto;
+}
+
+.battlefield-tutorial-coach.complete {
+  border-top: 3px solid #a4c48c;
+}
+
+.battlefield-tutorial-coach.recovery {
+  border-top: 3px solid #df7969;
+}
+
+.battlefield-tutorial-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #e5bd61;
+  font: 600 9px Barlow Condensed, sans-serif;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.battlefield-tutorial-heading p,
+.battlefield-tutorial-heading span {
+  margin: 0;
+}
+
+.battlefield-tutorial-heading span {
+  flex: 0 0 auto;
+  color: #9caaa0;
+  letter-spacing: .08em;
+}
+
+.battlefield-tutorial-coach h2 {
+  margin: 5px 0 8px;
+  color: #f1f5f2;
+  font: 650 21px Barlow Condensed, sans-serif;
+  letter-spacing: .025em;
+  text-transform: uppercase;
+}
+
+.battlefield-tutorial-instruction {
+  margin: 0;
+  color: #e0e7e1;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.battlefield-tutorial-detail,
+.battlefield-tutorial-recovery {
+  margin: 7px 0 0;
+  color: #aebbb1;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.battlefield-tutorial-recovery {
+  padding: 8px 9px;
+  border-left: 3px solid #df7969;
+  background: rgba(223, 121, 105, .08);
+  color: #e6c4bf;
+}
+
+.battlefield-tutorial-coach progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 11px;
+  border: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  color: #a4c48c;
+  background: rgba(255, 255, 255, .08);
+}
+
+.battlefield-tutorial-coach progress::-webkit-progress-bar { background: rgba(255, 255, 255, .08); }
+.battlefield-tutorial-coach progress::-webkit-progress-value { background: #a4c48c; }
+.battlefield-tutorial-coach progress::-moz-progress-bar { background: #a4c48c; }
+
+.battlefield-tutorial-coach-actions,
+.battlefield-tutorial-hub-actions,
+.battlefield-tutorial-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.battlefield-tutorial-coach-actions {
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(197, 216, 198, .14);
+}
+
+.battlefield-tutorial-coach-actions button,
+.battlefield-tutorial-hub-actions button,
+.battlefield-tutorial-dialog-actions button,
+.battlefield-tutorial-close {
+  min-height: 44px;
+  padding: 0 11px;
+  border: 1px solid rgba(197, 216, 198, .2);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, .035);
+  color: #cbd4cd;
+  font: 600 10px Barlow Condensed, sans-serif;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.battlefield-tutorial-coach-actions button:hover,
+.battlefield-tutorial-hub-actions button:hover:not(:disabled),
+.battlefield-tutorial-dialog-actions button:hover:not(:disabled) {
+  border-color: rgba(229, 189, 97, .58);
+  background: rgba(229, 189, 97, .09);
+  color: #fff0be;
+}
+
+.battlefield-tutorial-coach-actions button.primary,
+.battlefield-tutorial-hub-actions button.primary,
+.battlefield-tutorial-dialog-actions button.primary {
+  border-color: rgba(229, 189, 97, .55);
+  background: rgba(229, 189, 97, .12);
+  color: #e5bd61;
+}
+
+.battlefield-tutorial-coach-actions button.danger,
+.battlefield-tutorial-hub-actions button.danger {
+  margin-left: auto;
+  color: #d69a90;
+}
+
+.battlefield-tutorial-coach-actions.recovery-actions button {
+  flex: 1 1 126px;
+}
+
+.battlefield-tutorial-coach-actions button:disabled,
+.battlefield-tutorial-hub-actions button:disabled,
+.battlefield-tutorial-dialog-actions button:disabled {
+  opacity: .42;
+  cursor: not-allowed;
+}
+
+.battlefield-tutorial-backdrop {
+  position: fixed;
+  z-index: 31;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+  background: rgba(2, 4, 3, .8);
+  backdrop-filter: blur(9px);
+}
+
+.battlefield-welcome-dialog,
+.battlefield-controls-dialog {
+  position: relative;
+  width: min(540px, 100%);
+  max-height: min(88vh, calc(100dvh - 36px));
+  overflow: auto;
+  padding: 30px;
+}
+
+.battlefield-controls-dialog {
+  width: min(720px, 100%);
+}
+
+.battlefield-tutorial-eyebrow {
+  margin: 0 0 5px;
+  color: #e5bd61;
+  font: 600 10px Barlow Condensed, sans-serif;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.battlefield-welcome-dialog h1,
+.battlefield-controls-dialog > h1 {
+  margin: 0 48px 12px 0;
+  color: #f1f5f2;
+  font: 700 29px Barlow Condensed, sans-serif;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+.battlefield-welcome-dialog > p:not(.battlefield-tutorial-eyebrow),
+.battlefield-restart-warning {
+  margin: 0;
+  color: #adb8b0;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.battlefield-restart-warning strong { color: #e4eae5; }
+
+.battlefield-restart-error {
+  margin: 10px 0 0;
+  padding: 8px 9px;
+  border-left: 3px solid #df7969;
+  background: rgba(223, 121, 105, .08);
+  color: #e6c4bf;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.battlefield-tutorial-dialog-actions {
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
+.battlefield-tutorial-dialog-actions button {
+  min-width: 118px;
+}
+
+.battlefield-tutorial-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #d6ded7;
+  font: 24px/1 sans-serif;
+}
+
+.battlefield-tutorial-status {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) auto;
+  gap: 12px 18px;
+  align-items: center;
+  margin: 18px 0;
+  padding: 13px;
+  border: 1px solid rgba(229, 189, 97, .26);
+  background: rgba(229, 189, 97, .055);
+}
+
+.battlefield-tutorial-status h2 {
+  margin: 0 0 3px;
+  color: #e5bd61;
+  font: 650 13px Barlow Condensed, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.battlefield-tutorial-status p {
+  margin: 0;
+  color: #bdc8bf;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.battlefield-tutorial-status .battlefield-tutorial-disabled-reason {
+  grid-column: 1 / -1;
+  color: #d1b37b;
+}
+
+.battlefield-tutorial-hub-actions {
+  justify-content: flex-end;
+}
+
+.battlefield-controls-reference {
+  padding-top: 16px;
+  border-top: 1px solid rgba(197, 216, 198, .14);
+}
+
+.battlefield-guide-shroud {
+  margin: 0 0 14px;
+  padding: 9px 10px;
+  border-left: 3px solid #a4c48c;
+  background: rgba(164, 196, 140, .08);
+  color: #c6d0c8;
+  font-size: 11px;
+  line-height: 1.48;
+}
+
+.battlefield-guide-shroud strong { color: #e8eee9; }
+
+.battlefield-controls-reference dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.battlefield-controls-reference dl > div {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(197, 216, 198, .1);
+}
+
+.battlefield-controls-reference dt {
+  margin-bottom: 4px;
+  color: #e5bd61;
+  font: 600 10px Barlow Condensed, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.battlefield-controls-reference dd {
+  margin: 0;
+  color: #aebbb1;
+  font-size: 10px;
+  line-height: 1.48;
+}
+
+.battlefield-controls-reference kbd {
+  color: #e7ede8;
+  font: inherit;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .battlefield-controls-launcher {
+    top: max(82px, calc(env(safe-area-inset-top) + 82px));
+    left: max(6px, env(safe-area-inset-left));
+  }
+
+  .battlefield-tutorial-coach {
+    top: max(116px, calc(env(safe-area-inset-top) + 116px));
+    left: max(6px, env(safe-area-inset-left));
+    width: min(348px, calc(100vw - 12px));
+    max-height: calc(100dvh - 128px - env(safe-area-inset-top));
+  }
+
+  .battlefield-welcome-dialog,
+  .battlefield-controls-dialog {
+    padding: 24px 16px 18px;
+  }
+
+  .battlefield-tutorial-status {
+    grid-template-columns: 1fr;
+  }
+
+  .battlefield-tutorial-hub-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 480px), (max-height: 520px) {
+  .battlefield-tutorial-backdrop {
+    align-items: stretch;
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
+
+  .battlefield-welcome-dialog,
+  .battlefield-controls-dialog {
+    align-self: center;
+    max-height: calc(100dvh - 16px);
+  }
+
+  .battlefield-tutorial-coach {
+    top: max(8px, env(safe-area-inset-top));
+    max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  .battlefield-controls-reference dl {
+    grid-template-columns: 1fr;
+  }
+
+  .battlefield-tutorial-coach-actions button {
+    flex: 1 1 92px;
+  }
+
+  .battlefield-tutorial-coach-actions button.danger,
+  .battlefield-tutorial-hub-actions button.danger {
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battlefield-tutorial-target { animation: none; }
+}

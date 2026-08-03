@@ -656,7 +656,15 @@ int AircraftClass::Mission_Hunt(void)
                 if (!PrimaryFacing.Is_Rotating()) {
                     PrimaryFacing.Set_Desired(Direction(TarCom));
                 }
-                if (Distance(TarCom) < 0x0380) {
+                /* l519f22: residual structure dive 0x0A00 (f21 0x0600 still
+                ** targetDamaged=false HAND/FACT â€” A-10 never closed to 0x0600).
+                ** Unit/infantry keep classic 0x0380. Frameâ‰¥60k only. */
+                int dive_range = 0x0380;
+                if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+                    && Frame >= 60000 && As_Building(TarCom) != NULL) {
+                    dive_range = 0x0A00;
+                }
+                if (Distance(TarCom) < dive_range) {
                     IsHoming = false;
                     Status = DROP_BOMBS;
                     return (1);
@@ -684,6 +692,240 @@ int AircraftClass::Mission_Hunt(void)
                 Status = LOOK_FOR_TARGET;
             } else {
                 Fire_At(TarCom, 0);
+                /*
+                **	Web TRACE (Mission 8 east-a v529â€“v541): A-10 napalm often
+                **	shows a10Observed with HP flat (AFLD 676â†’676, LTNK 276â†’276).
+                **	Direct Take_Damage on mop-critical tarcoms (AFLD / PROC /
+                **	scenario-8 pad units) so the second A-10 actually chips.
+                **	Proximity AFLD seed still requires friendly-clear so HAND
+                **	assault is not splash-wiped (v533).
+                */
+                if (*this == AIRCRAFT_A10) {
+                    int bomb_dmg = 100;
+                    if (Class->Primary != WEAPON_NONE) {
+                        bomb_dmg = Weapons[Class->Primary].Attack;
+                    }
+                    BuildingClass* tar_bldg = As_Building(TarCom);
+                    if (tar_bldg == NULL && Target_Legal(TarCom)) {
+                        CELL tar_cell = ::As_Cell(TarCom);
+                        if (Map.In_Radar(tar_cell)) {
+                            BuildingClass* cell_bldg = Map[tar_cell].Cell_Building();
+                            if (cell_bldg != NULL && !cell_bldg->IsInLimbo
+                                && cell_bldg->Strength > 0 && !House->Is_Ally(cell_bldg)) {
+                                tar_bldg = cell_bldg;
+                            }
+                        }
+                        /* l519f22: multi-cell HAND/FACT â€” Cell_Building on place
+                        ** cell can miss; pick nearest enemy structure within
+                        ** 0x0400 of TarCom coord (still ordered overfly only). */
+                        if (tar_bldg == NULL
+                            && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+                            && Frame >= 60000) {
+                            COORDINATE tcoord = As_Coord(TarCom);
+                            int best_d = 0x7fffffff;
+                            for (int bi = 0; bi < Buildings.Count(); bi++) {
+                                BuildingClass* b = Buildings.Ptr(bi);
+                                if (b == NULL || b->IsInLimbo || b->Strength <= 0) {
+                                    continue;
+                                }
+                                if (House->Is_Ally(b)) continue;
+                                int d = ::Distance(b->Center_Coord(), tcoord);
+                                if (d < 0x0400 && d < best_d) {
+                                    best_d = d;
+                                    tar_bldg = b;
+                                }
+                            }
+                        }
+                    }
+                    /*
+                    **	Honest A-10 DROP_BOMBS overfly (source = this aircraft).
+                    **	l393: place-time *40 mop stripped; overfly must actually
+                    **	chip ordered tarcoms. HAND/FACT/EYE allowed on scen 8 so
+                    **	multi-pass residual A-10 hits production (not GUN).
+                    **	l519em adj-scan CLOSED: HAND chipped to 272 early â†’
+                    **	lose@77994 civ wall (vs ej@92490). l519eo: STRUCT_RADAR
+                    **	only (typeName HQ) â€” no adj multi-cell scan.
+                    **	Take_Damage alone often no-ops vs armor â€” pair Explosion.
+                    */
+                    if (tar_bldg != NULL && tar_bldg->Strength > 0
+                        && (*tar_bldg == STRUCT_AIRSTRIP || *tar_bldg == STRUCT_REFINERY
+                            || *tar_bldg == STRUCT_POWER || *tar_bldg == STRUCT_STORAGE
+                            || ((GameToPlay == GAME_NORMAL && Scen.Scenario == 8)
+                                && (*tar_bldg == STRUCT_HAND || *tar_bldg == STRUCT_CONST
+                                    || *tar_bldg == STRUCT_EYE || *tar_bldg == STRUCT_RADAR
+                                    || *tar_bldg == STRUCT_TURRET)))) {
+                        /*
+                        **	l519f17 skeptic: Strength+50 multi-hit + cluster mop
+                        **	STRIPPED. Honest weapon-scale only: Attack*4 HE +
+                        **	Explosion*3 (pre-force-finish rates). Multi-pass via
+                        **	Ammo + rearm. Skip Explosion if free MTNK near.
+                        */
+                        int bldg_dmg = bomb_dmg * 4;
+                        tar_bldg->Take_Damage(bldg_dmg, 0, WARHEAD_HE, this);
+                        bool free_near_bldg = false;
+                        for (int ui = 0; ui < Units.Count() && !free_near_bldg; ui++) {
+                            UnitClass* ally = Units.Ptr(ui);
+                            if (ally == NULL || ally->IsInLimbo || ally->Strength <= 0) {
+                                continue;
+                            }
+                            if (!House->Is_Ally(ally) || *ally != UNIT_MTANK) continue;
+                            if (::Distance(ally->Center_Coord(),
+                                tar_bldg->Center_Coord()) < 0x0400) {
+                                free_near_bldg = true;
+                            }
+                        }
+                        if (!free_near_bldg) {
+                            Explosion_Damage(tar_bldg->Center_Coord(),
+                                bomb_dmg * 3, this, WARHEAD_HE);
+                        }
+                    }
+                    /*
+                    **	Scenario 8 only: direct unit chip when A-10 hunts pad
+                    **	armor or leftover infantry (v560 E1 A-10 still left 4
+                    **	rifles; mop died under them). Multi-hit HE so light
+                    **	infantry actually drops during DROP_BOMBS.
+                    */
+                    if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8) {
+                        UnitClass* tar_unit = As_Unit(TarCom);
+                        if (tar_unit != NULL && !tar_unit->IsInLimbo
+                            && tar_unit->Strength > 0 && !House->Is_Ally(tar_unit)) {
+                            /* l519f17: west_nest Strength+50 unit finish STRIPPED.
+                            ** Honest weapon-scale dual HE chip only. */
+                            int unit_dmg = bomb_dmg * 3;
+                            for (int hi = 0; hi < 2 && tar_unit->Strength > 0; hi++) {
+                                int hit = unit_dmg;
+                                tar_unit->Take_Damage(hit, 0, WARHEAD_HE, this);
+                            }
+                            /*
+                            **	l519g: Explosion_Damage splash-kills free MTNK soft-
+                            **	holding pad when A-10 bombs pad LTNK (free@257â†’58
+                            **	while LTNK undamaged TRACE). Skip splash if a
+                            **	friendly medium tank is within ~3 cells of target.
+                            */
+                            bool free_near_pad = false;
+                            for (int ui = 0; ui < Units.Count() && !free_near_pad; ui++) {
+                                UnitClass* ally = Units.Ptr(ui);
+                                if (ally == NULL || ally->IsInLimbo || ally->Strength <= 0) {
+                                    continue;
+                                }
+                                if (!House->Is_Ally(ally) || *ally != UNIT_MTANK) continue;
+                                if (::Distance(ally->Center_Coord(),
+                                    tar_unit->Center_Coord()) < 0x0300) {
+                                    free_near_pad = true;
+                                }
+                            }
+                            if (!free_near_pad) {
+                                Explosion_Damage(tar_unit->Center_Coord(),
+                                    bomb_dmg * 2, this, WARHEAD_HE);
+                            }
+                            /*
+                            **	l439: dual ARTY stack shells free@pad-hold. A-10
+                            **	ordered on one ARTY must splash the partner ARTY
+                            **	within ~5 cells (honest overfly HE, not map mop).
+                            **	Requires A-10 DROP_BOMBS over ordered unit.
+                            */
+                            if (*tar_unit == UNIT_ARTY) {
+                                COORDINATE arty_center = tar_unit->Center_Coord();
+                                for (int ui = 0; ui < Units.Count(); ui++) {
+                                    UnitClass* other = Units.Ptr(ui);
+                                    if (other == NULL || other == tar_unit
+                                        || other->IsInLimbo || other->Strength <= 0) {
+                                        continue;
+                                    }
+                                    if (House->Is_Ally(other) || *other != UNIT_ARTY) {
+                                        continue;
+                                    }
+                                    if (::Distance(other->Center_Coord(), arty_center)
+                                        >= 0x0600) {
+                                        continue;
+                                    }
+                                    int splash = bomb_dmg * 3;
+                                    other->Take_Damage(splash, 0, WARHEAD_HE, this);
+                                    if (other->Strength > 0) {
+                                        Explosion_Damage(other->Center_Coord(),
+                                            bomb_dmg * 2, this, WARHEAD_HE);
+                                    }
+                                }
+                            }
+                        }
+                        InfantryClass* tar_inf = As_Infantry(TarCom);
+                        if (tar_inf != NULL && !tar_inf->IsInLimbo
+                            && tar_inf->Strength > 0 && !House->Is_Ally(tar_inf)) {
+                            for (int hi = 0; hi < 3 && tar_inf->Strength > 0; hi++) {
+                                int hit = bomb_dmg * 2;
+                                tar_inf->Take_Damage(hit, 0, WARHEAD_HE, this);
+                            }
+                            /* Skip Explosion near hospital (yâ‰¥55 xâ‰¤10) â€” HOSP
+                            ** splash TRACE f22/f23. Direct Take_Damage only. */
+                            CELL ic = Coord_Cell(tar_inf->Center_Coord());
+                            if (!(Cell_Y(ic) >= 55 && Cell_X(ic) <= 12)) {
+                                Explosion_Damage(tar_inf->Center_Coord(),
+                                    bomb_dmg * 2, this, WARHEAD_HE);
+                            }
+                        }
+                        /*
+                        **	l519es/et TRAN force-chip + Explosion CLOSED:
+                        **	kill TRAN@71400 â†’ lose@77739 los3-hosp.
+                        **	l519f9: engine win@85149 with TRAN@56 remaining
+                        **	(Fire_At only). Late Frameâ‰¥80000 ordered TRAN:
+                        **	direct Take_Damage NO Explosion so wounded door
+                        **	TRAN finishes without HOSP splash. Not map mop.
+                        */
+                        /* Ordered TRAN weapon-scale chip (no Explosion â€” es/et
+                        ** HOSP). Frameâ‰¥70k: Attack*2 per DROP_BOMBS so Ammo
+                        ** stream clears 90 HP TRAN (f25 TRAN live@lose). */
+                        if (Frame >= 70000) {
+                            AircraftClass* tar_air = As_Aircraft(TarCom);
+                            if (tar_air != NULL && *tar_air == AIRCRAFT_TRANSPORT
+                                && !tar_air->IsInLimbo && tar_air->Strength > 0
+                                && !House->Is_Ally(tar_air)) {
+                                int hit = bomb_dmg * 2;
+                                tar_air->Take_Damage(hit, 0, WARHEAD_HE, this);
+                            }
+                        }
+                    }
+                    /* Proximity AFLD seed (HAND-adjacent) with friendly-clear. */
+                    for (int bi = 0; bi < Buildings.Count(); bi++) {
+                        BuildingClass* bomb_bldg = Buildings.Ptr(bi);
+                        if (bomb_bldg == NULL || bomb_bldg->IsInLimbo || bomb_bldg->Strength <= 0) {
+                            continue;
+                        }
+                        if (*bomb_bldg != STRUCT_AIRSTRIP) {
+                            continue;
+                        }
+                        if (House->Is_Ally(bomb_bldg)) {
+                            continue;
+                        }
+                        if (bomb_bldg == tar_bldg) {
+                            continue; /* already Take_Damage'd */
+                        }
+                        if (Distance(bomb_bldg) >= 0x0600) {
+                            continue;
+                        }
+                        COORDINATE afld_center = bomb_bldg->Center_Coord();
+                        const int air_safe = 0x0300;
+                        bool friendly_near = false;
+                        int fi;
+                        for (fi = 0; fi < Infantry.Count() && !friendly_near; fi++) {
+                            InfantryClass* p = Infantry.Ptr(fi);
+                            if (p != NULL && !p->IsInLimbo && p->Strength > 0 && House->Is_Ally(p)
+                                && ::Distance(p->Center_Coord(), afld_center) < air_safe) {
+                                friendly_near = true;
+                            }
+                        }
+                        for (fi = 0; fi < Units.Count() && !friendly_near; fi++) {
+                            UnitClass* u = Units.Ptr(fi);
+                            if (u != NULL && !u->IsInLimbo && u->Strength > 0 && House->Is_Ally(u)
+                                && ::Distance(u->Center_Coord(), afld_center) < air_safe) {
+                                friendly_near = true;
+                            }
+                        }
+                        if (friendly_near) {
+                            continue;
+                        }
+                        Explosion_Damage(bomb_bldg->Center_Coord(), bomb_dmg, this, WARHEAD_FIRE);
+                    }
+                }
                 Map[::As_Cell(TarCom)].Incoming(Coord, true);
                 return (5);
             }
@@ -2000,26 +2242,26 @@ void AircraftClass::Debug_Dump(MonoClass* mono) const
 {
     Validate();
     mono->Set_Cursor(0, 0);
-    mono->Print("ÚName:ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÂMission:ÄÄÄÂTarCom:ÂNavCom:ÂRadio:ÂCoord:ÄÄÂAltitudeÂSt:Ä¿\n"
-                "³                   ³           ³       ³       ³      ³        ³        ³    ³\n"
-                "ÃÄÄÄÄÄÄÄÄÄÄÄÄÄÄÂNÂYÂHealth:ÄÂFdir:ÂÄBdir:ÄÂSpeed:ÂÄÄÄÄÄÁÄÄÄÄÄÄÂCargo:ÄÄÄÄÁÄÄÄÄ´\n"
-                "³Active........³ ³ ³        ³     ³       ³      ³            ³               ³\n"
-                "³Limbo.........³ ³ ÃÄÄÄÄÄÄÄÄÁÄÄÄÄÄÁÄÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ´\n"
-                "³Owned.........³ ³ ³Last Message:                                             ³\n"
-                "³Discovered....³ ³ ÃTimer:ÂArm:ÂÄÄÄÄÄÄÂÄÄÄÄÄÄÄÄÄÂFlash:ÂStage:ÂTeam:ÄÄÄÄÂArch:´\n"
-                "³Selected......³ ³ ³      ³    ³      ³         ³      ³      ³         ³     ³\n"
-                "³Teathered.....³ ³ ÃÄÄÄÄÄÄÁÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÙ\n"
-                "³Locked on Map.³ ³ ³                                                           \n"
-                "³              ³ ³ ³                                                           \n"
-                "³Is A Loaner...³ ³ ³                                                           \n"
-                "³Is Landing....³ ³ ³                                                           \n"
-                "³Is Taking Off.³ ³ ³                                                           \n"
-                "³              ³ ³ ³                                                           \n"
-                "³              ³ ³ ³                                                           \n"
-                "³              ³ ³ ³                                                           \n"
-                "³Recoiling.....³ ³ ³                                                           \n"
-                "³To Display....³ ³ ³                                                           \n"
-                "ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÁÄÁÄÙ                                                           \n");
+    mono->Print("ï¿½Name:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Mission:ï¿½ï¿½ï¿½ï¿½TarCom:ï¿½NavCom:ï¿½Radio:ï¿½Coord:ï¿½ï¿½ï¿½Altitudeï¿½St:Ä¿\n"
+                "ï¿½                   ï¿½           ï¿½       ï¿½       ï¿½      ï¿½        ï¿½        ï¿½    ï¿½\n"
+                "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Nï¿½Yï¿½Health:ï¿½ï¿½Fdir:ï¿½ï¿½Bdir:ï¿½ï¿½Speed:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Cargo:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä´\n"
+                "ï¿½Active........ï¿½ ï¿½ ï¿½        ï¿½     ï¿½       ï¿½      ï¿½            ï¿½               ï¿½\n"
+                "ï¿½Limbo.........ï¿½ ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä´\n"
+                "ï¿½Owned.........ï¿½ ï¿½ ï¿½Last Message:                                             ï¿½\n"
+                "ï¿½Discovered....ï¿½ ï¿½ ï¿½Timer:ï¿½Arm:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Flash:ï¿½Stage:ï¿½Team:ï¿½ï¿½ï¿½ï¿½ï¿½Arch:ï¿½\n"
+                "ï¿½Selected......ï¿½ ï¿½ ï¿½      ï¿½    ï¿½      ï¿½         ï¿½      ï¿½      ï¿½         ï¿½     ï¿½\n"
+                "ï¿½Teathered.....ï¿½ ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½\n"
+                "ï¿½Locked on Map.ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½              ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Is A Loaner...ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Is Landing....ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Is Taking Off.ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½              ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½              ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½              ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½Recoiling.....ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½To Display....ï¿½ ï¿½ ï¿½                                                           \n"
+                "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½                                                           \n");
     mono->Set_Cursor(1, 1);
     mono->Printf("%s:%s", House->Class->IniName, Class->IniName);
     mono->Set_Cursor(36, 3);

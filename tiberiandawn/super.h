@@ -76,6 +76,11 @@ public:
     {
         return (RechargeTime);
     };
+    // l519e7: scen 8 residual multi-pass may set a shorter honest rearm.
+    void Set_Recharge_Time(int ticks)
+    {
+        if (ticks > 0) RechargeTime = ticks;
+    };
 
 private:
     bool Recharge(bool player = false);
