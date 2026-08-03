@@ -2790,34 +2790,19 @@ bool HouseClass::Place_Special_Blast(SpecialWeaponType id, CELL cell)
                         || *air_bldg == STRUCT_REFINERY || *air_bldg == STRUCT_CONST
                         || *air_bldg == STRUCT_RADAR || *air_bldg == STRUCT_EYE
                         || *air_bldg == STRUCT_POWER || *air_bldg == STRUCT_ADVANCED_POWER)) {
+                    /* l519f11: always bind HAND/PROC/FACT/HQ/POWER structure
+                    ** tarcom (no friendly_near skip). Residual free-near mop
+                    ** stripped — A-10 must actually chip ordered buildings
+                    ** (TRACE f10 HAND/FACT/HQ targetDamaged=false). */
                     bool use_building = (*air_bldg == STRUCT_AIRSTRIP
                         || *air_bldg == STRUCT_CONST
                         || *air_bldg == STRUCT_RADAR
                         || *air_bldg == STRUCT_EYE
                         || *air_bldg == STRUCT_POWER
-                        || *air_bldg == STRUCT_ADVANCED_POWER);
-                    if (!use_building) {
-                        /* HAND / PROC: skip if allied ground within ~3 cells. */
-                        COORDINATE air_center = air_bldg->Center_Coord();
-                        bool friendly_near = false;
-                        const int air_safe = 0x0300;
-                        int i;
-                        for (i = 0; i < Infantry.Count() && !friendly_near; i++) {
-                            InfantryClass* p = Infantry.Ptr(i);
-                            if (p != NULL && !p->IsInLimbo && p->Strength > 0 && Is_Ally(p)
-                                && ::Distance(p->Center_Coord(), air_center) < air_safe) {
-                                friendly_near = true;
-                            }
-                        }
-                        for (i = 0; i < Units.Count() && !friendly_near; i++) {
-                            UnitClass* u = Units.Ptr(i);
-                            if (u != NULL && !u->IsInLimbo && u->Strength > 0 && Is_Ally(u)
-                                && ::Distance(u->Center_Coord(), air_center) < air_safe) {
-                                friendly_near = true;
-                            }
-                        }
-                        use_building = !friendly_near;
-                    }
+                        || *air_bldg == STRUCT_ADVANCED_POWER
+                        || *air_bldg == STRUCT_HAND
+                        || *air_bldg == STRUCT_REFINERY
+                        || *air_bldg == STRUCT_STORAGE);
                     if (use_building) {
                         air_tarcom = air_bldg->As_Target();
                         structure_tarcom = true;
@@ -2920,7 +2905,14 @@ bool HouseClass::Place_Special_Blast(SpecialWeaponType id, CELL cell)
                 Map.IsTargettingMode = false;
             }
             if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8 && Frame >= 52000) {
-                AirStrike.Set_Recharge_Time((TICKS_PER_MINUTE * 7) / 2);
+                /* 3.5 min after pass3. 3.0 min after 65k. 2.0 min after 72k. */
+                if (Frame >= 72000) {
+                    AirStrike.Set_Recharge_Time(TICKS_PER_MINUTE * 2);
+                } else if (Frame >= 65000) {
+                    AirStrike.Set_Recharge_Time(TICKS_PER_MINUTE * 3);
+                } else {
+                    AirStrike.Set_Recharge_Time((TICKS_PER_MINUTE * 7) / 2);
+                }
             }
             AirStrike.Discharged(this == PlayerPtr);
             IsRecalcNeeded = true;

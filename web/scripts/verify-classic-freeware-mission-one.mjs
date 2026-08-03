@@ -10214,17 +10214,22 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
             return true;
           }
         }
-        // l519f9: TRACE f8 TRAN@49,17 outside door band while A-10 ready@87300
-        // wasted on empty eastBase (only C1 left). Late residual: any TRAN +
-        // door E packs always eligible; residual NOD C1 cleanup if free-near lag.
-        if (snapshot.tick >= 85_000) {
+        // l519f11: free-near mop stripped — late residual A-10 eligible for
+        // any TRAN, door packs, and west-nest combatants (structures+units).
+        if (snapshot.tick >= 65_000) {
           if (h.typeName === "TRAN") return true;
           if ((h.typeName === "E4" || h.typeName === "E3" || h.typeName === "E1")
             && h.cellY >= 48 && h.cellX <= 30) {
             return true;
           }
-          if (h.typeName.startsWith("C") && h.cellY <= 20 && h.cellX <= 20) {
-            return true;
+          if (h.cellX <= 16 && h.cellY <= 16) {
+            if (h.typeName === "HAND" || h.typeName === "FACT" || h.typeName === "HQ"
+              || h.typeName === "NUKE" || h.typeName === "SILO" || h.typeName === "PROC"
+              || h.typeName === "GUN" || h.typeName === "LTNK" || h.typeName === "BGGY"
+              || h.typeName === "ARTY" || h.typeName.startsWith("C")
+              || h.typeName.startsWith("E")) {
+              return true;
+            }
           }
         }
         if (h.typeName === "HAND" || h.typeName === "FACT" || h.typeName === "HQ") {
@@ -10296,17 +10301,43 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
             // l519eq/er: late residual free north-clears (str often <150 so
             // freeOkHand false) — still rank door TRAN/E4 when tick≥85k.
             const lateDoorAir = snapshot.tick >= 85_000;
-            if (passCountNow >= 3 && (freeOkHand || lateDoorAir)) {
-              // l519f9: any TRAN top priority late (spawn@49,17 then door).
-              if (u.typeName === "TRAN" && lateDoorAir) {
-                return -32;
+            // l519f11/f12: free-near mop stripped — residual A-10 clears west
+            // nest with honest overfly. f12: door TRAN stole every pass after
+            // HAND/FACT (lose@77547 SILO/GUN/LTNK/PROC live) — only prioritize
+            // TRAN when it is on the door band (y≥50), else west nest first.
+            const lateResidualAir = snapshot.tick >= 65_000;
+            const westNestLive = hostiles.some((h) => (
+              h.strength > 0 && h.cellX <= 16 && h.cellY <= 16
+              && (h.typeName === "HAND" || h.typeName === "FACT" || h.typeName === "HQ"
+                || h.typeName === "NUKE" || h.typeName === "SILO" || h.typeName === "PROC"
+                || h.typeName === "GUN" || h.typeName === "LTNK" || h.typeName === "BGGY")
+            ));
+            if (passCountNow >= 3 && (freeOkHand || lateDoorAir || lateResidualAir)) {
+              // Door TRAN only (y≥50) beats west nest; mid-map TRAN does not.
+              if (u.typeName === "TRAN" && u.cellY >= 50) {
+                return westNestLive ? -28 : -34;
               }
               if (u.typeName === "TRAN" && u.cellY >= 54 && u.cellX >= 8
                 && u.cellX <= 28) {
                 return lateDoorAir ? -30 : -25;
               }
+              // West nest first while live (honest multi-pass A-10).
+              if (lateResidualAir && u.cellX <= 16 && u.cellY <= 16) {
+                if (u.typeName === "HAND") return -40;
+                if (u.typeName === "FACT") return -39;
+                if (u.typeName === "HQ") return -38;
+                if (u.typeName === "SILO") return -37;
+                if (u.typeName === "NUKE") return -36;
+                if (u.typeName === "PROC") return -35;
+                if (u.typeName === "GUN") return -34;
+                if (u.typeName === "LTNK" || u.typeName === "BGGY") return -33;
+                if (u.typeName === "ARTY") return -32;
+                if (u.typeName.startsWith("C") || u.typeName.startsWith("E")) {
+                  return -31;
+                }
+              }
               if (u.typeName === "E4" && u.cellY >= 48 && u.cellX <= 30
-                && u.strength >= 25 && lateDoorAir) {
+                && u.strength >= 25 && (lateDoorAir || !westNestLive)) {
                 return -29;
               }
               if (u.typeName === "E4" && u.cellY >= 54 && u.cellX <= 28
@@ -10314,17 +10345,12 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                 return lateDoorAir ? -28 : -23;
               }
               if (u.typeName === "E1" && u.cellY >= 48 && u.cellX <= 30
-                && lateDoorAir) {
+                && (lateDoorAir || !westNestLive)) {
                 return -27;
               }
               if (u.typeName === "E1" && u.cellY >= 54 && u.cellX <= 28
                 && lateDoorAir) {
                 return -26;
-              }
-              // Residual NOD C1 (All Destr.) if free-near lag — keep super busy.
-              if (lateDoorAir && u.typeName.startsWith("C")
-                && u.cellY <= 20 && u.cellX <= 20) {
-                return -24;
               }
               if (!lateDoorAir || freeOkHand) {
                 if (u.typeName === "HAND") return -22;
@@ -10974,11 +11000,10 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                   h.typeName === "HAND" && h.strength > 0
                 ));
                 const hostilesCount = hostiles.filter((h) => h.strength > 0).length;
-                // l519f2: free-near GUN@16,5 from free@34 clears GUN; free
-                // path west thrash (hop/attack SE). l519f7: PARK free softHold
-                // {38,11} for residual — free-near chips west nest LTNK/SILO/
-                // NUKE/GUN (engine Frame≥85000 free x≥34 y≤16). A-10 door.
-                // Free stays free-near band (not map mop x≥20).
+                // l519f11 skeptic: free-near residual mop STRIPPED. Free softHold
+                // park + pad-local real fire only; A-10 multi-pass must land
+                // honest damage on west nest (HAND/FACT/HQ/SILO/NUKE/LTNK/C1).
+                // Free does NOT path-thrash west (f2–f6 thrash/SE/civ wall).
                 if (airPassesNow >= 8
                   && tank.strength >= 100
                   && snapshot.tick >= 84_000
@@ -10991,7 +11016,25 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                   && snapshot.tick >= 84_000
                   && !handLive;
                 if (residualNorth) {
-                  // Pure softHold park — free-near does nest clear.
+                  // Pad-local honest fire (weapon range), then softHold park.
+                  const localPrey = hostiles.filter((h) => (
+                    h.strength > 0
+                    && !["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10"]
+                      .includes(h.typeName)
+                    && missionEightDistance(tank, h) <= 5
+                    && h.cellX >= 30
+                    && h.cellY <= 20
+                  )).toSorted((a, b) => (
+                    missionEightDistance(tank, a) - missionEightDistance(tank, b)
+                    || a.strength - b.strength
+                  ))[0];
+                  if (localPrey && tank.strength >= 100
+                    && missionEightDistance(tank, localPrey) <= 4) {
+                    queueMissionEightRole(commands,
+                      `east-b-post-sam-north-local-fire-${key}`,
+                      [tank], localPrey, 0, 2);
+                    continue;
+                  }
                   if (tank.cellY > 14 || tank.cellX < 36 || tank.cellX > 40) {
                     queueMissionEightRole(commands,
                       `east-b-post-sam-north-park-snap-${key}`,

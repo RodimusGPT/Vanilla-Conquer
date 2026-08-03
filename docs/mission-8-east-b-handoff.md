@@ -9,14 +9,14 @@ instructions will pick that up).
 
 | Field | Value |
 |---|---|
-| Status | **GREEN** — won@**85196** finalHostiles=**0** finalFriendly=**5** (l519f10). free softHold@38 + free-near 0x2400 west nest; A-10 TRAN finish. minN=8; HOSP+Moebius live. Mop 55500/0x2800/*40 **ABSENT**. |
+| Status | **GREEN** — won@**69210** finalHostiles=**0** finalFriendly=**12** (l519f16). Honest A-10 west-nest finish (no free-near residual mop). minN=8; HOSP+Moebius live. |
 | Branch | `browser-port` |
-| Commit | l519f10 GREEN (see git log) |
+| Commit | l519f16 GREEN (see git log) |
 | Remote | `fork` only (`fork/browser-port`) — do **not** push `origin` |
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `east-b-post-west-rail.mjs` + engine |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l519f10. Scratch: `/tmp/grok-goal-35f8ef02b43d/implementer/m8-eastb-l519f10.{out,err}` + `m8-eastb-session-status.md` |
+| Last TRACE suite | l519f16. Scratch: `east-b-gate.out` + `m8-eastb-l519f16.{out,err}` + `skeptic-mop-absent-l519f16.txt` |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
@@ -31,8 +31,8 @@ Green when the Wasm verifier ends with:
 - No debug victory hook
 - East-b extras: hospital + Moebius preserved; never ≤5 neutrals; civ lose never fires (9th Neutral unit death → `GDILOSE`)
 
-**Win path (l519f10):** western SAM → SE SAMs → free@pad softHold → A-10 multi-pass → residual free-near west nest (Frame≥85000 free x≥34 y≤16 near_dist 0x2400) → A-10 door TRAN finish → finalHostiles=0.  
-**Closed (debug):** l174 post-all-SAM mop; Frame≥55500/0x2800/*40 free-near mop; TRAN force+Explosion (es/et los3-hosp).
+**Win path (l519f16):** western SAM → SE SAMs → free@pad softHold → A-10 multi-pass residual west-nest ordered DROP_BOMBS finish (cluster ≤0x0800 of place) → finalHostiles=0.  
+**Closed (debug):** free-near residual mop (55500/0x2800 and 85000/0x2400 softHold park); TRAN force+Explosion (es/et los3-hosp).
 
 ---
 

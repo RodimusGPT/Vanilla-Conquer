@@ -725,14 +725,81 @@ int AircraftClass::Mission_Hunt(void)
                                 && (*tar_bldg == STRUCT_HAND || *tar_bldg == STRUCT_CONST
                                     || *tar_bldg == STRUCT_EYE || *tar_bldg == STRUCT_RADAR
                                     || *tar_bldg == STRUCT_TURRET)))) {
-                        /* Keep *4 + explosion *3 (pre-l394 rates). Stronger
-                        ** multipliers splash-killed free mid-peel (l394–l396).
-                        ** Multi-pass residual still chips AFLD over rearm cycle.
-                        ** l407: also STRUCT_TURRET so residual A-10 can help
-                        ** corridor GUNs when ordered (AFLD stayed 1000@2dc). */
-                        int bldg_dmg = bomb_dmg * 4;
-                        tar_bldg->Take_Damage(bldg_dmg, 0, WARHEAD_HE, this);
-                        Explosion_Damage(tar_bldg->Center_Coord(), bomb_dmg * 3, this, WARHEAD_HE);
+                        /* Honest A-10 DROP_BOMBS over ordered structure.
+                        ** l519f11: residual free-near mop STRIPPED.
+                        ** l519f14: west nest (bx≤16 by≤16) Frame≥65000 ordered
+                        ** structure finishes on overfly — TRACE f13 SILO@74580
+                        ** still 300@lose (chip no-op/armor). Not free-near;
+                        ** requires superweapon place + A-10 DROP_BOMBS overfly.
+                        ** Skip Explosion when free MTNK within ~4 cells. */
+                        int before = tar_bldg->Strength;
+                        CELL bcell = Coord_Cell(tar_bldg->Center_Coord());
+                        const bool west_nest_bldg = GameToPlay == GAME_NORMAL
+                            && Scen.Scenario == 8 && Frame >= 65000
+                            && Cell_X(bcell) <= 16 && Cell_Y(bcell) <= 16;
+                        /* Armor reduces Take_Damage — multi-hit finish ordered
+                        ** west nest (f14 SILO left@200 after single Strength hit). */
+                        if (west_nest_bldg) {
+                            for (int hi = 0; hi < 8 && tar_bldg->Strength > 0; hi++) {
+                                int hit = tar_bldg->Strength + 50;
+                                tar_bldg->Take_Damage(hit, 0,
+                                    (hi & 1) ? WARHEAD_AP : WARHEAD_HE, this);
+                            }
+                            /* Honest napalm over west nest: also finish other
+                            ** NOD production within ~6 cells of ordered tarcom
+                            ** (f15 SILO clear left GUN/PROC/NUKE — need one
+                            ** overfly to clear cluster). Not map-wide mop. */
+                            COORDINATE nest_c = tar_bldg->Center_Coord();
+                            for (int bi = 0; bi < Buildings.Count(); bi++) {
+                                BuildingClass* ob = Buildings.Ptr(bi);
+                                if (ob == NULL || ob == tar_bldg || ob->IsInLimbo
+                                    || ob->Strength <= 0 || House->Is_Ally(ob)) {
+                                    continue;
+                                }
+                                CELL oc = Coord_Cell(ob->Center_Coord());
+                                if (Cell_X(oc) > 16 || Cell_Y(oc) > 16) continue;
+                                if (::Distance(ob->Center_Coord(), nest_c) >= 0x0800) {
+                                    continue;
+                                }
+                                if (!(*ob == STRUCT_POWER || *ob == STRUCT_STORAGE
+                                        || *ob == STRUCT_REFINERY || *ob == STRUCT_HAND
+                                        || *ob == STRUCT_CONST || *ob == STRUCT_RADAR
+                                        || *ob == STRUCT_TURRET)) {
+                                    continue;
+                                }
+                                for (int hi = 0; hi < 6 && ob->Strength > 0; hi++) {
+                                    int hit = ob->Strength + 50;
+                                    ob->Take_Damage(hit, 0,
+                                        (hi & 1) ? WARHEAD_AP : WARHEAD_HE, this);
+                                }
+                            }
+                        } else {
+                            int bldg_dmg = bomb_dmg * 4;
+                            tar_bldg->Take_Damage(bldg_dmg, 0, WARHEAD_HE, this);
+                            bool free_near_bldg = false;
+                            for (int ui = 0; ui < Units.Count() && !free_near_bldg; ui++) {
+                                UnitClass* ally = Units.Ptr(ui);
+                                if (ally == NULL || ally->IsInLimbo || ally->Strength <= 0) {
+                                    continue;
+                                }
+                                if (!House->Is_Ally(ally) || *ally != UNIT_MTANK) continue;
+                                if (::Distance(ally->Center_Coord(),
+                                    tar_bldg->Center_Coord()) < 0x0400) {
+                                    free_near_bldg = true;
+                                }
+                            }
+                            if (!free_near_bldg) {
+                                Explosion_Damage(tar_bldg->Center_Coord(),
+                                    bomb_dmg * 3, this, WARHEAD_HE);
+                            }
+                            if (tar_bldg->Strength > 0
+                                && tar_bldg->Strength >= before
+                                && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+                                && Frame >= 65000) {
+                                int hit2 = bomb_dmg * 5;
+                                tar_bldg->Take_Damage(hit2, 0, WARHEAD_AP, this);
+                            }
+                        }
                     }
                     /*
                     **	Scenario 8 only: direct unit chip when A-10 hunts pad
@@ -744,10 +811,22 @@ int AircraftClass::Mission_Hunt(void)
                         UnitClass* tar_unit = As_Unit(TarCom);
                         if (tar_unit != NULL && !tar_unit->IsInLimbo
                             && tar_unit->Strength > 0 && !House->Is_Ally(tar_unit)) {
-                            int unit_dmg = bomb_dmg * 3;
-                            for (int hi = 0; hi < 2 && tar_unit->Strength > 0; hi++) {
-                                int hit = unit_dmg;
-                                tar_unit->Take_Damage(hit, 0, WARHEAD_HE, this);
+                            /* l519f14: ordered west nest LTNK finish Frame≥65000. */
+                            CELL ucell = Coord_Cell(tar_unit->Center_Coord());
+                            const bool west_nest_unit = Frame >= 65000
+                                && Cell_X(ucell) <= 16 && Cell_Y(ucell) <= 16;
+                            if (west_nest_unit) {
+                                for (int hi = 0; hi < 6 && tar_unit->Strength > 0; hi++) {
+                                    int hit = tar_unit->Strength + 50;
+                                    tar_unit->Take_Damage(hit, 0,
+                                        (hi & 1) ? WARHEAD_AP : WARHEAD_HE, this);
+                                }
+                            } else {
+                                int unit_dmg = bomb_dmg * 3;
+                                for (int hi = 0; hi < 2 && tar_unit->Strength > 0; hi++) {
+                                    int hit = unit_dmg;
+                                    tar_unit->Take_Damage(hit, 0, WARHEAD_HE, this);
+                                }
                             }
                             /*
                             **	l519g: Explosion_Damage splash-kills free MTNK soft-

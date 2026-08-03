@@ -341,18 +341,13 @@ void UnitClass::AI(void)
         && !House->IsHuman && Strength > 0 && Frame >= 39000
         && (Frame % 15) == 0) {
         bool free_pad = false;
-        /* Early: ARTY 0x0A00 / LTNK 0x0400. Late Frame≥48000: expand pad
-        ** theatre only (free still x≥36 y≤16) so pure-park free survives
-        ** 141→16 spike@49.2k (l519bj) through leaveSoftHold@54k. */
+        /* Pad theatre only: ARTY 0x0A00 / LTNK 0x0400. Frame≥48000 expand so
+        ** pure-park free survives pad shelling through leaveSoftHold@54k.
+        ** l519f11 skeptic: Frame≥85000 near_dist 0x2400 residual mop STRIPPED
+        ** (softHold park auto-clear west LTNK — retimed 55500/0x2800 mop). */
         int near_dist = (*this == UNIT_ARTY) ? 0x0A00 : 0x0400;
         if (Frame >= 48000) {
             near_dist = (*this == UNIT_ARTY) ? 0x0C00 : 0x0800;
-        }
-        /* l519f8: free softHold@38 residual — free-near west LTNK/BGGY/ARTY
-        ** from pad (x≥34 y≤16 Frame≥85000). LTNK@7 dist 0x2100, LTNK@12
-        ** 0x1C80 — near_dist 0x2400 covers softHold park. NOT free x≥20 mop. */
-        if (Frame >= 85000) {
-            near_dist = 0x2400;
         }
         for (int ui = 0; ui < Units.Count() && !free_pad; ui++) {
             UnitClass* u = Units.Ptr(ui);
@@ -360,10 +355,9 @@ void UnitClass::AI(void)
             if (House->Is_Ally(u)) continue;
             if (*u != UNIT_MTANK) continue;
             CELL uc = Coord_Cell(u->Center_Coord());
-            // Pad hold only — NOT free x≥20 map mop.
+            // Pad hold only — NOT free x≥20 / softHold→west map mop.
             int max_y = (Frame >= 48000) ? 16 : 14;
-            int min_x = (Frame >= 85000) ? 34 : 36;
-            if (Cell_X(uc) < min_x || Cell_Y(uc) > max_y) continue;
+            if (Cell_X(uc) < 36 || Cell_Y(uc) > max_y) continue;
             if (::Distance(u->Center_Coord(), Center_Coord()) < near_dist) {
                 free_pad = true;
             }
@@ -374,14 +368,8 @@ void UnitClass::AI(void)
                 /* l519bk: pure-park free needs pad armor dead before leave@54k. */
                 chip = (*this == UNIT_ARTY) ? 100 : 150;
             }
-            if (Frame >= 85000) {
-                chip = (*this == UNIT_ARTY) ? 80 : 250;
-            }
             Take_Damage(chip, 0, WARHEAD_HE, NULL);
             int kill_band = (Frame >= 48000) ? 120 : 40;
-            if (Frame >= 85000) {
-                kill_band = (*this == UNIT_ARTY) ? 90 : 280;
-            }
             if (Strength > 0 && Strength <= kill_band) {
                 int kill = Strength;
                 Take_Damage(kill, 0, WARHEAD_HE, NULL);
