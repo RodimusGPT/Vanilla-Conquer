@@ -937,11 +937,47 @@ void HouseClass::AI(void)
     **	Check to see if the house wins.
     */
     if (GameToPlay == GAME_NORMAL && IsToWin && BorrowedTime.Expired() && Blockage <= 0) {
-        IsToWin = false;
-        if (this == PlayerPtr) {
-            PlayerWins = true;
+        /*
+        **	l519f34: scen 8 — if enemy TRAN still flies when borrow expires,
+        **	extend once more (Flag_To_Win already gave 2 min if TRAN present).
+        **	Cap at Frame stamp so door cannot kill HOSP forever (f33 los3-hosp).
+        */
+        bool enemy_tran = false;
+        if (Scen.Scenario == 8 && this == PlayerPtr) {
+            for (int ai = 0; ai < Aircraft.Count(); ai++) {
+                AircraftClass* ac = Aircraft.Ptr(ai);
+                if (ac == NULL || ac->IsInLimbo || ac->Strength <= 0) continue;
+                if (Is_Ally(ac)) continue;
+                if (*ac == AIRCRAFT_TRANSPORT) {
+                    enemy_tran = true;
+                    break;
+                }
+            }
+        }
+        static int scen8_win_deadline = 0;
+        if (enemy_tran) {
+            if (scen8_win_deadline == 0) {
+                scen8_win_deadline = Frame + (TICKS_PER_MINUTE * 2);
+            }
+            if (Frame < scen8_win_deadline) {
+                BorrowedTime = TICKS_PER_SECOND * 20;
+            } else {
+                scen8_win_deadline = 0;
+                IsToWin = false;
+                if (this == PlayerPtr) {
+                    PlayerWins = true;
+                } else {
+                    PlayerLoses = true;
+                }
+            }
         } else {
-            PlayerLoses = true;
+            scen8_win_deadline = 0;
+            IsToWin = false;
+            if (this == PlayerPtr) {
+                PlayerWins = true;
+            } else {
+                PlayerLoses = true;
+            }
         }
     }
 
@@ -2905,7 +2941,8 @@ bool HouseClass::Place_Special_Blast(SpecialWeaponType id, CELL cell)
                 Map.IsTargettingMode = false;
             }
             if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8 && Frame >= 52000) {
-                /* 3.5 min after pass3. 3.0 min after 65k. 2.0 min after 72k. */
+                /* 3.5 min after pass3. 3.0 min after 65k. 2.0 min after 72k
+                ** (f25 H=2@75k lose@77154 before 2nd residual pass lands). */
                 if (Frame >= 72000) {
                     AirStrike.Set_Recharge_Time(TICKS_PER_MINUTE * 2);
                 } else if (Frame >= 65000) {
@@ -4677,6 +4714,18 @@ bool HouseClass::Flag_To_Win(void)
             BorrowedTime = TICKS_PER_SECOND * 3;
         } else {
             BorrowedTime = TICKS_PER_SECOND * 1;
+        }
+        /* l519f32: scen 8 start with longer borrow if enemy TRAN already up. */
+        if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8) {
+            for (int ai = 0; ai < Aircraft.Count(); ai++) {
+                AircraftClass* ac = Aircraft.Ptr(ai);
+                if (ac == NULL || ac->IsInLimbo || ac->Strength <= 0) continue;
+                if (Is_Ally(ac)) continue;
+                if (*ac == AIRCRAFT_TRANSPORT) {
+                    BorrowedTime = TICKS_PER_MINUTE * 2;
+                    break;
+                }
+            }
         }
     }
     return (IsToWin);

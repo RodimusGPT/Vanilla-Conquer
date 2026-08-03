@@ -10243,7 +10243,7 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
         }
         return false;
       });
-      const airTarget = (eastBase.length > 0 ? eastBase : hostiles.filter((h) => (
+      let airTarget = (eastBase.length > 0 ? eastBase : hostiles.filter((h) => (
         h.strength > 0 && (
           h.typeName === "AFLD" || h.typeName === "HAND" || h.typeName === "FACT"
           || h.typeName === "HQ" || h.typeName === "PROC"
@@ -10285,11 +10285,12 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
             && h.cellX >= 30 && missionEightDistance(freeAirAnchor, h) <= 6
           ));
           const passCountNow = state.airstrike.orders?.length ?? 0;
-          // Pad threats anytime free holds east (not only after padCleared).
-          // freePadHoldAir y≤16: free mid@y25 skips this block → !freeAirAnchor
-          // door ranking (da pass3 E4@20,61). HAND only pass4+ free@softHold.
-          if (freeAirAnchor && freeAirAnchor.cellX >= 30 && freeAirAnchor.cellY <= 16
-            && !artyLiveNear) {
+          // l519f28: residual ranking must run even if artyLiveNear or free
+          // str/band edge — f27 engine-won with TRAN@7,49 unranked (block
+          // skipped). Allow late residual without freeAirAnchor/arty gate.
+          const lateResidualRank = snapshot.tick >= 65_000;
+          if ((freeAirAnchor && freeAirAnchor.cellX >= 30 && freeAirAnchor.cellY <= 16
+            && !artyLiveNear) || lateResidualRank) {
             // l519as/at: pass2 hospital pack. pass1 pad LTNK.
             // l519ea/eb CLOSED: pass3 HAND (door uncleared → lose@57736/55693).
             // l519ec: pass3 door pack (da@60138); pass4+ HAND when free softHold
@@ -10306,22 +10307,37 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
             // HAND/FACT (lose@77547 SILO/GUN/LTNK/PROC live) — only prioritize
             // TRAN when it is on the door band (y≥50), else west nest first.
             const lateResidualAir = snapshot.tick >= 65_000;
-            const westNestLive = hostiles.some((h) => (
+            // Production nest (not GUN) — when only GUN remains, door pack first
+            // (f23 lose@77608 H=4 GUN+door while A-10 on SILO).
+            const westProdLive = hostiles.some((h) => (
               h.strength > 0 && h.cellX <= 16 && h.cellY <= 16
               && (h.typeName === "HAND" || h.typeName === "FACT" || h.typeName === "HQ"
-                || h.typeName === "NUKE" || h.typeName === "SILO" || h.typeName === "PROC"
-                || h.typeName === "GUN" || h.typeName === "LTNK" || h.typeName === "BGGY")
+                || h.typeName === "NUKE" || h.typeName === "SILO" || h.typeName === "PROC")
+            ));
+            const westNestLive = westProdLive || hostiles.some((h) => (
+              h.strength > 0 && h.cellX <= 16 && h.cellY <= 16
+              && (h.typeName === "GUN" || h.typeName === "LTNK" || h.typeName === "BGGY")
             ));
             if (passCountNow >= 3 && (freeOkHand || lateDoorAir || lateResidualAir)) {
-              // Door TRAN only (y≥50) beats west nest; mid-map TRAN does not.
-              if (u.typeName === "TRAN" && u.cellY >= 50) {
-                return westNestLive ? -28 : -34;
+              // Door TRAN top when production nest clear.
+              // f27: engine won with TRAN@7,49 (y=49 missed y≥50 band).
+              // GUN before door E; any late TRAN y≥48 first.
+              if (u.typeName === "TRAN" && u.cellY >= 48) {
+                return westProdLive ? -28 : -45;
+              }
+              if (u.typeName === "GUN" && u.cellX <= 16 && u.cellY <= 16
+                && !westProdLive) {
+                return -42;
+              }
+              if (u.typeName === "E4" && u.cellY >= 52 && u.cellX <= 28
+                && !westProdLive && u.strength >= 20) {
+                return -39;
               }
               if (u.typeName === "TRAN" && u.cellY >= 54 && u.cellX >= 8
                 && u.cellX <= 28) {
                 return lateDoorAir ? -30 : -25;
               }
-              // West nest first while live (honest multi-pass A-10).
+              // West nest first while production live; GUN/LTNK after.
               if (lateResidualAir && u.cellX <= 16 && u.cellY <= 16) {
                 if (u.typeName === "HAND") return -40;
                 if (u.typeName === "FACT") return -39;
@@ -10329,8 +10345,10 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                 if (u.typeName === "SILO") return -37;
                 if (u.typeName === "NUKE") return -36;
                 if (u.typeName === "PROC") return -35;
-                if (u.typeName === "GUN") return -34;
-                if (u.typeName === "LTNK" || u.typeName === "BGGY") return -33;
+                if (u.typeName === "GUN") return westProdLive ? -30 : -38;
+                if (u.typeName === "LTNK" || u.typeName === "BGGY") {
+                  return westProdLive ? -29 : -37;
+                }
                 if (u.typeName === "ARTY") return -32;
                 if (u.typeName.startsWith("C") || u.typeName.startsWith("E")) {
                   return -31;
@@ -10463,7 +10481,12 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
                       : u.typeName === "NUKE" ? 6
                         : u.typeName === "ARTY" ? 7
                           : 10;
-          if (orderedTypes.has(u.typeName)) r += 20;
+          // l519f30: do NOT penalize re-order of door TRAN (f27/f29 engine-won
+          // with TRAN@7,49 — orderedTypes+"TRAN" pushed rank -45→-25 below E4).
+          if (orderedTypes.has(u.typeName)
+            && !(u.typeName === "TRAN" && snapshot.tick >= 65_000)) {
+            r += 20;
+          }
           if (orderedCells.has(`${u.cellX},${u.cellY}`)) r += 40;
           return r;
         };
@@ -10484,6 +10507,14 @@ function queueEastBSamPostWesternSamPush(commands, snapshot, hostiles, strike, a
           || strCmp
           || a.id - b.id;
       })[0];
+      // l519f33: force any residual TRAN after 74k (f31 still ordered E4 while
+      // TRAN@7,49 lived — y filter / orderedTypes). No y gate.
+      if (snapshot.tick >= 74_000) {
+        const lateTran = hostiles.find((h) => (
+          h.strength > 0 && h.typeName === "TRAN"
+        ));
+        if (lateTran) airTarget = lateTran;
+      }
       if (airTarget) {
         const placeX = airTarget.cellX * CELL_PIXELS + CELL_PIXELS / 2;
         const placeY = airTarget.cellY * CELL_PIXELS + CELL_PIXELS / 2;
