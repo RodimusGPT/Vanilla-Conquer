@@ -1,0 +1,16 @@
+Skeptic mop re-audit (post-green l519f34 / cc2ec46)
+Repo: fork/browser-port
+
+LIVE residual mop patterns (must be none):
+  NONE (clean)
+
+Comment-only Strength+50 / strip markers:
+  aircraft.cpp:758: **	l519f17 skeptic: Strength+50 multi-hit + cluster mop
+  aircraft.cpp:792: /* l519f17: west_nest Strength+50 unit finish STRIPPED.
+  unit.cpp:346: ** l519f11 skeptic: Frame≥85000 near_dist 0x2400 residual mop STRIPPED
+
+Honest path keepers:
+  A-10 Attack*4 HE DROP_BOMBS (no Strength+50 loop)
+  residual building dive 0x0A00 Frame>=60k
+  late TRAN order + win-borrow while TRAN flies
+  pad/SAM theatre free-near only (free actually near)

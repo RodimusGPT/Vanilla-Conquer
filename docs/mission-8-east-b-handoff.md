@@ -16,7 +16,7 @@ instructions will pick that up).
 | Primary file | `web/scripts/verify-classic-freeware-mission-one.mjs` + `east-b-post-west-rail.mjs` + engine |
 | Variant | `CNCWEB_VERIFY_MISSION_VARIANT=east-b` (`SCG08EB`) |
 | Companion note | [mission-8-hardening.md](mission-8-hardening.md) |
-| Last TRACE suite | l519f34. Scratch: east-b-gate.out + m8-eastb-l519f34 + skeptic-mop-absent-l519f34.txt |
+| Last TRACE suite | l519f34 re-verify GREEN. Durable: [docs/evidence/GREEN-SUMMARY-l519f34.md](evidence/GREEN-SUMMARY-l519f34.md) + gate/rail/mop artifacts |
 
 Update the **Commit** and **Last TRACE** rows after every checkpoint push.
 
