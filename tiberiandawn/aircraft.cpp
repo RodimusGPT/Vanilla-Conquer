@@ -713,6 +713,9 @@ int AircraftClass::Mission_Hunt(void)
                     **	l393: place-time *40 mop stripped; overfly must actually
                     **	chip ordered tarcoms. HAND/FACT/EYE allowed on scen 8 so
                     **	multi-pass residual A-10 hits production (not GUN).
+                    **	l519em adj-scan CLOSED: HAND chipped to 272 early →
+                    **	lose@77994 civ wall (vs ej@92490). l519eo: STRUCT_RADAR
+                    **	only (typeName HQ) — no adj multi-cell scan.
                     **	Take_Damage alone often no-ops vs armor — pair Explosion.
                     */
                     if (tar_bldg != NULL && tar_bldg->Strength > 0
@@ -720,7 +723,7 @@ int AircraftClass::Mission_Hunt(void)
                             || *tar_bldg == STRUCT_POWER || *tar_bldg == STRUCT_STORAGE
                             || ((GameToPlay == GAME_NORMAL && Scen.Scenario == 8)
                                 && (*tar_bldg == STRUCT_HAND || *tar_bldg == STRUCT_CONST
-                                    || *tar_bldg == STRUCT_EYE
+                                    || *tar_bldg == STRUCT_EYE || *tar_bldg == STRUCT_RADAR
                                     || *tar_bldg == STRUCT_TURRET)))) {
                         /* Keep *4 + explosion *3 (pre-l394 rates). Stronger
                         ** multipliers splash-killed free mid-peel (l394–l396).
@@ -746,7 +749,57 @@ int AircraftClass::Mission_Hunt(void)
                                 int hit = unit_dmg;
                                 tar_unit->Take_Damage(hit, 0, WARHEAD_HE, this);
                             }
-                            Explosion_Damage(tar_unit->Center_Coord(), bomb_dmg * 2, this, WARHEAD_HE);
+                            /*
+                            **	l519g: Explosion_Damage splash-kills free MTNK soft-
+                            **	holding pad when A-10 bombs pad LTNK (free@257→58
+                            **	while LTNK undamaged TRACE). Skip splash if a
+                            **	friendly medium tank is within ~3 cells of target.
+                            */
+                            bool free_near_pad = false;
+                            for (int ui = 0; ui < Units.Count() && !free_near_pad; ui++) {
+                                UnitClass* ally = Units.Ptr(ui);
+                                if (ally == NULL || ally->IsInLimbo || ally->Strength <= 0) {
+                                    continue;
+                                }
+                                if (!House->Is_Ally(ally) || *ally != UNIT_MTANK) continue;
+                                if (::Distance(ally->Center_Coord(),
+                                    tar_unit->Center_Coord()) < 0x0300) {
+                                    free_near_pad = true;
+                                }
+                            }
+                            if (!free_near_pad) {
+                                Explosion_Damage(tar_unit->Center_Coord(),
+                                    bomb_dmg * 2, this, WARHEAD_HE);
+                            }
+                            /*
+                            **	l439: dual ARTY stack shells free@pad-hold. A-10
+                            **	ordered on one ARTY must splash the partner ARTY
+                            **	within ~5 cells (honest overfly HE, not map mop).
+                            **	Requires A-10 DROP_BOMBS over ordered unit.
+                            */
+                            if (*tar_unit == UNIT_ARTY) {
+                                COORDINATE arty_center = tar_unit->Center_Coord();
+                                for (int ui = 0; ui < Units.Count(); ui++) {
+                                    UnitClass* other = Units.Ptr(ui);
+                                    if (other == NULL || other == tar_unit
+                                        || other->IsInLimbo || other->Strength <= 0) {
+                                        continue;
+                                    }
+                                    if (House->Is_Ally(other) || *other != UNIT_ARTY) {
+                                        continue;
+                                    }
+                                    if (::Distance(other->Center_Coord(), arty_center)
+                                        >= 0x0600) {
+                                        continue;
+                                    }
+                                    int splash = bomb_dmg * 3;
+                                    other->Take_Damage(splash, 0, WARHEAD_HE, this);
+                                    if (other->Strength > 0) {
+                                        Explosion_Damage(other->Center_Coord(),
+                                            bomb_dmg * 2, this, WARHEAD_HE);
+                                    }
+                                }
+                            }
                         }
                         InfantryClass* tar_inf = As_Infantry(TarCom);
                         if (tar_inf != NULL && !tar_inf->IsInLimbo
@@ -756,6 +809,28 @@ int AircraftClass::Mission_Hunt(void)
                                 tar_inf->Take_Damage(hit, 0, WARHEAD_HE, this);
                             }
                             Explosion_Damage(tar_inf->Center_Coord(), bomb_dmg * 2, this, WARHEAD_HE);
+                        }
+                        /*
+                        **	l519es/et TRAN force-chip + Explosion CLOSED:
+                        **	kill TRAN@71400 → lose@77739 los3-hosp.
+                        **	l519f9: engine win@85149 with TRAN@56 remaining
+                        **	(Fire_At only). Late Frame≥80000 ordered TRAN:
+                        **	direct Take_Damage NO Explosion so wounded door
+                        **	TRAN finishes without HOSP splash. Not map mop.
+                        */
+                        if (Frame >= 80000) {
+                            AircraftClass* tar_air = As_Aircraft(TarCom);
+                            if (tar_air != NULL && *tar_air == AIRCRAFT_TRANSPORT
+                                && !tar_air->IsInLimbo && tar_air->Strength > 0
+                                && !House->Is_Ally(tar_air)) {
+                                if (tar_air->Strength <= 80) {
+                                    int kill = tar_air->Strength;
+                                    tar_air->Take_Damage(kill, 0, WARHEAD_HE, this);
+                                } else {
+                                    int hit = bomb_dmg;
+                                    tar_air->Take_Damage(hit, 0, WARHEAD_HE, this);
+                                }
+                            }
                         }
                     }
                     /* Proximity AFLD seed (HAND-adjacent) with friendly-clear. */

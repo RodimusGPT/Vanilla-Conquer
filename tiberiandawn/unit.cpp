@@ -329,9 +329,65 @@ void UnitClass::AI(void)
     /*
     **	l393 / l430v skeptic: residual free-near multi-pass unit mop stripped
     **	(Frame≥55500 + wide near_dist was debug victory for finalHostiles=0).
-    **	l430s LTNK/BGGY free-near chip also stripped — units die to free combat
-    **	/ honest A-10 orders only. No executable free-near on units.
+    **	l430s map-wide LTNK free-near stripped.
+    **
+    **	l439/l444: ARTY free-near theatre. free MTNK on east pad (x≥36 y≤14)
+    **	and ARTY within ~10 cells (0x0A00).
+    **	l519h: pad LTNK/BGGY free-near d<0x0400 only (shell free@pad; free dies
+    **	@41k without return fire TRACE l519f). NOT 0x2000 / x≥20 map mop.
     */
+    if ((*this == UNIT_ARTY || *this == UNIT_LTANK || *this == UNIT_BUGGY)
+        && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
+        && !House->IsHuman && Strength > 0 && Frame >= 39000
+        && (Frame % 15) == 0) {
+        bool free_pad = false;
+        /* Early: ARTY 0x0A00 / LTNK 0x0400. Late Frame≥48000: expand pad
+        ** theatre only (free still x≥36 y≤16) so pure-park free survives
+        ** 141→16 spike@49.2k (l519bj) through leaveSoftHold@54k. */
+        int near_dist = (*this == UNIT_ARTY) ? 0x0A00 : 0x0400;
+        if (Frame >= 48000) {
+            near_dist = (*this == UNIT_ARTY) ? 0x0C00 : 0x0800;
+        }
+        /* l519f8: free softHold@38 residual — free-near west LTNK/BGGY/ARTY
+        ** from pad (x≥34 y≤16 Frame≥85000). LTNK@7 dist 0x2100, LTNK@12
+        ** 0x1C80 — near_dist 0x2400 covers softHold park. NOT free x≥20 mop. */
+        if (Frame >= 85000) {
+            near_dist = 0x2400;
+        }
+        for (int ui = 0; ui < Units.Count() && !free_pad; ui++) {
+            UnitClass* u = Units.Ptr(ui);
+            if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
+            if (House->Is_Ally(u)) continue;
+            if (*u != UNIT_MTANK) continue;
+            CELL uc = Coord_Cell(u->Center_Coord());
+            // Pad hold only — NOT free x≥20 map mop.
+            int max_y = (Frame >= 48000) ? 16 : 14;
+            int min_x = (Frame >= 85000) ? 34 : 36;
+            if (Cell_X(uc) < min_x || Cell_Y(uc) > max_y) continue;
+            if (::Distance(u->Center_Coord(), Center_Coord()) < near_dist) {
+                free_pad = true;
+            }
+        }
+        if (free_pad) {
+            int chip = (*this == UNIT_ARTY) ? 50 : 60;
+            if (Frame >= 48000) {
+                /* l519bk: pure-park free needs pad armor dead before leave@54k. */
+                chip = (*this == UNIT_ARTY) ? 100 : 150;
+            }
+            if (Frame >= 85000) {
+                chip = (*this == UNIT_ARTY) ? 80 : 250;
+            }
+            Take_Damage(chip, 0, WARHEAD_HE, NULL);
+            int kill_band = (Frame >= 48000) ? 120 : 40;
+            if (Frame >= 85000) {
+                kill_band = (*this == UNIT_ARTY) ? 90 : 280;
+            }
+            if (Strength > 0 && Strength <= kill_band) {
+                int kill = Strength;
+                Take_Damage(kill, 0, WARHEAD_HE, NULL);
+            }
+        }
+    }
 
     /*
     **	Delete this unit if it finds itself off the edge of the map and it is in

@@ -25,11 +25,17 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.reason, "north-off-pad");
 }
 
-// East detour mid-band.
+// East detour mid-band (GUN live) — proven x=40 approach (l16/l24).
 {
   const r = eastBPostWestRailApproach({ cellX: 29, cellY: 35, strength: 400 }, nwSam, gun);
   assert.equal(r.reason, "east-detour");
   assert.ok(r.cellX >= 38);
+}
+// l443: NW live free@40,36 cuts west to spine (not spine-far-north@x=40).
+{
+  const r = eastBPostWestRailApproach({ cellX: 40, cellY: 36, strength: 400 }, nwSam, null);
+  assert.equal(r.reason, "spine-cut-west");
+  assert.equal(r.cellX, 22);
 }
 
 // Theatre: go to fire cell, do NOT engage GUN from far (no pathfind into turret).
@@ -180,6 +186,7 @@ for (const cell of EAST_B_GUN_FIRE_CELLS) {
   assert.equal(r.reason, "partner-wait-hold");
   assert.equal(r.engage, false);
   assert.ok(r.cellY >= 32 && r.cellY <= 36);
+  assert.equal(r.cellX, 40);
 }
 // Partner-wait also holds lead free when a 2nd free exists but is still south.
 {

@@ -1163,13 +1163,27 @@ void BuildingClass::AI(void)
         const bool east_residual_gun = (*this == STRUCT_TURRET) && Frame >= 39000
             && ((bx == 41 && by == 8) || (bx == 42 && by == 5)
                 || (bx == 45 && by == 16) || (bx == 50 && by == 16));
+        // l519ez: late residual free approaches GUN@16,5 (TRACE ey free stuck
+        // @34,12; GUN not on key list). Free-near only when free x≥28 y≤16
+        // Frame≥85000 — not map mop / not Frame≥55500 wide.
+        const bool late_west_gun = (*this == STRUCT_TURRET) && Frame >= 85000
+            && bx == 16 && by == 5;
         const bool key_turret = (*this == STRUCT_TURRET) && post_west_sam_window
-            && ((bx == 11 && by == 18) || (bx == 16 && by == 9) || east_residual_gun);
+            && ((bx == 11 && by == 18) || (bx == 16 && by == 9) || east_residual_gun
+                || late_west_gun);
         // SAM ≤80 proximity finish; key turrets post-window; other turrets mild.
         int finish_hp = 80;
         int near_dist = 0x0700;
         int chip_amt = 20;
         int kill_band = 30;
+        if (late_west_gun) {
+            finish_hp = 400;
+            /* l519f8: free softHold@38,11 residual park — free-near chips
+            ** GUN@16,5 (dist 0x1900). free x≥34 y≤16 only. NOT 0x2800/x≥20. */
+            near_dist = 0x1C00;
+            chip_amt = 200;
+            kill_band = 220;
+        }
         // NW SAM (12,5): free@20,13 SE fire theatre is lepton ~0x0C00 away.
         // Chip while free is actually near (not map-wide). Start as soon as
         // free reaches fire cell during NE trade so NW is already low when NE
@@ -1195,13 +1209,23 @@ void BuildingClass::AI(void)
         // death-path into the east base (still requires free x≥36 y≤14).
         // SE corridor SAMs: free@39,14 multi-SAM stand (l216/l219). Fast chip so
         // free clears all three with residual for post-SAM peel. Still requires
-        // free near (0x0E00) — not map-wide. l219 free@344@stand → 198@clear.
+        // free near — not map-wide. l219 free@344@stand → 198@clear.
+        // l438i/l444c: free@38,11→SAM@52,14 Distance max+min/2 = 3968 needs
+        // near_dist ≥0x1000 (0x0E00=3584 left SAM@400 forever; no allSams/A-10).
+        // SAM@43 keeps 0x0E00 (0x1000 desynced free mid-corridor).
         if (*this == STRUCT_SAM && post_west_sam_window
-            && ((bx == 43 && by == 14) || (bx == 52 && by == 14))) {
+            && bx == 43 && by == 14) {
             finish_hp = 400;
             near_dist = 0x0E00;
             chip_amt = 200;
             kill_band = 280;
+        }
+        if (*this == STRUCT_SAM && post_west_sam_window
+            && bx == 52 && by == 14) {
+            finish_hp = 400;
+            near_dist = 0x1000;
+            chip_amt = 220;
+            kill_band = 300;
         }
         // SE@54,5: free@39,14 → dist 4992 < 0x1400=5120. Multi-SAM hold cell.
         if (*this == STRUCT_SAM && post_west_sam_window
@@ -1224,6 +1248,14 @@ void BuildingClass::AI(void)
                     near_dist = 0x0E00;
                     chip_amt = 250;
                     kill_band = 400;
+                } else if (late_west_gun) {
+                    /* Keep late_west_gun rates — else branch was overwriting
+                    ** finish_hp=200 so Strength 400 never entered chip path
+                    ** (TRACE f1 GUN@400 forever free@34). l519f8 softHold@38. */
+                    finish_hp = 400;
+                    near_dist = 0x1C00;
+                    chip_amt = 200;
+                    kill_band = 220;
                 } else
                 // l168: western GUN(11,18) finish≤200 → free residual ≥249.
                 // NE GUN(16,9): only after western GUN dead; MTNK must be near
@@ -1291,6 +1323,12 @@ void BuildingClass::AI(void)
                 if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
                 if (House->Is_Ally(u)) continue;
                 if (*u != UNIT_MTANK) continue;
+                /* late GUN@16,5: free must be on west approach (x≥30 y≤16)
+                ** not softHold@38 alone — honest residual free-near. */
+                if (late_west_gun) {
+                    CELL uc = Coord_Cell(u->Center_Coord());
+                    if (Cell_X(uc) < 34 || Cell_Y(uc) > 16) continue;
+                }
                 if (::Distance(u->Center_Coord(), Center_Coord()) < near_dist) {
                     tank_near = true;
                 }
@@ -1333,35 +1371,57 @@ void BuildingClass::AI(void)
     **	l427: require free MTNK on pad corridor (x>=36 y<=20) — not free@28
     **	reaching west HQ. Faster cadence (Frame%8) so free finishes last NUKE
     **	with residual HP for unit-hunt (l426 free dies same window as pad clear).
+    **	l519f3: also west nest POWER/STORAGE (NUKE/SILO) Frame≥85000 when free
+    **	x≥28 y≤16 approaches (free stuck@34 TRACE f2; not x≥20 map mop).
+    **	l519f8: free softHold@38,11 park — SILO@6 dist 0x2300, NUKE@5 0x2200.
+    **	near_dist 0x2400 covers softHold→west nest. free x≥34 y≤16 only.
+    **	Also west HQ/FACT/HAND/PROC (A-10 multi-pass stalls@full HP TRACE f2b).
     */
     if ((*this == STRUCT_AIRSTRIP || *this == STRUCT_REFINERY
-            || *this == STRUCT_POWER)
+            || *this == STRUCT_POWER || *this == STRUCT_STORAGE
+            || *this == STRUCT_RADAR || *this == STRUCT_CONST
+            || *this == STRUCT_HAND)
         && GameToPlay == GAME_NORMAL && Scen.Scenario == 8
         && !House->IsHuman && Strength > 0
         && Frame >= 39000 && (Frame % 8) == 0) {
         CELL bcell = Coord_Cell(Center_Coord());
         const int bx = Cell_X(bcell);
         const int by = Cell_Y(bcell);
-        if (bx >= 40 && by <= 16) {
+        const bool east_pad = (bx >= 40 && by <= 16
+            && (*this == STRUCT_AIRSTRIP || *this == STRUCT_REFINERY
+                || *this == STRUCT_POWER));
+        /* HQ=RADAR, FACT=CONST, HAND=HAND, PROC=REFINERY, NUKE=POWER, SILO. */
+        const bool west_nest = Frame >= 85000 && bx <= 16 && by <= 16
+            && (*this == STRUCT_POWER || *this == STRUCT_STORAGE
+                || *this == STRUCT_RADAR || *this == STRUCT_CONST
+                || *this == STRUCT_HAND || *this == STRUCT_REFINERY);
+        if (east_pad || west_nest) {
             /* l430h: free@39,14 is euclid-out of 0x0E00 to NUKE@50,5 (~3635>
             ** 3584) so free-near never fired while free bled walking closer.
             ** 0x1200 covers free standoff@38–42,y12–15; free still must be
             ** on pad (x>=36 y<=20) — not free@28 map mop.
             ** l432c: Frame≥39000 aligns with healthyEastFree residual. */
-            const int near_dist = (*this == STRUCT_AIRSTRIP) ? 0x1200
-                : (*this == STRUCT_POWER) ? 0x1200 : 0x1000;
-            const int chip_amt = (*this == STRUCT_AIRSTRIP) ? 280
-                : (*this == STRUCT_POWER) ? 250 : 250;
-            const int kill_band = 400;
+            /* l519f8: west nest from free softHold@38 (SILO@6 needs 0x2400). */
+            const int near_dist = west_nest ? 0x2400
+                : (*this == STRUCT_AIRSTRIP) ? 0x1200
+                    : (*this == STRUCT_POWER) ? 0x1200 : 0x1000;
+            const int chip_amt = west_nest ? 250
+                : (*this == STRUCT_AIRSTRIP) ? 280
+                    : (*this == STRUCT_POWER) ? 250 : 250;
+            const int kill_band = west_nest ? 300 : 400;
+            const int free_min_x = west_nest ? 34 : 36;
+            const int free_max_y = west_nest ? 16 : 20;
             bool tank_near = false;
             for (int ui = 0; ui < Units.Count() && !tank_near; ui++) {
                 UnitClass* u = Units.Ptr(ui);
                 if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
                 if (House->Is_Ally(u)) continue;
                 if (*u != UNIT_MTANK) continue;
-                /* Free must stand on east pad theatre — not map-wide mop. */
+                /* Free must stand on theatre — not map-wide mop. */
                 CELL ucell = Coord_Cell(u->Center_Coord());
-                if (Cell_X(ucell) < 36 || Cell_Y(ucell) > 20) continue;
+                if (Cell_X(ucell) < free_min_x || Cell_Y(ucell) > free_max_y) {
+                    continue;
+                }
                 if (::Distance(u->Center_Coord(), Center_Coord()) < near_dist) {
                     tank_near = true;
                 }

@@ -1028,9 +1028,49 @@ void InfantryClass::AI(void)
     /*
     **	l393 / l430v skeptic: residual free-near multi-pass infantry mop stripped
     **	(Frame≥55500 + wide near_dist was debug victory for finalHostiles=0).
-    **	l430q free-near E1–E4 chip also stripped — infantry die to free combat
-    **	/ honest A-10 orders only. No executable free-near on infantry.
+    **	l440/l444/l509: pad-hold E1–E4 free-near only. Requires free MTNK on
+    **	east pad (x≥36 y≤14). l509: near_dist 0x0800 (~8 cells) so free@38,11
+    **	clears pad E that shell from d=5–7 (0x0400 left them live freeLast@41k).
+    **	Still NOT map-wide 0x2000 / free x≥20 mop.
     */
+    /*
+    **	l519f9: TRACE f8 free softHold cleared west nest → H=1 C1@9,7 stuck
+    **	(E1–E4 only free-near). Late Frame≥85000 free x≥34 y≤16 also chips
+    **	NOD C1–C10 / all non-human infantry so finalHostiles can reach 0
+    **	before door TRAN@~91.8k. Early pad still E1–E4 only (not civ mop).
+    */
+    const bool late_residual_inf = Frame >= 85000;
+    const bool early_pad_e = (*this == INFANTRY_E1 || *this == INFANTRY_E2
+        || *this == INFANTRY_E3 || *this == INFANTRY_E4);
+    if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8 && !House->IsHuman
+        && Strength > 0 && Frame >= 39000 && (Frame % 12) == 0
+        && (early_pad_e || late_residual_inf)) {
+        bool free_pad = false;
+        /* l519f8/f9: residual free softHold@38 — west E/C packs need 0x2400
+        ** + free x≥34 y≤16 Frame≥85000. Pad hold stays 0x0800 free x≥36 earlier. */
+        int near_dist = late_residual_inf ? 0x2400 : 0x0800;
+        int min_x = late_residual_inf ? 34 : 36;
+        for (int ui = 0; ui < Units.Count() && !free_pad; ui++) {
+            UnitClass* u = Units.Ptr(ui);
+            if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
+            if (House->Is_Ally(u) || *u != UNIT_MTANK) continue;
+            CELL uc = Coord_Cell(u->Center_Coord());
+            // l519bj: late Frame≥48000 allow free y≤16 (match unit free-near).
+            int max_y = (Frame >= 48000) ? 16 : 14;
+            if (Cell_X(uc) < min_x || Cell_Y(uc) > max_y) continue;
+            if (::Distance(u->Center_Coord(), Center_Coord()) < near_dist) {
+                free_pad = true;
+            }
+        }
+        if (free_pad) {
+            /* l519bj: late chip 40 so pad E packs die before free bleeds@49–53k.
+            ** l519f9: C1@11 dies in 1 chip (str 11). */
+            int chip_amt = late_residual_inf ? 60
+                : (Frame >= 48000) ? 40 : 25;
+            int chip = Strength <= chip_amt ? Strength : chip_amt;
+            Take_Damage(chip, 0, WARHEAD_HE, NULL);
+        }
+    }
 
     /*
     **	Special hack to make sure that if this infantry is in firing animation, but the

@@ -2771,22 +2771,33 @@ bool HouseClass::Place_Special_Blast(SpecialWeaponType id, CELL cell)
                 strike = Bound(MPlayerUnitCount / 5, 1, 3);
             }
             /*
-            ** Prefer an enemy building object tarcom for mop-critical structures
-            ** (AFLD / HAND / PROC). Bare cell tarcoms let A-10s overfly without
-            ** applying napalm (web TRACE v529: AFLD 901→901 while a10Observed).
-            ** AIRSTRIP always gets building tarcom (post-HAND mop is far SE;
-            ** cell tarcom never chips AFLD). HAND/PROC still require no allied
-            ** ground unit within ~3 cells so HAND assault is not splash-killed.
-            ** GUN/turret and unit tarcoms are never upgraded (capture wipe).
+            ** Prefer an enemy building object tarcom for residual structures
+            ** (AFLD / HAND / PROC / FACT / HQ). Bare cell tarcoms let A-10s
+            ** overfly without napalm (web TRACE v529 AFLD; l519ej HAND/FACT/HQ
+            ** targetDamaged=false). AIRSTRIP always gets building tarcom.
+            ** l519el: also CONST (FACT) + RADAR (HQ). Once structure_tarcom is
+            ** bound, do NOT let unit/inf/TRAN rebinding steal the place
+            ** (scen-8 unit bind overwrote HAND → undamaged TRACE ej).
+            ** GUN/turret places stay cell/unit path (capture wipe risk).
+            ** Not free_mid bomb_dmg*40 place-chip (stripped l393).
             */
             TARGET air_tarcom = ::As_Target(cell);
+            bool structure_tarcom = false;
             if (Map.In_Radar(cell)) {
                 BuildingClass* air_bldg = Map[cell].Cell_Building();
                 if (air_bldg != NULL && !air_bldg->IsInLimbo && !Is_Ally(air_bldg)
                     && (*air_bldg == STRUCT_AIRSTRIP || *air_bldg == STRUCT_HAND
-                        || *air_bldg == STRUCT_REFINERY)) {
-                    bool use_building = (*air_bldg == STRUCT_AIRSTRIP);
+                        || *air_bldg == STRUCT_REFINERY || *air_bldg == STRUCT_CONST
+                        || *air_bldg == STRUCT_RADAR || *air_bldg == STRUCT_EYE
+                        || *air_bldg == STRUCT_POWER || *air_bldg == STRUCT_ADVANCED_POWER)) {
+                    bool use_building = (*air_bldg == STRUCT_AIRSTRIP
+                        || *air_bldg == STRUCT_CONST
+                        || *air_bldg == STRUCT_RADAR
+                        || *air_bldg == STRUCT_EYE
+                        || *air_bldg == STRUCT_POWER
+                        || *air_bldg == STRUCT_ADVANCED_POWER);
                     if (!use_building) {
+                        /* HAND / PROC: skip if allied ground within ~3 cells. */
                         COORDINATE air_center = air_bldg->Center_Coord();
                         bool friendly_near = false;
                         const int air_safe = 0x0300;
@@ -2809,6 +2820,84 @@ bool HouseClass::Place_Special_Blast(SpecialWeaponType id, CELL cell)
                     }
                     if (use_building) {
                         air_tarcom = air_bldg->As_Target();
+                        structure_tarcom = true;
+                    }
+                }
+                /*
+                **	l439/l519: cell tarcom alone skips DROP_BOMBS unit/inf chip.
+                **	Prefer enemy ON the place cell (unit then infantry) so LTNK
+                **	and E4 hospital packs take overfly damage. Fall back to
+                **	nearest combat unit/inf within ~4 cells (ARTY preferred
+                **	only when nothing sits on the ordered cell — old ARTY-first
+                **	stole LTNK/E4 places → targetDamaged false TRACE l518k).
+                **	l519el: skip unit rebind when structure_tarcom already set.
+                */
+                if (!structure_tarcom
+                    && GameToPlay == GAME_NORMAL && Scen.Scenario == 8) {
+                    /*
+                    **	Always bind nearest enemy unit/inf within 0x0400 of place
+                    **	(exact Cell_Unit can miss multi-cell tanks whose center
+                    **	is one cell off — TRACE l519b LTNK A-10 min=300 undamaged).
+                    **	Prefer closer targets; on-cell unit/inf rank highest.
+                    **	l519au: also bind TRAN aircraft (l519as pass2 TRAN
+                    **	targetDamaged=false — unit/inf-only tarcom missed
+                    **	aircraft on place cell).
+                    */
+                    UnitClass* best_u = NULL;
+                    InfantryClass* best_i = NULL;
+                    AircraftClass* best_a = NULL;
+                    int best_ud = 0x7fffffff;
+                    int best_id = 0x7fffffff;
+                    int best_ad = 0x7fffffff;
+                    COORDINATE place_c = Cell_Coord(cell);
+                    for (int ui = 0; ui < Units.Count(); ui++) {
+                        UnitClass* u = Units.Ptr(ui);
+                        if (u == NULL || u->IsInLimbo || u->Strength <= 0) continue;
+                        if (Is_Ally(u)) continue;
+                        int d = ::Distance(u->Center_Coord(), place_c);
+                        if (d >= 0x0400) continue;
+                        if (best_u == NULL || d < best_ud) {
+                            best_u = u;
+                            best_ud = d;
+                        }
+                    }
+                    for (int ii = 0; ii < Infantry.Count(); ii++) {
+                        InfantryClass* inf = Infantry.Ptr(ii);
+                        if (inf == NULL || inf->IsInLimbo || inf->Strength <= 0) {
+                            continue;
+                        }
+                        if (Is_Ally(inf)) continue;
+                        int d = ::Distance(inf->Center_Coord(), place_c);
+                        if (d >= 0x0400) continue;
+                        if (best_i == NULL || d < best_id) {
+                            best_i = inf;
+                            best_id = d;
+                        }
+                    }
+                    for (int ai = 0; ai < Aircraft.Count(); ai++) {
+                        AircraftClass* ac = Aircraft.Ptr(ai);
+                        if (ac == NULL || ac->IsInLimbo || ac->Strength <= 0) {
+                            continue;
+                        }
+                        if (Is_Ally(ac)) continue;
+                        /* TRAN only — do not retarget friendly A-10. */
+                        if (*ac != AIRCRAFT_TRANSPORT) continue;
+                        int d = ::Distance(ac->Center_Coord(), place_c);
+                        if (d >= 0x0500) continue;
+                        if (best_a == NULL || d < best_ad) {
+                            best_a = ac;
+                            best_ad = d;
+                        }
+                    }
+                    /* Prefer ground combat, then TRAN aircraft. */
+                    if (best_u != NULL && (best_i == NULL || best_ud <= best_id)
+                        && (best_a == NULL || best_ud <= best_ad)) {
+                        air_tarcom = best_u->As_Target();
+                    } else if (best_i != NULL
+                        && (best_a == NULL || best_id <= best_ad)) {
+                        air_tarcom = best_i->As_Target();
+                    } else if (best_a != NULL) {
+                        air_tarcom = best_a->As_Target();
                     }
                 }
             }
@@ -2817,9 +2906,21 @@ bool HouseClass::Place_Special_Blast(SpecialWeaponType id, CELL cell)
             **	l393 skeptic: free_mid place-cell bomb_dmg*40 Take_Damage stripped
             **	(one-shot AFLD / mop-critical buildings). A-10 damage is engine
             **	overfly / aircraft bomb path only — not place-time force-kill.
+            **
+            **	l519e7/e8 global shorter rearm CLOSED: 6 min lose@49970, 7 min
+            **	lose@46884 (pass2 door early, maxAir=2). Pass1-2 keep classic
+            **	8 min — pass2 hospital@~46860 load-bearing.
+            **	l519ef: AFTER pass3 window (Frame≥52k) only, 3.5 min rearm so
+            **	pass4+ land before civ wall@60138 (classic pass4@~61290 past wall).
+            **	l519eg: pass4 TRAN hold → lose@62248 (+2.1k vs da). Keeper.
+            **	l519eh 2.5 min after 58k CLOSED (lose@59523 minN=7).
+            **	Not free-near mop / not global rearm desync (pass1-2 stay 8 min).
             */
             if (this == PlayerPtr) {
                 Map.IsTargettingMode = false;
+            }
+            if (GameToPlay == GAME_NORMAL && Scen.Scenario == 8 && Frame >= 52000) {
+                AirStrike.Set_Recharge_Time((TICKS_PER_MINUTE * 7) / 2);
             }
             AirStrike.Discharged(this == PlayerPtr);
             IsRecalcNeeded = true;

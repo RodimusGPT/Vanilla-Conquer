@@ -104,9 +104,9 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
     ? eastBChebyshev(tank, fireCell) <= 1
     : false;
 
-  // TRACE l65/l67: sole free chips GUN to 180 alone; with freeT=3 free#1 still
-  // dies at GUN while partners lag. Hold mid-east (y≈32–36) until caller sees
-  // ≥2 free MTNKs ready mid-map. Do not enter GUN theatre while waiting.
+  // TRACE l65/l67: sole free chips GUN alone; wait partner mid-east before GUN.
+  // l445e: west-early holds (x=28–32) killed free residual (l445–l445d). Restore
+  // proven x=40 partner-wait; mid civ is separate village/screen problem.
   if (waitPartner && gunLive && !isScrap && tank.cellY > 28) {
     return {
       cellX: 40,
@@ -456,13 +456,16 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
           stopFirst: false,
         };
       }
-      // Mid-corridor / stuck: direct force-move to 39,14 (high cadence = no thrash).
+      // Mid-corridor / stuck: direct force-move to 39,14.
+      // l443: cadence 30 left free parked@40,36 mid thrash — use cadence 2 while
+      // free is south of SE stand band (y>20) so path reissues every order cycle.
       if (seDist <= 20 || tank.cellX >= 24 || stuck) {
+        const midSouth = tank.cellY > 20;
         return {
           cellX: standX,
           cellY: standY,
           engage: false,
-          cadence: stuck ? 10 : 30,
+          cadence: midSouth ? 2 : (stuck ? 10 : 30),
           reason: "se-sam-east",
           stopFirst: tank.cellX < 28,
         };
@@ -533,9 +536,22 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
             stopFirst: true,
           };
         }
-        // Attack-move SE SAM when free is in engine chip range (~10 cells) or
-        // past x=32 / stuck.
-        if (seSamTarget && (tank.cellX >= 32 || seDist <= 10 || stuck)) {
+        // Attack-move SE SAM only when free is in SE stand band (y≤20).
+        // l443: free@40,36 with cellX≥32 used to attack-move SAM and pathfind
+        // thrash mid-map (BGGY/LTNK) for ~1.2k ticks → civ cluster@34.5k.
+        // South of y=20: force-move to approach stand, no SAM attack-move.
+        if (seSamTarget && tank.cellY > 20 && (tank.cellX >= 28 || stuck)) {
+          return {
+            cellX: EAST_B_SE_SAM_APPROACH.cellX,
+            cellY: EAST_B_SE_SAM_APPROACH.cellY,
+            engage: false,
+            cadence: 2,
+            reason: "se-sam-east",
+            stopFirst: false,
+          };
+        }
+        if (seSamTarget && tank.cellY <= 20
+          && (tank.cellX >= 32 || seDist <= 10 || stuck)) {
           return {
             cellX: target.cellX,
             cellY: target.cellY,
@@ -636,11 +652,25 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
         stopFirst: true,
       };
     }
-    // North on x≥20 until y≤7 (north of GUN@16,9). l146 best minY 10@108.
-    // l147 reStop escape thrash pulled free west — closed.
+    // l443: free@40,36 with NW still live used spine-far-north which kept
+    // cellX=max(tank.x,21)=40 and stepped y-3 → free parked mid-east thrashing
+    // BGGY/LTNK for ~1.2k ticks (civ cluster@34.5–35.3k, TRACE l442-mid).
+    // Cut west to spine corridor x≈20–22 first, then north.
+    if (nwIsTarget && tank.cellX >= 28 && tank.cellY > 12) {
+      return {
+        cellX: 22,
+        cellY: Math.min(Math.max(tank.cellY - 2, 18), 30),
+        engage: false,
+        cadence: 2,
+        reason: "spine-cut-west",
+        stopFirst: true,
+      };
+    }
+    // North on x≈20–24 until y≤7 (north of GUN@16,9). Clamp x so free does not
+    // north on x=40 mid thrash lane.
     if (tank.cellX >= 20 && tank.cellY > 7) {
       return {
-        cellX: Math.max(tank.cellX, 21),
+        cellX: Math.min(Math.max(tank.cellX, 20), 24),
         cellY: Math.max(tank.cellY - 3, 7),
         engage: false,
         cadence: 1,
@@ -692,8 +722,17 @@ export function eastBPostWestRailApproach(tank, target, westernGun, opts = {}) {
     reason = "north-off-pad";
     cadence = 12;
   } else if (tank.cellY > 30) {
-    // Mid-band west blocked — east detour (l16/l24).
-    if (tank.cellX < 38) {
+    // GUN live: proven east detour (l16/l24) to x=40 then cut west to GUN.
+    // l445e: west-early GUN approach (x≤32) free residual death — closed.
+    // After GUN dead: emerge west-spine (avoid x=40 mid thrash on NW path).
+    if (!gunLive) {
+      approach = {
+        cellX: Math.min(Math.max(tank.cellX - 4, 20), 28),
+        cellY: Math.min(tank.cellY - 4, 32),
+      };
+      reason = "emerge-west-spine";
+      cadence = 4;
+    } else if (tank.cellX < 38) {
       approach = { cellX: 40, cellY: Math.min(tank.cellY, 32) };
       reason = "east-detour";
       cadence = 18;
